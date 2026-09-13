@@ -1,5 +1,31 @@
+# Changelog
+
+## [1.1.0](https://github.com/travisghansen/hass-opnsense/compare/v1.0.8...v1.1.0) (2026-09-13)
+
+
+### Features
+
+* Resolve device tracker hostnames from the ARP table ([#722](https://github.com/travisghansen/hass-opnsense/issues/722)) ([d93c540](https://github.com/travisghansen/hass-opnsense/commit/d93c5404d29d7a5e7bbed460dba2dcd0dfaed968))
+
+
+### Bug Fixes
+
+* Zero CPU usage sensor samples ([#728](https://github.com/travisghansen/hass-opnsense/issues/728)) ([21a9355](https://github.com/travisghansen/hass-opnsense/commit/21a9355bb14434f050c6767a7fbeaf9a05ef53b2))
+
+
+### Miscellaneous Chores
+
+* update prek hooks ([#723](https://github.com/travisghansen/hass-opnsense/issues/723)) ([aedc6f4](https://github.com/travisghansen/hass-opnsense/commit/aedc6f4bf815cb8776acef2dc84fd31c5e24c3fd))
+
+
+### Continuous Integration
+
+* Add back changelog generation ([#731](https://github.com/travisghansen/hass-opnsense/issues/731)) ([b6fc587](https://github.com/travisghansen/hass-opnsense/commit/b6fc587b41cd0db3906757b9e70856a0280502f2))
+* make aiopnsense updates releasable ([#733](https://github.com/travisghansen/hass-opnsense/issues/733)) ([de0c506](https://github.com/travisghansen/hass-opnsense/commit/de0c506c04116ec383458f0b20e9f50bbbc7a15e))
+* remove obsolete SHA-dispatched validation paths ([#734](https://github.com/travisghansen/hass-opnsense/issues/734)) ([d5a7faf](https://github.com/travisghansen/hass-opnsense/commit/d5a7faf6ef6ea3b285eb1483cc59c3cf126ff281))
+
 <a id="v1.0.5"></a>
-# [v1.0.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.5) - 2026-08-09
+## [v1.0.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.5) - 2026-08-09
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -18,7 +44,7 @@
 
 
 <a id="v1.0.4"></a>
-# [v1.0.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.4) - 2026-08-02
+## [v1.0.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.4) - 2026-08-02
 
 <h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -39,7 +65,7 @@
 
 
 <a id="v1.0.3"></a>
-# [v1.0.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.3) - 2026-07-24
+## [v1.0.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.3) - 2026-07-24
 
 <h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -59,7 +85,7 @@
 
 
 <a id="v1.0.2"></a>
-# [v1.0.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.2) - 2026-07-21
+## [v1.0.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.2) - 2026-07-21
 
 <h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -82,7 +108,7 @@
 
 
 <a id="v1.0.1"></a>
-# [v1.0.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.1) - 2026-07-19
+## [v1.0.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.1) - 2026-07-19
 
 <h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -98,7 +124,7 @@
 
 
 <a id="v1.0.0"></a>
-# [v1.0.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.0) - 2026-07-16
+## [v1.0.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v1.0.0) - 2026-07-16
 
 <h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -129,7 +155,7 @@ For anyone using OPNsense Firmware < 26.1.1, Firewall and NAT Filter switches wi
 
 
 <a id="v0.7.4"></a>
-# [v0.7.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.4) - 2026-06-28
+## [v0.7.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.4) - 2026-06-28
 
 <h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -147,7 +173,7 @@ For anyone using OPNsense Firmware < 26.1.1, Firewall and NAT Filter switches wi
 
 
 <a id="v0.7.3"></a>
-# [v0.7.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.3) - 2026-06-21
+## [v0.7.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.3) - 2026-06-21
 
 <h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -163,7 +189,7 @@ For anyone using OPNsense Firmware < 26.1.1, Firewall and NAT Filter switches wi
 
 
 <a id="v0.7.1"></a>
-# [v0.7.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.1) - 2026-06-20
+## [v0.7.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.1) - 2026-06-20
 
 <h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -191,7 +217,7 @@ For anyone using OPNsense Firmware < 26.1.1, Firewall and NAT Filter switches wi
 
 
 <a id="v0.7.0"></a>
-# [v0.7.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.0) - 2026-05-29
+## [v0.7.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.7.0) - 2026-05-29
 
 <h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -214,7 +240,7 @@ For anyone using OPNsense Firmware < 26.1.1, Firewall and NAT Filter switches wi
 
 
 <a id="v0.6.7"></a>
-# [v0.6.7](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.7) - 2026-04-15
+## [v0.6.7](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.7) - 2026-04-15
 
 <h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -233,7 +259,7 @@ For anyone using OPNsense Firmware < 26.1.1, Firewall and NAT Filter switches wi
 
 
 <a id="v0.6.6"></a>
-# [v0.6.6](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.6) - 2026-04-15
+## [v0.6.6](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.6) - 2026-04-15
 
 <h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -261,7 +287,7 @@ For anyone using OPNsense Firmware < 26.1.1, Firewall and NAT Filter switches wi
 
 
 <a id="v0.6.5"></a>
-# [v0.6.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.5) - 2026-04-01
+## [v0.6.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.5) - 2026-04-01
 
 <h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -283,7 +309,7 @@ For anyone using OPNsense Firmware < 26.1.1, Firewall and NAT Filter switches wi
 
 
 <a id="v0.6.4"></a>
-# [v0.6.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.4) - 2026-03-27
+## [v0.6.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.4) - 2026-03-27
 
 <h3>OPNsense Minimum Firmware Required: 25.1</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p>### Note
 
@@ -312,7 +338,7 @@ The minimum version of hass-opnsense will be pushed relatively quickly over the 
 
 
 <a id="v0.6.3"></a>
-# [v0.6.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.3) - 2026-03-22
+## [v0.6.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.3) - 2026-03-22
 
 <h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 26.1+</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -331,7 +357,7 @@ The minimum version of hass-opnsense will be pushed relatively quickly over the 
 
 
 <a id="v0.6.2"></a>
-# [v0.6.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.2) - 2026-03-15
+## [v0.6.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.2) - 2026-03-15
 
 <h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -360,7 +386,7 @@ The minimum version of hass-opnsense will be pushed relatively quickly over the 
 
 
 <a id="v0.6.1"></a>
-# [v0.6.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.1) - 2026-03-07
+## [v0.6.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.1) - 2026-03-07
 
 <h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -380,11 +406,11 @@ The minimum version of hass-opnsense will be pushed relatively quickly over the 
 
 
 <a id="v0.6.0"></a>
-# [v0.6.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.0) - 2026-02-08
+## [v0.6.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.6.0) - 2026-02-08
 
 <h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p>-
 
-# Important Breaking Changes: Please Read
+## Important Breaking Changes: Please Read
 
 **If you are running OPNsense firmware < 26.1.1, existing Firewall and NAT switches will remain and the plugin will continue to work (if you were using it).**
 
@@ -420,7 +446,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.5.0"></a>
-# [v0.5.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.5.0) - 2025-12-08
+## [v0.5.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.5.0) - 2025-12-08
 
 <h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -446,7 +472,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.4.8"></a>
-# [v0.4.8](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.8) - 2025-09-07
+## [v0.4.8](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.8) - 2025-09-07
 
 <h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -475,7 +501,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.4.7"></a>
-# [v0.4.7](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.7) - 2025-08-06
+## [v0.4.7](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.7) - 2025-08-06
 
 <h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -495,7 +521,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.4.6"></a>
-# [v0.4.6](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.6) - 2025-08-02
+## [v0.4.6](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.6) - 2025-08-02
 
 <h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -511,7 +537,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.4.5"></a>
-# [v0.4.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.5) - 2025-07-24
+## [v0.4.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.5) - 2025-07-24
 
 <h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -530,7 +556,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.4.4"></a>
-# [v0.4.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.4) - 2025-07-17
+## [v0.4.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.4) - 2025-07-17
 
 <h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -551,7 +577,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.4.3"></a>
-# [v0.4.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.3) - 2025-07-04
+## [v0.4.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.3) - 2025-07-04
 
 <h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -574,7 +600,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.4.2"></a>
-# [v0.4.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.2) - 2025-06-29
+## [v0.4.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.2) - 2025-06-29
 
 <h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -589,7 +615,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.4.1"></a>
-# [v0.4.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.1) - 2025-06-20
+## [v0.4.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.1) - 2025-06-20
 
 <h3>OPNsense Minimum Firmware Required: 24.7</h3><h4>OPNsense Recommended Firmware: 25.1</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -604,7 +630,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.4.0"></a>
-# [v0.4.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.0) - 2025-06-19
+## [v0.4.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.4.0) - 2025-06-19
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -626,7 +652,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.16"></a>
-# [v0.3.16](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.16) - 2025-02-19
+## [v0.3.16](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.16) - 2025-02-19
 
 <h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -645,7 +671,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.15"></a>
-# [v0.3.15](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.15) - 2025-01-18
+## [v0.3.15](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.15) - 2025-01-18
 
 <h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -665,7 +691,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.14"></a>
-# [v0.3.14](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.14) - 2025-01-09
+## [v0.3.14](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.14) - 2025-01-09
 
 <h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -684,7 +710,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.13"></a>
-# [v0.3.13](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.13) - 2024-12-28
+## [v0.3.13](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.13) - 2024-12-28
 
 <h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -706,7 +732,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.12"></a>
-# [v0.3.12](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.12) - 2024-12-06
+## [v0.3.12](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.12) - 2024-12-06
 
 <h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -724,7 +750,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.11"></a>
-# [v0.3.11](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.11) - 2024-11-28
+## [v0.3.11](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.11) - 2024-11-28
 
 <h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -739,7 +765,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.10"></a>
-# [v0.3.10](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.10) - 2024-11-26
+## [v0.3.10](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.10) - 2024-11-26
 
 <h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -760,7 +786,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.9"></a>
-# [v0.3.9](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.9) - 2024-11-01
+## [v0.3.9](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.9) - 2024-11-01
 
 <h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -778,7 +804,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.8"></a>
-# [v0.3.8](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.8) - 2024-10-27
+## [v0.3.8](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.8) - 2024-10-27
 
 <h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -807,7 +833,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.7"></a>
-# [v0.3.7](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.7) - 2024-10-20
+## [v0.3.7](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.7) - 2024-10-20
 
 <h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -837,7 +863,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.6"></a>
-# [v0.3.6](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.6) - 2024-10-14
+## [v0.3.6](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.6) - 2024-10-14
 
 <h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -856,7 +882,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.5"></a>
-# [v0.3.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.5) - 2024-10-10
+## [v0.3.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.5) - 2024-10-10
 
 <h3>OPNsense Minimum Firmware Required: 24.1</h3><h4>OPNsense Recommended Firmware: 24.7</h4><p><!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -885,7 +911,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.4"></a>
-# [v0.3.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.4) - 2024-10-01
+## [v0.3.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.4) - 2024-10-01
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -902,7 +928,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.3"></a>
-# [v0.3.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.3) - 2024-09-30
+## [v0.3.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.3) - 2024-09-30
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -920,7 +946,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.2"></a>
-# [v0.3.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.2) - 2024-09-28
+## [v0.3.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.2) - 2024-09-28
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -946,7 +972,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.1"></a>
-# [v0.3.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.1) - 2024-09-22
+## [v0.3.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.1) - 2024-09-22
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -965,7 +991,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.3.0"></a>
-# [v0.3.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.0) - 2024-09-20
+## [v0.3.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.3.0) - 2024-09-20
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -994,7 +1020,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.2.1"></a>
-# [v0.2.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.2.1) - 2024-09-10
+## [v0.2.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.2.1) - 2024-09-10
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 
@@ -1015,12 +1041,12 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.2.0"></a>
-# [v0.2.0 - Use the REST API for Telemetry](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.2.0) - 2024-09-07
+## [v0.2.0 - Use the REST API for Telemetry](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.2.0) - 2024-09-07
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
 
 ## What's Changed
-# :boom: Breaking Change :boom:
+## :boom: Breaking Change :boom:
 * Use the REST API for Telemetry by [@Snuffy2](https://github.com/Snuffy2) in [#147](https://github.com/travisghansen/hass-opnsense/pull/147)
   * Requires that the OPNSense user has __admin__ permissions. See the Readme for details
   * OpenVPN Entities will be renamed and the old ones will need to be manually removed
@@ -1044,7 +1070,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.1.22"></a>
-# [v0.1.22](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.22) - 2024-09-04
+## [v0.1.22](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.22) - 2024-09-04
 
 
 
@@ -1052,7 +1078,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.1.21"></a>
-# [v0.1.21](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.21) - 2024-03-18
+## [v0.1.21](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.21) - 2024-03-18
 
 
 
@@ -1060,7 +1086,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.1.20"></a>
-# [v0.1.20](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.20) - 2024-02-17
+## [v0.1.20](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.20) - 2024-02-17
 
 
 
@@ -1068,7 +1094,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.1.19"></a>
-# [v0.1.19](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.19) - 2024-02-17
+## [v0.1.19](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.19) - 2024-02-17
 
 
 
@@ -1076,7 +1102,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.1.18"></a>
-# [v0.1.18](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.18) - 2024-02-16
+## [v0.1.18](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.18) - 2024-02-16
 
 
 
@@ -1084,7 +1110,7 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.1.17"></a>
-# [v0.1.17](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.17) - 2024-02-12
+## [v0.1.17](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.17) - 2024-02-12
 
 
 
@@ -1092,9 +1118,9 @@ New, disabled switches will be added for new Firewall Rules, NAT Source Rules, N
 
 
 <a id="v0.1.16"></a>
-# [v0.1.16](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.16) - 2023-04-30
+## [v0.1.16](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.16) - 2023-04-30
 
-# v0.1.16
+## v0.1.16
 
 Released 2023-04-30
 
@@ -1105,7 +1131,7 @@ Released 2023-04-30
 
 
 <a id="v0.1.15"></a>
-# [v0.1.15](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.15) - 2023-03-21
+## [v0.1.15](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.15) - 2023-03-21
 
 Released 2023-03-21
 
@@ -1116,7 +1142,7 @@ Released 2023-03-21
 
 
 <a id="v0.1.14"></a>
-# [v0.1.14](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.14) - 2023-02-19
+## [v0.1.14](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.14) - 2023-02-19
 
 Released 2023-02-19
 
@@ -1126,7 +1152,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.13"></a>
-# [v0.1.13](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.13) - 2023-01-30
+## [v0.1.13](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.13) - 2023-01-30
 
 
 
@@ -1134,7 +1160,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.12"></a>
-# [v0.1.12](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.12) - 2023-01-30
+## [v0.1.12](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.12) - 2023-01-30
 
 
 
@@ -1142,7 +1168,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.11"></a>
-# [v0.1.11](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.11) - 2023-01-30
+## [v0.1.11](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.11) - 2023-01-30
 
 
 
@@ -1150,7 +1176,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.10"></a>
-# [v0.1.10](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.10) - 2023-01-30
+## [v0.1.10](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.10) - 2023-01-30
 
 
 
@@ -1158,7 +1184,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.9"></a>
-# [v0.1.9](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.9) - 2023-01-22
+## [v0.1.9](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.9) - 2023-01-22
 
 
 
@@ -1166,7 +1192,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.8"></a>
-# [v0.1.8](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.8) - 2023-01-18
+## [v0.1.8](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.8) - 2023-01-18
 
 
 
@@ -1174,7 +1200,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.7"></a>
-# [v0.1.7](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.7) - 2023-01-16
+## [v0.1.7](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.7) - 2023-01-16
 
 
 
@@ -1182,7 +1208,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.6"></a>
-# [v0.1.6](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.6) - 2023-01-16
+## [v0.1.6](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.6) - 2023-01-16
 
 
 
@@ -1190,7 +1216,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.5"></a>
-# [v0.1.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.5) - 2022-08-18
+## [v0.1.5](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.5) - 2022-08-18
 
 
 
@@ -1198,7 +1224,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.4"></a>
-# [v0.1.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.4) - 2022-08-18
+## [v0.1.4](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.4) - 2022-08-18
 
 
 
@@ -1206,7 +1232,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.3"></a>
-# [v0.1.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.3) - 2022-08-17
+## [v0.1.3](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.3) - 2022-08-17
 
 
 
@@ -1214,7 +1240,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.2"></a>
-# [v0.1.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.2) - 2022-08-01
+## [v0.1.2](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.2) - 2022-08-01
 
 
 
@@ -1222,7 +1248,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.1"></a>
-# [v0.1.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.1) - 2022-07-11
+## [v0.1.1](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.1) - 2022-07-11
 
 
 
@@ -1230,7 +1256,7 @@ Released 2023-02-19
 
 
 <a id="v0.1.0"></a>
-# [v0.1.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.0) - 2022-07-09
+## [v0.1.0](https://github.com/travisghansen/hass-opnsense/releases/tag/v0.1.0) - 2022-07-09
 
 
 
