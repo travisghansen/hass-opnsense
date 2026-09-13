@@ -20,8 +20,9 @@ token. Review and run the applicable CI checks before merging a release pull
 request; the archive verification runs in the Release Please workflow after
 the release is created.
 
-If archive upload fails after the GitHub Release exists, run the **Release Please**
-workflow manually with its existing `vMAJOR.MINOR.PATCH` tag as `release_tag`.
+If archive upload fails for a new Release Please GitHub Release, run the
+**Release Please** workflow manually with that release's `vMAJOR.MINOR.PATCH`
+tag as `release_tag`.
 The recovery run checks the tagged integration versions, rebuilds and verifies
 the archive, and replaces the existing `opnsense.zip` asset. It does not create
 another release or move the tag.
