@@ -68,7 +68,7 @@
   "packages": {
     ".": {
       "package-name": "opnsense",
-      "skip-changelog": true,
+      "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
           "type": "generic",
