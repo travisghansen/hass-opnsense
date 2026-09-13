@@ -1,0 +1,70 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag whose HACS archive should be rebuilt
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    if: github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or update the release pull request
+        if: github.event_name == 'push'
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Checkout the released tag
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          steps.release.outputs.release_created == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.release.outputs.tag_name || inputs.release_tag }}
+          persist-credentials: false
+
+      - name: Build and upload the HACS archive
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          steps.release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must use the vMAJOR.MINOR.PATCH format." >&2
+            exit 1
+          fi
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          git archive --format=zip --output="$RUNNER_TEMP/opnsense.zip" \
+            HEAD:custom_components/opnsense
+          python3 .github/scripts/verify_hacs_archive.py "$RUNNER_TEMP/opnsense.zip" "$RELEASE_TAG"
+          opnsense_ltd_firmware="$(grep 'OPNSENSE_LTD_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)"
+          opnsense_min_firmware="$(grep 'OPNSENSE_MIN_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)"
+          firmware_notes="<!-- opnsense-firmware-compatibility --><h3>OPNsense Minimum Firmware Required: $opnsense_min_firmware</h3><h4>OPNsense Recommended Firmware: $opnsense_ltd_firmware+</h4><p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i></p>"
+          release_body="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
+          if [[ "$release_body" != *"opnsense-firmware-compatibility"* ]]; then
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --notes "${release_body}"$'\n\n'"$firmware_notes"
+          fi
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/opnsense.zip#opnsense.zip" \
+            --clobber --repo "$GITHUB_REPOSITORY"
