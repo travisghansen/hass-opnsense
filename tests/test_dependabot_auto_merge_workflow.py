@@ -149,8 +149,6 @@ def _authorize(
     Returns:
         subprocess.CompletedProcess[str]: Result from the authorizer process.
 
-    Raises:
-        RuntimeError: If Node.js is unavailable.
     """
     event_path = tmp_path / "event.json"
     changed_files_path = tmp_path / "changed-files"
@@ -165,7 +163,7 @@ def _authorize(
     commits_path.write_text(json.dumps([commits]), encoding="utf-8")
     ancestry_proofs_path.write_text(json.dumps(ancestry_proofs), encoding="utf-8")
     if NODE is None:
-        raise RuntimeError("Node.js is required to run the Dependabot authorizer.")
+        pytest.skip("Node.js is required to run the Dependabot authorizer.")
     return subprocess.run(  # noqa: S603
         [
             NODE,
