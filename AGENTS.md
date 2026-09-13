@@ -75,6 +75,8 @@
 ## PR & Branch Behavior
 
 - Create branches or PRs only when explicitly requested. Do not open PRs autonomously.
+- Every pull request title must begin with a Conventional Commit prefix, such as `fix:`,
+  `feat:`, or `chore(deps):`.
 
 ## Network / Install Consent
 
