@@ -2160,3 +2160,108 @@ async def test_async_setup_entry_removes_stale_tracker_entities_clears_missing_p
         remove_config_entry_id=entry.entry_id,
         via_device_id=None,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failed_state",
+    [{}, {"arp_table": None}],
+    ids=["refresh_returned_no_state", "arp_table_missing"],
+)
+async def test_async_setup_entry_keeps_trackers_when_first_refresh_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+    failed_state: dict[str, Any],
+) -> None:
+    """A failed first refresh must not remove trackers that already exist.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
+        failed_state (dict[str, Any]): Coordinator payload left behind by a failed refresh.
+    """
+    coordinator.data = failed_state
+    entry = make_config_entry(
+        data={
+            TRACKED_MACS: ["aa:bb:cc:dd:ee:01", "aa:bb:cc:dd:ee:02"],
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={CONF_DEVICE_TRACKER_ENABLED: True},
+        entry_id="e_failed_refresh",
+    )
+    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    fake = fake_reg_factory(device_exists=True, device_id="router-device")
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "is_reconciliation_active", lambda _entry: False)
+    cleanup = MagicMock()
+    monkeypatch.setattr(dt_mod, "_cleanup_stale_tracked_devices", cleanup)
+    record = MagicMock()
+    monkeypatch.setattr(dt_mod, "record_desired_entities", record)
+    ph_hass.config_entries.async_update_entry = MagicMock()
+    added: list[Any] = []
+
+    await dt_mod.async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
+
+    assert sorted(entity.mac_address for entity in added) == [
+        "aa:bb:cc:dd:ee:01",
+        "aa:bb:cc:dd:ee:02",
+    ]
+    cleanup.assert_not_called()
+    ph_hass.config_entries.async_update_entry.assert_not_called()
+    record.assert_called_once_with(entry, "device_tracker", None)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_empty_arp_table_still_removes_stale_trackers(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """An empty ARP table stays authoritative, unlike a missing one, so stale trackers are removed.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
+    """
+    coordinator.data = {"arp_table": []}
+    entry = make_config_entry(
+        data={TRACKED_MACS: ["aa:bb:cc:dd:ee:01"], CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options={CONF_DEVICE_TRACKER_ENABLED: True},
+        entry_id="e_empty_arp",
+    )
+    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    fake = fake_reg_factory(device_exists=True, device_id="router-device")
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "is_reconciliation_active", lambda _entry: False)
+    cleanup = MagicMock()
+    monkeypatch.setattr(dt_mod, "_cleanup_stale_tracked_devices", cleanup)
+    monkeypatch.setattr(dt_mod, "record_desired_entities", MagicMock())
+    ph_hass.config_entries.async_update_entry = MagicMock()
+
+    await dt_mod.async_setup_entry(
+        ph_hass, entry, cast("AddEntitiesCallback", lambda _entities: None)
+    )
+
+    cleanup.assert_called_once()
+    assert cleanup.call_args.kwargs["current_mac_addresses"] == []
+
+
+def test_devices_from_mac_addresses_skips_malformed_and_duplicate_macs() -> None:
+    """Persisted MACs should be normalized and de-duplicated, dropping unusable values."""
+    devices, mac_addresses = dt_mod._devices_from_mac_addresses(
+        ["AA-BB-CC-DD-EE-01", None, "aa:bb:cc:dd:ee:01", "", "aa:bb:cc:dd:ee:02"]
+    )
+
+    assert mac_addresses == ["aa:bb:cc:dd:ee:01", "aa:bb:cc:dd:ee:02"]
+    assert devices == [{"mac": "aa:bb:cc:dd:ee:01"}, {"mac": "aa:bb:cc:dd:ee:02"}]

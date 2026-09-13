@@ -269,6 +269,31 @@ def _compile_tracked_devices(
     return devices, mac_addresses, False
 
 
+def _devices_from_mac_addresses(
+    mac_addresses: list[Any],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Build MAC-only tracked devices from previously persisted MAC addresses.
+
+    Args:
+        mac_addresses (list[Any]): Persisted MAC addresses, which may include malformed values.
+
+    Returns:
+        tuple[list[dict[str, Any]], list[str]]: MAC-only device records and their normalized,
+            de-duplicated MAC addresses.
+    """
+    devices: list[dict[str, Any]] = []
+    normalized_macs: list[str] = []
+    for mac_address in mac_addresses:
+        if not isinstance(mac_address, str):
+            continue
+        normalized_mac = _normalize_mac_for_device_tracker(mac_address)
+        if not normalized_mac or normalized_mac in normalized_macs:
+            continue
+        normalized_macs.append(normalized_mac)
+        devices.append(_device_from_arp_entry(normalized_mac, []))
+    return devices, normalized_macs
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -302,6 +327,7 @@ async def async_setup_entry(
             isinstance(mac_address, str) and mac_address.strip() for mac_address in configured_macs
         )
     )
+    arp_table_unavailable = not isinstance(arp_entries, list)
     if not isinstance(arp_entries, list):
         if not has_configured_macs:
             reconciliation_complete = False
@@ -309,6 +335,24 @@ async def async_setup_entry(
     elif not has_configured_macs:
         reconciliation_complete = _track_all_arp_entries_are_complete(arp_entries)
     devices, mac_addresses, enabled_default = _compile_tracked_devices(config_entry, arp_entries)
+    # A missing ARP table means the refresh failed, which is not an empty inventory. In track-all
+    # mode every previously tracked MAC would otherwise look stale and have its tracker removed, so
+    # keep the persisted trackers until a refresh returns the table. An empty list stays
+    # authoritative.
+    keep_previous_trackers = (
+        arp_table_unavailable
+        and not has_configured_macs
+        and bool(
+            config_entry.options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)
+        )
+    )
+    if keep_previous_trackers:
+        devices, mac_addresses = _devices_from_mac_addresses(previous_mac_addresses)
+        _LOGGER.warning(
+            "ARP table unavailable during device tracker setup; keeping %d previously tracked "
+            "devices instead of removing them",
+            len(mac_addresses),
+        )
 
     router_device_id: str | None = None
     if devices and getattr(dev_reg, "async_get_device_by_identifier", None) is not None:
@@ -332,7 +376,7 @@ async def async_setup_entry(
             router_device_id=router_device_id,
         )
         entities.append(entity)
-    if not is_reconciliation_active(config_entry):
+    if not keep_previous_trackers and not is_reconciliation_active(config_entry):
         _cleanup_stale_tracked_devices(
             hass=hass,
             config_entry=config_entry,
@@ -341,7 +385,7 @@ async def async_setup_entry(
             current_mac_addresses=mac_addresses,
         )
 
-    if set(mac_addresses) != set(previous_mac_addresses):
+    if not keep_previous_trackers and set(mac_addresses) != set(previous_mac_addresses):
         setattr(config_entry.runtime_data, SHOULD_RELOAD, False)
         new_data = config_entry.data.copy()
         new_data[TRACKED_MACS] = mac_addresses.copy()

@@ -38,6 +38,7 @@ import voluptuous as vol
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
+    CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
     CONF_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_DEVICE_UNIQUE_ID,
     CONF_DEVICES,
@@ -47,6 +48,7 @@ from .const import (
     CONF_MANUAL_DEVICES,
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
+    DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEFAULT_GRANULAR_SYNC_OPTIONS,
     DEFAULT_SCAN_INTERVAL,
@@ -807,6 +809,7 @@ def _build_options_init_schema(
         CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
         CONF_DEVICE_TRACKER_SCAN_INTERVAL: DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
         CONF_DEVICE_TRACKER_CONSIDER_HOME: DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
+        CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES: DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
         **option_values,
         CONF_DEVICE_TRACKING_MODE: tracking_mode,
         CONF_GRANULAR_SYNC_OPTIONS: granular_sync_options,
@@ -865,6 +868,10 @@ def _build_options_init_schema(
                 )
             ),
             vol.Optional(
+                CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
+                default=defaults[CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES],
+            ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
+            vol.Optional(
                 CONF_GRANULAR_SYNC_OPTIONS,
                 default=defaults[CONF_GRANULAR_SYNC_OPTIONS],
             ): selector.BooleanSelector(selector.BooleanSelectorConfig()),
@@ -902,7 +909,10 @@ def _build_device_tracker_schema(
 
 
 async def _get_dt_entries(
-    hass: HomeAssistant, config: Mapping[str, Any], selected_devices: Iterable[str]
+    hass: HomeAssistant,
+    config: Mapping[str, Any],
+    selected_devices: Iterable[str],
+    resolve_hostnames: bool = DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
 ) -> DeviceEntries:
     """Return device-tracker selector entries.
 
@@ -912,6 +922,8 @@ async def _get_dt_entries(
         selected_devices (Iterable[str]): Persisted MAC addresses that should remain selectable even
             when
             not currently present in the ARP table.
+        resolve_hostnames (bool): Whether OPNsense should reverse-resolve ARP hostnames for the
+            device labels.
 
     Returns:
         DeviceEntries: Mapping of MAC addresses to user-facing labels.
@@ -931,7 +943,7 @@ async def _get_dt_entries(
     try:
         # dicts are ordered so put all previously selected items at the top
         entries: DeviceEntries = _build_selected_device_entries(selected_devices)
-        arp_table: list = await client.get_arp_table(resolve_hostnames=True)
+        arp_table: list = await client.get_arp_table(resolve_hostnames=resolve_hostnames)
         if arp_table:
             ip_by_mac: dict[str, str] = {}
             # follow with all arp table entries
@@ -1456,7 +1468,15 @@ class OPNsenseOptionsFlow(OptionsFlow):
 
         try:
             dt_entries: DeviceEntries = await _get_dt_entries(
-                hass=self.hass, config=self.config_entry.data, selected_devices=selected_devices
+                hass=self.hass,
+                config=self.config_entry.data,
+                selected_devices=selected_devices,
+                resolve_hostnames=bool(
+                    self._options.get(
+                        CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
+                        DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
+                    )
+                ),
             )
         except OPNsenseError as err:
             validation_error = _get_validation_error_details(error=err, user_input=self._config)
