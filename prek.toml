@@ -26,7 +26,7 @@ exclude = "^uv\\.lock$"
 
 [[repos]]
 repo = "https://github.com/kjanat/actionlint"
-rev = "v1.15.1"
+rev = "v1.16"
 
 [[repos.hooks]]
 id = "actionlint-shellcheck"
@@ -40,7 +40,7 @@ id = "codespell"
 
 [[repos]]
 repo = "https://github.com/streetsidesoftware/cspell-cli"
-rev = "v10.1.0"
+rev = "v10.2.0"
 
 [[repos.hooks]]
 id = "cspell"
@@ -73,7 +73,7 @@ language_version = "python3.14"
 
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
-rev = "v0.16.5"
+rev = "v0.16.6"
 
 [[repos.hooks]]
 id = "ruff-check"
