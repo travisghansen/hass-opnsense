@@ -33,6 +33,7 @@ Report a bug by [opening a new issue](../../issues/new/choose); it's that easy!
   - Give sample code if you can.
 - Show logs
   - [Enable debug logging in Home Assistant](#enable-debug-logging-in-home-assistant)
+  - When posting logs for an issue, be sure to include logs for both `custom_components.opnsense` and `aiopnsense` which will both be enabled by changing the config per the instructions below
 - What you expected would happen
 - What actually happens
 - Notes (possibly including why you think this might be happening, or stuff you tried that didn't work)
@@ -48,6 +49,8 @@ logger:
   logs:
     custom_components.opnsense: debug
 ```
+
+> When posting logs for an issue, be sure to include logs for both `custom_components.opnsense` and `aiopnsense` which will both be enabled by changing the config as above
 
 ## Use a Consistent Coding Style
 
