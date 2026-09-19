@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.1](https://github.com/travisghansen/hass-opnsense/compare/v1.1.0...v1.1.1) (2026-09-19)
+
+
+### Bug Fixes
+
+* Update contributing aiopnsense logs ([#740](https://github.com/travisghansen/hass-opnsense/issues/740)) ([1fc1970](https://github.com/travisghansen/hass-opnsense/commit/1fc19708c858e117d5c986dbbce16e309ea51e0a))
+
+
+### Miscellaneous Chores
+
+* update prek hooks ([#736](https://github.com/travisghansen/hass-opnsense/issues/736)) ([ad46756](https://github.com/travisghansen/hass-opnsense/commit/ad467568df3d76ca3a3de6bc9cfd5dd996337988))
+
 ## [1.1.0](https://github.com/travisghansen/hass-opnsense/compare/v1.0.8...v1.1.0) (2026-09-13)
 
 
