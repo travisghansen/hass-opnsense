@@ -21,7 +21,12 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
       - name: Hassfest validation
-        uses: home-assistant/actions/hassfest@master
+        # Keep our aiopnsense pin independent of the built-in OPNsense integration.
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/github/workspace" \
+            ghcr.io/home-assistant/hassfest \
+            --skip-plugins requirements
   hacs_validation:
     name: HACS Validation
     runs-on: ubuntu-latest
