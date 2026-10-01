@@ -26,7 +26,7 @@ exclude = "^uv\\.lock$"
 
 [[repos]]
 repo = "https://github.com/kjanat/actionlint"
-rev = "v1.16"
+rev = "v1.17"
 
 [[repos.hooks]]
 id = "actionlint-shellcheck"
@@ -73,7 +73,7 @@ language_version = "python3.14"
 
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
-rev = "v0.16.6"
+rev = "v0.16.8"
 
 [[repos.hooks]]
 id = "ruff-check"
