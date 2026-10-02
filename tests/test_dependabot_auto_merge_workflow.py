@@ -1,6 +1,7 @@
 """Executable behavior tests for Dependabot auto-merge authorization."""
 
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -614,6 +615,322 @@ def _assert_current_base_evidence_collector(step: dict[str, Any]) -> None:
     assert 'base_sha="${{ github.event.pull_request.base.sha }}"' not in run
 
 
+_REQUIRED_VALIDATIONS = (
+    ("HA and HACS Validate", "Hassfest Validation"),
+    ("HA and HACS Validate", "HACS Validation"),
+    ("Linters", "review"),
+    ("Validate uv lock", "Validate uv lock consistency"),
+    ("pytest check and post coverage", "pytest check and post coverage"),
+    ("Lint PR title", "Validate PR title"),
+)
+_PR_URL = "https://github.com/Snuffy2/hass-opnsense/pull/42"
+
+
+def _validation_results(
+    *,
+    buckets: dict[tuple[str, str], str] | None = None,
+    omit: tuple[str, str] | None = None,
+) -> list[dict[str, str]]:
+    """Build gh pr checks JSON rows for the required workflow/name pairs.
+
+    Args:
+        buckets (dict[tuple[str, str], str] | None): Per-validation bucket overrides.
+        omit (tuple[str, str] | None): Optional workflow/name pair to omit.
+
+    Returns:
+        list[dict[str, str]]: GitHub CLI check rows.
+    """
+    overrides = buckets or {}
+    return [
+        {"workflow": workflow, "name": name, "bucket": overrides.get((workflow, name), "pass")}
+        for workflow, name in _REQUIRED_VALIDATIONS
+        if (workflow, name) != omit
+    ]
+
+
+def _run_merge_gate(
+    tmp_path: Path,
+    *,
+    check_responses: list[tuple[str, int]],
+    pr_responses: list[tuple[str, int]] | None = None,
+    auto_merge_enabled: bool = False,
+) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
+    """Run the checked-in merge step with scripted GitHub CLI responses.
+
+    Args:
+        tmp_path (Path): Temporary directory for the fake CLI and its fixtures.
+        check_responses (list[tuple[str, int]]): Check JSON and exit status per poll.
+        pr_responses (list[tuple[str, int]] | None): PR state JSON and status per poll.
+        auto_merge_enabled (bool): Whether the CLI initially reports deferred auto-merge.
+
+    Returns:
+        tuple[subprocess.CompletedProcess[str], list[list[str]]]: Shell result and gh calls.
+    """
+    if shutil.which("bash") is None or shutil.which("jq") is None:
+        pytest.skip("The workflow shell tests require bash and jq.")
+    document = _load_workflow("dependabot-auto-merge.yml")
+    _, merge_job = _job_with_run(document, "--match-head-commit")
+    step = _step_with_run(merge_job, "--match-head-commit")
+    fixture_dir = tmp_path / "fixtures"
+    bin_dir = tmp_path / "bin"
+    fixture_dir.mkdir()
+    bin_dir.mkdir()
+    state = {
+        "auto_merge": {"output": "true" if auto_merge_enabled else "false", "status": 0},
+        "pull_requests": [
+            {"output": output, "status": status}
+            for output, status in (
+                pr_responses or [(json.dumps({"state": "OPEN", "headRefOid": HEAD_SHA}), 0)]
+            )
+        ],
+        "checks": [{"output": output, "status": status} for output, status in check_responses],
+    }
+    (fixture_dir / "responses.json").write_text(json.dumps(state), encoding="utf-8")
+    fake_gh = bin_dir / "gh"
+    fake_gh.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "root = Path(os.environ['GH_FIXTURE_DIR'])\n"
+        "calls_file = root / 'calls.jsonl'\n"
+        "previous = [json.loads(line) for line in calls_file.read_text().splitlines()] if calls_file.exists() else []\n"
+        "args = sys.argv[1:]\n"
+        "with calls_file.open('a') as calls:\n"
+        "    calls.write(json.dumps(args) + '\\n')\n"
+        "state = json.loads((root / 'responses.json').read_text())\n"
+        "if args[:2] == ['pr', 'view'] and 'autoMergeRequest' in args:\n"
+        "    response = state['auto_merge']\n"
+        "elif args[:2] == ['pr', 'view']:\n"
+        "    key = 'pull_requests'\n"
+        "    index = sum(call[:2] == ['pr', 'view'] and 'autoMergeRequest' not in call for call in previous)\n"
+        "    response = state[key][min(index, len(state[key]) - 1)]\n"
+        "elif args[:2] == ['pr', 'checks']:\n"
+        "    key = 'checks'\n"
+        "    index = sum(call[:2] == ['pr', 'checks'] for call in previous)\n"
+        "    response = state[key][min(index, len(state[key]) - 1)]\n"
+        "else:\n"
+        "    response = {'output': '', 'status': 0}\n"
+        "sys.stdout.write(response['output'])\n"
+        "raise SystemExit(response['status'])\n",
+        encoding="utf-8",
+    )
+    fake_gh.chmod(0o755)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "GH_FIXTURE_DIR": str(fixture_dir),
+            "GH_TOKEN": "fixture-token",
+            "HEAD_SHA": HEAD_SHA,
+            "PATH": f"{bin_dir}{os.pathsep}{environment['PATH']}",
+            "PR_URL": _PR_URL,
+        }
+    )
+    result = subprocess.run(  # noqa: S603
+        [
+            shutil.which("bash") or "bash",
+            "-c",
+            "sleep() { SECONDS=$((SECONDS + 900)); }\n" + step["run"],
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+        cwd=tmp_path,
+    )
+    calls = [json.loads(line) for line in (fixture_dir / "calls.jsonl").read_text().splitlines()]
+    return result, calls
+
+
+def test_merge_gate_waits_for_pending_validation_and_clears_auto_merge(tmp_path: Path) -> None:
+    """Wait through pending checks and disable an existing deferred merge before polling.
+
+    Args:
+        tmp_path (Path): Isolated fake GitHub CLI fixture directory.
+    """
+    pending = _validation_results(buckets={_REQUIRED_VALIDATIONS[0]: "pending"})
+    passing = _validation_results()
+    result, calls = _run_merge_gate(
+        tmp_path,
+        check_responses=[(json.dumps(pending), 8), (json.dumps(passing), 0)],
+        auto_merge_enabled=True,
+    )
+    disable = ["pr", "merge", "--disable-auto", _PR_URL]
+    direct_merge = ["pr", "merge", "--squash", "--match-head-commit", HEAD_SHA, _PR_URL]
+
+    assert result.returncode == 0, result.stderr
+    assert calls.index(disable) < calls.index(
+        ["pr", "checks", _PR_URL, "--json", "name,workflow,bucket"]
+    )
+    assert calls.index(direct_merge) > calls.index(disable)
+    assert sum(call[:2] == ["pr", "checks"] for call in calls) == 2
+
+
+def test_merge_gate_waits_for_a_missing_required_validation(tmp_path: Path) -> None:
+    """Keep waiting when a required workflow/name pair has not appeared yet.
+
+    Args:
+        tmp_path (Path): Isolated fake GitHub CLI fixture directory.
+    """
+    missing = _validation_results(omit=_REQUIRED_VALIDATIONS[-1])
+    result, calls = _run_merge_gate(
+        tmp_path,
+        check_responses=[(json.dumps(missing), 1), (json.dumps(_validation_results()), 0)],
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert sum(call[:2] == ["pr", "checks"] for call in calls) == 2
+    assert any(call[:2] == ["pr", "merge"] and "--match-head-commit" in call for call in calls)
+
+
+def test_merge_gate_rejects_a_skipped_required_validation_at_deadline(tmp_path: Path) -> None:
+    """Never treat a skipped mandatory validation as authorization to merge.
+
+    Args:
+        tmp_path (Path): Isolated fake GitHub CLI fixture directory.
+    """
+    skipped = _validation_results(buckets={_REQUIRED_VALIDATIONS[0]: "skipping"})
+    result, calls = _run_merge_gate(tmp_path, check_responses=[(json.dumps(skipped), 0)])
+
+    assert result.returncode != 0
+    assert "Timed out waiting for validation" in result.stdout
+    assert not any("--match-head-commit" in call for call in calls)
+
+
+@pytest.mark.parametrize("bucket", ["fail", "cancel"])
+def test_merge_gate_stops_on_failed_or_cancelled_validation(tmp_path: Path, bucket: str) -> None:
+    """Refuse the merge as soon as any validation fails or is cancelled.
+
+    Args:
+        tmp_path (Path): Isolated fake GitHub CLI fixture directory.
+        bucket (str): Terminal check result that must stop the gate.
+    """
+    failed = _validation_results(buckets={_REQUIRED_VALIDATIONS[0]: bucket})
+    result, calls = _run_merge_gate(tmp_path, check_responses=[(json.dumps(failed), 1)])
+
+    assert result.returncode != 0
+    assert "failed or was cancelled" in result.stdout
+    assert not any("--match-head-commit" in call for call in calls)
+
+
+@pytest.mark.parametrize(
+    ("state", "head_sha"),
+    [("CLOSED", HEAD_SHA), ("OPEN", "9" * 40)],
+    ids=["closed", "stale-head"],
+)
+def test_merge_gate_refuses_closed_or_updated_pull_request(
+    tmp_path: Path, state: str, head_sha: str
+) -> None:
+    """Refuse to merge if the pull request closed or its authorized head changed.
+
+    Args:
+        tmp_path (Path): Isolated fake GitHub CLI fixture directory.
+        state (str): Current pull-request state.
+        head_sha (str): Current pull-request head object ID.
+    """
+    pr = json.dumps({"state": state, "headRefOid": head_sha})
+    result, calls = _run_merge_gate(
+        tmp_path, check_responses=[(json.dumps(_validation_results()), 0)], pr_responses=[(pr, 0)]
+    )
+
+    assert result.returncode != 0
+    assert "Pull request closed or authorized head changed" in result.stdout
+    assert not any("--match-head-commit" in call for call in calls)
+
+
+@pytest.mark.parametrize(
+    ("output", "status"),
+    [("not-json", 0), ("", 1), ("[]", 2)],
+    ids=["invalid-json", "empty-check-response", "api-error"],
+)
+def test_merge_gate_fails_closed_on_unusable_check_api_response(
+    tmp_path: Path, output: str, status: int
+) -> None:
+    """Refuse a merge when the checks API returns invalid, empty, or error output.
+
+    Args:
+        tmp_path (Path): Isolated fake GitHub CLI fixture directory.
+        output (str): Text returned by the fake checks API.
+        status (int): Exit status returned by the fake checks API.
+    """
+    result, calls = _run_merge_gate(tmp_path, check_responses=[(output, status)])
+
+    assert result.returncode != 0
+    assert not any("--match-head-commit" in call for call in calls)
+
+
+def test_merge_gate_times_out_without_merging_pending_checks(tmp_path: Path) -> None:
+    """Stop at the bounded deadline if a required validation remains pending.
+
+    Args:
+        tmp_path (Path): Isolated fake GitHub CLI fixture directory.
+    """
+    pending = _validation_results(buckets={_REQUIRED_VALIDATIONS[0]: "pending"})
+    result, calls = _run_merge_gate(tmp_path, check_responses=[(json.dumps(pending), 8)])
+
+    assert result.returncode != 0
+    assert "Timed out waiting for validation" in result.stdout
+    assert sum(call[:2] == ["pr", "checks"] for call in calls) == 2
+    assert not any("--match-head-commit" in call for call in calls)
+
+
+def test_merge_gate_rechecks_head_after_waiting(tmp_path: Path) -> None:
+    """Stop if the PR head changes while validation is pending.
+
+    Args:
+        tmp_path (Path): Isolated fake GitHub CLI fixture directory.
+    """
+    open_pr = json.dumps({"state": "OPEN", "headRefOid": HEAD_SHA})
+    updated_pr = json.dumps({"state": "OPEN", "headRefOid": "9" * 40})
+    pending = _validation_results(buckets={_REQUIRED_VALIDATIONS[0]: "pending"})
+    result, calls = _run_merge_gate(
+        tmp_path,
+        check_responses=[(json.dumps(pending), 8), (json.dumps(_validation_results()), 0)],
+        pr_responses=[(open_pr, 0), (updated_pr, 0)],
+    )
+
+    assert result.returncode != 0
+    assert "Pull request closed or authorized head changed" in result.stdout
+    assert sum(call[:2] == ["pr", "checks"] for call in calls) == 1
+    assert not any("--match-head-commit" in call for call in calls)
+
+
+def test_merge_gate_stops_on_failure_from_an_unrequired_check(tmp_path: Path) -> None:
+    """Refuse the merge when an additional check fails, even if required checks pass.
+
+    Args:
+        tmp_path (Path): Isolated fake GitHub CLI fixture directory.
+    """
+    checks = [
+        *_validation_results(),
+        {"workflow": "Security Scan", "name": "CodeQL", "bucket": "fail"},
+    ]
+    result, calls = _run_merge_gate(tmp_path, check_responses=[(json.dumps(checks), 1)])
+
+    assert result.returncode != 0
+    assert "failed or was cancelled" in result.stdout
+    assert not any("--match-head-commit" in call for call in calls)
+
+
+def test_merge_gate_ignores_its_own_pending_job(tmp_path: Path) -> None:
+    """Ignore the merge workflow's own in-progress job after required checks pass.
+
+    Args:
+        tmp_path (Path): Isolated fake GitHub CLI fixture directory.
+    """
+    checks = [
+        *_validation_results(),
+        {
+            "workflow": "Dependabot auto-merge",
+            "name": "Wait for validation and merge the authorized head",
+            "bucket": "pending",
+        },
+    ]
+    result, calls = _run_merge_gate(tmp_path, check_responses=[(json.dumps(checks), 0)])
+
+    assert result.returncode == 0, result.stderr
+    assert any("--match-head-commit" in call for call in calls)
+
+
 def test_dependabot_and_coverage_workflow_trust_contracts() -> None:
     """Keep authorization inputs read-only and coverage comments in the checkout-free writer.
 
@@ -641,12 +958,17 @@ def test_dependabot_and_coverage_workflow_trust_contracts() -> None:
         "ancestry_proofs",
     ):
         assert required_dataflow in authorization_run
-    _, enable_auto_merge = _job_with_run(auto_merge, "gh pr merge --auto")
-    assert enable_auto_merge["needs"] == authorization_id
-    assert "if" not in enable_auto_merge
-    assert enable_auto_merge["permissions"]["contents"] == "write"
-    assert enable_auto_merge["permissions"]["pull-requests"] == "write"
-    _, disable_auto_merge = _job_with_run(auto_merge, "gh pr merge --disable-auto")
+    _, merge_validated_update = _job_with_run(auto_merge, "--match-head-commit")
+    assert merge_validated_update["needs"] == authorization_id
+    assert "if" not in merge_validated_update
+    assert merge_validated_update["permissions"]["contents"] == "write"
+    assert merge_validated_update["permissions"]["pull-requests"] == "write"
+    _, disable_auto_merge = next(
+        (job_id, job)
+        for job_id, job in auto_merge["jobs"].items()
+        if "failure()" in str(job.get("if", ""))
+        and any("gh pr merge --disable-auto" in str(step.get("run", "")) for step in _steps(job))
+    )
     assert "failure()" in str(disable_auto_merge["if"])
     assert "!cancelled()" in str(disable_auto_merge["if"])
     _assert_eligible_dependabot_condition(disable_auto_merge["if"])

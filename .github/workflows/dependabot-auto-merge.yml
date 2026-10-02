@@ -52,19 +52,70 @@ jobs:
           node .github/scripts/dependabot-auto-merge.mjs \
             "${GITHUB_EVENT_PATH}" "${changed_files}" "${commits}" "${ancestry_proofs}"
 
-  enable-auto-merge:
+  merge-validated-update:
     needs: authorize-dependency-update
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     permissions:
       contents: write
       pull-requests: write
+      checks: read
+      statuses: read
     steps:
-      - name: Enable auto-merge
+      - name: Wait for validation and merge the authorized head
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge --auto --squash --match-head-commit "${HEAD_SHA}" "${PR_URL}"
+        run: |
+          set -euo pipefail
+          # Deferred auto-merge can race this gate; use only a direct merge below.
+          auto_merge_enabled="$(gh pr view "${PR_URL}" --json autoMergeRequest --jq '.autoMergeRequest != null')"
+          if [[ "${auto_merge_enabled}" == true ]]; then
+            gh pr merge --disable-auto "${PR_URL}"
+          fi
+          deadline=$((SECONDS + 1800))
+          while (( SECONDS < deadline )); do
+            pr="$(gh pr view "${PR_URL}" --json state,headRefOid)"
+            if ! jq -e --arg sha "${HEAD_SHA}" '.state == "OPEN" and .headRefOid == $sha' <<< "${pr}" > /dev/null; then
+              echo "Pull request closed or authorized head changed; refusing to merge."
+              exit 1
+            fi
+            checks_status=0
+            checks="$(gh pr checks "${PR_URL}" --json name,workflow,bucket)" || checks_status=$?
+            if (( checks_status != 0 && checks_status != 1 && checks_status != 8 )); then
+              exit "${checks_status}"
+            fi
+            # Ignore this workflow's own pending merge job, but require every
+            # validation to appear and pass, even without branch protection.
+            validations="$(jq '[.[] | select(.workflow != "Dependabot auto-merge")]' <<< "${checks}")"
+            if jq -e 'any(.[]; .bucket == "fail" or .bucket == "cancel")' <<< "${validations}" > /dev/null; then
+              echo "A check failed or was cancelled; refusing to merge."
+              jq '.[] | select(.bucket == "fail" or .bucket == "cancel")' <<< "${validations}"
+              exit 1
+            fi
+            if jq -e '
+              . as $checks |
+              [
+                ["HA and HACS Validate", "Hassfest Validation"],
+                ["HA and HACS Validate", "HACS Validation"],
+                ["Linters", "review"],
+                ["Validate uv lock", "Validate uv lock consistency"],
+                ["pytest check and post coverage", "pytest check and post coverage"],
+                ["Lint PR title", "Validate PR title"]
+              ] |
+              all(.[]; . as $required |
+                any($checks[]; [.workflow, .name] == $required and .bucket == "pass")) and
+              all($checks[]; .bucket == "pass" or .bucket == "skipping")
+            ' <<< "${validations}" > /dev/null; then
+              gh pr merge --squash --match-head-commit "${HEAD_SHA}" "${PR_URL}"
+              exit 0
+            fi
+            echo "Waiting for all validation checks to pass."
+            sleep 20
+          done
+          echo "Timed out waiting for validation; refusing to merge."
+          exit 1
 
   disable-auto-merge:
     if: >-
