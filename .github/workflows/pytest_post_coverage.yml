@@ -26,7 +26,7 @@ jobs:
       # DO NOT run actions/checkout here, for security reasons
       # For details, refer to https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
       - name: Post coverage Comment to PR
-        uses: py-cov-action/python-coverage-comment-action@v4.3
+        uses: py-cov-action/python-coverage-comment-action@v4.5
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTIVITY: post_comment
@@ -69,7 +69,7 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
 
       - name: Publish coverage report
-        uses: py-cov-action/python-coverage-comment-action@v4.3
+        uses: py-cov-action/python-coverage-comment-action@v4.5
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTIVITY: save_coverage_data_files
