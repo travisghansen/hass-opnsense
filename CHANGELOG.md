@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.1.1](https://github.com/travisghansen/hass-opnsense/compare/v1.1.0...v1.1.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* gate Dependabot merges on validation checks ([#750](https://github.com/travisghansen/hass-opnsense/issues/750)) ([98773bb](https://github.com/travisghansen/hass-opnsense/commit/98773bbdf273248d2132d5a88190a73fd3f34eb9))
+* remove redundant awesomeversion manifest requirement ([#745](https://github.com/travisghansen/hass-opnsense/issues/745)) ([4f28836](https://github.com/travisghansen/hass-opnsense/commit/4f28836dd8a134fa112577da0a7ea9c472b931a8))
+* Update contributing aiopnsense logs ([#740](https://github.com/travisghansen/hass-opnsense/issues/740)) ([1fc1970](https://github.com/travisghansen/hass-opnsense/commit/1fc19708c858e117d5c986dbbce16e309ea51e0a))
+
+
+### Miscellaneous Chores
+
+* update prek hooks ([#736](https://github.com/travisghansen/hass-opnsense/issues/736)) ([ad46756](https://github.com/travisghansen/hass-opnsense/commit/ad467568df3d76ca3a3de6bc9cfd5dd996337988))
+* update prek hooks ([#741](https://github.com/travisghansen/hass-opnsense/issues/741)) ([33082d6](https://github.com/travisghansen/hass-opnsense/commit/33082d6c36101af7dd3fc507636707edccb9e8ee))
+
+
+### Build System
+
+* **deps-dev:** bump the python-dependencies group with 2 updates ([#748](https://github.com/travisghansen/hass-opnsense/issues/748)) ([fd7c2fa](https://github.com/travisghansen/hass-opnsense/commit/fd7c2fae6d9e268991f58c28f5fe09d6fab121fb))
+* **deps:** bump astral-sh/setup-uv from 10.1.0 to 10.2.0 ([#747](https://github.com/travisghansen/hass-opnsense/issues/747)) ([8652dde](https://github.com/travisghansen/hass-opnsense/commit/8652ddeda4a3e0c6857f5b0a4a56660721dea3c0))
+* **deps:** bump py-cov-action/python-coverage-comment-action ([#746](https://github.com/travisghansen/hass-opnsense/issues/746)) ([b5a5b11](https://github.com/travisghansen/hass-opnsense/commit/b5a5b11aab86cd09acc6362a5c4fd576f2926100))
+
+
+### Continuous Integration
+
+* update prek autoupdate workflow ([#744](https://github.com/travisghansen/hass-opnsense/issues/744)) ([ebcc6b0](https://github.com/travisghansen/hass-opnsense/commit/ebcc6b057f71d0d8e0c89a5a8c7ad9df464f2fbd))
+
 ## [1.1.0](https://github.com/travisghansen/hass-opnsense/compare/v1.0.8...v1.1.0) (2026-09-13)
 
 
