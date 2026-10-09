@@ -82,6 +82,49 @@ def _make_options_flow(config_entry: Any) -> Any:
     return flow
 
 
+def _make_device_tracker_options_flow(config_entry: Any) -> Any:
+    """Create an options flow ready to render the device-tracker picker.
+
+    Args:
+        config_entry (Any): Configuration entry exercised by the scenario.
+
+    Returns:
+        Any: Options flow with its stored config and options initialized.
+    """
+    flow = _make_options_flow(config_entry)
+    flow._config = dict(config_entry.data)
+    flow._options = dict(config_entry.options)
+    return flow
+
+
+def _device_tracker_selector_options(result: dict[str, Any]) -> dict[str, str]:
+    """Return the rendered device-tracker selector choices.
+
+    Args:
+        result (dict[str, Any]): Form result returned by the options flow.
+
+    Returns:
+        dict[str, str]: Selector values mapped to their user-facing labels.
+    """
+    schema: vol.Schema = result["data_schema"]
+    device_selector = next(
+        control
+        for marker, control in schema.schema.items()
+        if getattr(marker, "schema", None) == CONF_DEVICES
+    )
+    return {option["value"]: option["label"] for option in device_selector.config["options"]}
+
+
+def _patch_device_tracker_client(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:
+    """Patch client construction to return a configured API-boundary double.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        client (Any): Client double returned to the options flow.
+    """
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
+
+
 class _CarpFlowClient:
     """Fake client for CARP config-flow validation and setup tests."""
 
@@ -1951,6 +1994,207 @@ async def test_device_tracker_handles_arp_lookup_failure(
     assert res["errors"]["base"] == expected_base_error
     validated = res["data_schema"]({})
     assert validated[CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
+
+
+@pytest.mark.asyncio
+async def test_device_tracker_picker_includes_ipv6_only_devices(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """The options picker should expose a scoped IPv6-only neighbor by normalized MAC.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
+        fake_client (Any): Factory for a fake OPNsense client.
+    """
+    cfg = make_config_entry(
+        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
+        options={},
+    )
+    client = fake_client()()
+    client.get_arp_table = AsyncMock(return_value=[])
+    client.get_ndp_table = AsyncMock(
+        return_value=[
+            {
+                "mac": "AA-BB-CC-DD-EE-FF",
+                "ip": "fe80::1%em0",
+                "intf": "em0",
+                "intf_description": "LAN",
+                "manufacturer": "vendor",
+            }
+        ]
+    )
+    _patch_device_tracker_client(monkeypatch, client)
+
+    result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
+
+    assert result["type"] == "form"
+    assert _device_tracker_selector_options(result) == {
+        "aa:bb:cc:dd:ee:ff": "fe80::1%em0 [vendor | aa:bb:cc:dd:ee:ff]"
+    }
+
+
+@pytest.mark.asyncio
+async def test_device_tracker_picker_merges_dual_stack_addresses_by_mac(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """The picker should render one choice containing both addresses for a dual-stack device.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
+        fake_client (Any): Factory for a fake OPNsense client.
+    """
+    cfg = make_config_entry(
+        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
+        options={},
+    )
+    client = fake_client()()
+    client.get_arp_table = AsyncMock(
+        return_value=[
+            {
+                "mac": "AA-BB-CC-DD-EE-FF",
+                "hostname": "phone",
+                "ip": "192.0.2.10",
+            }
+        ]
+    )
+    client.get_ndp_table = AsyncMock(
+        return_value=[
+            {
+                "mac": "aa:bb:cc:dd:ee:ff",
+                "ip": "2001:db8::1",
+                "intf": "em0",
+                "intf_description": "LAN",
+                "manufacturer": "vendor",
+            },
+            {"mac": "AA-BB-CC-DD-EE-FF", "ip": "2001:db8::2"},
+        ]
+    )
+    _patch_device_tracker_client(monkeypatch, client)
+
+    result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
+
+    choices = _device_tracker_selector_options(result)
+    assert set(choices) == {"aa:bb:cc:dd:ee:ff"}
+    assert "phone" in choices["aa:bb:cc:dd:ee:ff"]
+    assert "192.0.2.10" in choices["aa:bb:cc:dd:ee:ff"]
+    assert "2001:db8::1" in choices["aa:bb:cc:dd:ee:ff"]
+    assert "2001:db8::2" in choices["aa:bb:cc:dd:ee:ff"]
+    assert "vendor" in choices["aa:bb:cc:dd:ee:ff"]
+
+
+@pytest.mark.asyncio
+async def test_device_tracker_picker_filters_malformed_ndp_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Malformed NDP rows should not become selectable device choices.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
+        fake_client (Any): Factory for a fake OPNsense client.
+    """
+    cfg = make_config_entry(
+        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
+        options={},
+    )
+    client = fake_client()()
+    client.get_arp_table = AsyncMock(return_value=[])
+    client.get_ndp_table = AsyncMock(
+        return_value=[
+            "not a row",
+            {"mac": "not-a-mac", "ip": "2001:db8::1"},
+            {"mac": "aa:bb:cc:dd:ee", "ip": "2001:db8::2"},
+            {"mac": "aa:bb:cc:dd:ee:01", "ip": "not-an-ipv6-address"},
+            {"mac": "aa:bb:cc:dd:ee:02", "ip": "192.0.2.2"},
+        ]
+    )
+    _patch_device_tracker_client(monkeypatch, client)
+
+    result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
+
+    assert _device_tracker_selector_options(result) == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failed_family", ["arp", "ndp"], ids=["arp-fails", "ndp-fails"])
+async def test_device_tracker_picker_keeps_other_family_on_lookup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+    failed_family: str,
+) -> None:
+    """A failure reading one neighbor table should leave choices from the other table.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
+        fake_client (Any): Factory for a fake OPNsense client.
+        failed_family (str): Neighbor-table family configured to fail.
+    """
+    cfg = make_config_entry(
+        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
+        options={},
+    )
+    client = fake_client()()
+    arp_row = {"mac": "11:22:33:44:55:66", "ip": "192.0.2.20"}
+    ndp_row = {"mac": "aa:bb:cc:dd:ee:ff", "ip": "2001:db8::1"}
+    if failed_family == "arp":
+        client.get_arp_table = AsyncMock(
+            side_effect=aiopnsense_exceptions.OPNsenseConnectionError("ARP unavailable")
+        )
+        client.get_ndp_table = AsyncMock(return_value=[ndp_row])
+        expected_mac, expected_ip = "aa:bb:cc:dd:ee:ff", "2001:db8::1"
+    else:
+        client.get_arp_table = AsyncMock(return_value=[arp_row])
+        client.get_ndp_table = AsyncMock(
+            side_effect=aiopnsense_exceptions.OPNsenseConnectionError("NDP unavailable")
+        )
+        expected_mac, expected_ip = "11:22:33:44:55:66", "192.0.2.20"
+    _patch_device_tracker_client(monkeypatch, client)
+
+    result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
+
+    choices = _device_tracker_selector_options(result)
+    assert set(choices) == {expected_mac}
+    assert expected_ip in choices[expected_mac]
+
+
+@pytest.mark.asyncio
+async def test_device_tracker_picker_supports_client_without_ndp_method(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """Older API clients without NDP support should still render ARP choices.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
+        fake_client (Any): Factory for a fake OPNsense client.
+    """
+    cfg = make_config_entry(
+        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
+        options={},
+    )
+    client = fake_client()()
+    client.get_arp_table = AsyncMock(
+        return_value=[{"mac": "11:22:33:44:55:66", "ip": "192.0.2.20"}]
+    )
+    _patch_device_tracker_client(monkeypatch, client)
+
+    result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
+
+    choices = _device_tracker_selector_options(result)
+    assert set(choices) == {"11:22:33:44:55:66"}
+    assert "192.0.2.20" in choices["11:22:33:44:55:66"]
 
 
 @pytest.mark.asyncio

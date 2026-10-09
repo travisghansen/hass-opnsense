@@ -7,6 +7,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from aiopnsense.exceptions import OPNsenseError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
@@ -53,6 +54,8 @@ _PREVIOUS_STATE_KEYS: tuple[str, ...] = (
     "interfaces",
     "openvpn",
     "wireguard",
+    "arp_table",
+    "ndp_table",
 )
 
 
@@ -132,6 +135,9 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             categories (list): Sequence of category mappings with `function` and `state_key`
                 entries.
 
+        Raises:
+            OPNsenseError: If a required OPNsense method fails.
+
         Returns:
             dict[str, Any]: State mapping keyed by each category `state_key`.
         """
@@ -142,29 +148,41 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             method: Callable | None = getattr(self._client, method_name, None)
             if method is not None:
                 start_time: float = time.perf_counter()
-                if method_name == "get_device_unique_id":
-                    state[cat.get("state_key")] = await method(expected_id=self._device_unique_id)
-                elif method_name == "get_smart_info":
-                    smart_info: dict[str, Any] = {}
-                    smart_devices = state.get("smart")
-                    if isinstance(smart_devices, list):
-                        for smart_device in smart_devices:
-                            if not isinstance(smart_device, Mapping):
-                                continue
-                            device_name = get_smart_device_name(smart_device)
-                            if not device_name:
-                                continue
-                            smart_info[device_name] = await method(
-                                device=device_name,
-                                info_type=cat.get("info_type", "A"),
-                            )
-                    state[cat.get("state_key")] = smart_info
-                elif method_name == "get_arp_table":
-                    state[cat.get("state_key")] = await method(
-                        resolve_hostnames=bool(cat.get("resolve_hostnames", False))
+                try:
+                    if method_name == "get_device_unique_id":
+                        state[cat.get("state_key")] = await method(
+                            expected_id=self._device_unique_id
+                        )
+                    elif method_name == "get_smart_info":
+                        smart_info: dict[str, Any] = {}
+                        smart_devices = state.get("smart")
+                        if isinstance(smart_devices, list):
+                            for smart_device in smart_devices:
+                                if not isinstance(smart_device, Mapping):
+                                    continue
+                                device_name = get_smart_device_name(smart_device)
+                                if not device_name:
+                                    continue
+                                smart_info[device_name] = await method(
+                                    device=device_name,
+                                    info_type=cat.get("info_type", "A"),
+                                )
+                        state[cat.get("state_key")] = smart_info
+                    elif method_name == "get_arp_table":
+                        state[cat.get("state_key")] = await method(
+                            resolve_hostnames=bool(cat.get("resolve_hostnames", False))
+                        )
+                    else:
+                        state[cat.get("state_key")] = await method()
+                except OPNsenseError:
+                    if method_name not in {"get_arp_table", "get_ndp_table"}:
+                        raise
+                    state[cat.get("state_key")] = None
+                    _LOGGER.warning(
+                        "%s lookup failed; retaining its last successful device-tracker data",
+                        "ARP" if method_name == "get_arp_table" else "NDP",
+                        exc_info=True,
                     )
-                else:
-                    state[cat.get("state_key")] = await method()
                 end_time: float = time.perf_counter()
                 elapsed_time: float = end_time - start_time
                 total_time += elapsed_time
@@ -174,6 +192,9 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     cat.get("function", ""),
                     elapsed_time,
                 )
+            elif method_name in {"get_arp_table", "get_ndp_table"}:
+                state[cat.get("state_key")] = None
+                _LOGGER.debug("Optional device-tracker method %s is unavailable", method_name)
             else:
                 _LOGGER.error("Method %s not found", cat.get("function", ""))
 
@@ -361,8 +382,21 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 "state_key": "arp_table",
                 "resolve_hostnames": self._resolve_arp_hostnames(),
             },
+            {"function": "get_ndp_table", "state_key": "ndp_table"},
         ]
-        self._state.update(await self._get_states(categories))
+        prior_state = self._state.get("previous_state")
+        if not isinstance(prior_state, Mapping):
+            prior_state = self._state.copy()
+        fetched_state = await self._get_states(categories)
+        self._state.update(fetched_state)
+        unavailable_tables: list[str] = []
+        for table_key in ("arp_table", "ndp_table"):
+            if isinstance(fetched_state.get(table_key), list):
+                continue
+            unavailable_tables.append(table_key)
+            previous_table = prior_state.get(table_key)
+            self._state[table_key] = previous_table if isinstance(previous_table, list) else None
+        self._state["unavailable_device_tracker_tables"] = unavailable_tables
         if not await self._check_device_unique_id():
             return {}
         restapi_count = await self._client.get_query_counts()

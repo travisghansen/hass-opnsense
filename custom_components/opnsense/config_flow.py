@@ -259,11 +259,15 @@ def _build_selected_device_entries(selected_devices: Iterable[str]) -> DeviceEnt
     return entries
 
 
-def _format_detected_device_label(entry: Mapping[str, Any]) -> str:
-    """Format a device label from an ARP table entry.
+def _format_detected_device_label(
+    entry: Mapping[str, Any],
+    ip_addresses: Iterable[str] | None = None,
+) -> str:
+    """Format a device label from one or more neighbor-table entries.
 
     Args:
-        entry (Mapping[str, Any]): ARP entry returned by the OPNsense client.
+        entry (Mapping[str, Any]): ARP or NDP entry returned by the OPNsense client.
+        ip_addresses (Iterable[str] | None): All known addresses for the entry's MAC.
 
     Returns:
         str: Human-readable device label for the options form.
@@ -271,7 +275,9 @@ def _format_detected_device_label(entry: Mapping[str, Any]) -> str:
     arp_mac = get_arp_mac(entry)
     normalized_mac = normalize_mac_address(arp_mac)
     mac = normalized_mac or arp_mac
-    ip: str = get_arp_ip(entry)
+    addresses = list(dict.fromkeys(ip_addresses or [get_arp_ip(entry)]))
+    addresses = [address for address in addresses if address]
+    ip: str = addresses[0] if addresses else ""
     hostname: str = str(entry.get("hostname", "")).strip("?").strip()
     manufacturer: str = str(entry.get("manufacturer", "")).strip()
 
@@ -284,8 +290,7 @@ def _format_detected_device_label(entry: Mapping[str, Any]) -> str:
         label_parts.append(mac)
 
     details: list[str] = []
-    if ip and ip != label_parts[0]:
-        details.append(ip)
+    details.extend(address for address in addresses if address != label_parts[0])
     if manufacturer:
         details.append(manufacturer)
 
@@ -294,14 +299,14 @@ def _format_detected_device_label(entry: Mapping[str, Any]) -> str:
 
 
 def _device_entry_sort_key(
-    mac: str, label: str, ip_by_mac: Mapping[str, str]
+    mac: str, label: str, ip_by_mac: Mapping[str, str | list[str]]
 ) -> tuple[int, tuple[int, int] | str]:
     """Return the sort key for device selector entries.
 
     Args:
         mac (str): MAC address for the selector option.
         label (str): User-facing selector label.
-        ip_by_mac (Mapping[str, str]): Detected IP addresses keyed by MAC address.
+        ip_by_mac (Mapping[str, str | list[str]]): Detected IP addresses keyed by MAC address.
 
     Returns:
         tuple[int, tuple[int, int] | str]: Key used to sort fallback labels first and
@@ -311,6 +316,8 @@ def _device_entry_sort_key(
         return (0, label)
 
     ip_value = ip_by_mac.get(mac, "")
+    if isinstance(ip_value, list):
+        ip_value = ip_value[0] if ip_value else ""
     if is_ip_address(ip_value):
         ip_addr = ipaddress.ip_address(ip_value)
         return (1, (ip_addr.version, int(ip_addr)))
@@ -921,7 +928,7 @@ async def _get_dt_entries(
         config (Mapping[str, Any]): Config entry data used to build the OPNsense client.
         selected_devices (Iterable[str]): Persisted MAC addresses that should remain selectable even
             when
-            not currently present in the ARP table.
+            not currently present in either neighbor table.
         resolve_hostnames (bool): Whether OPNsense should reverse-resolve ARP hostnames for the
             device labels.
 
@@ -943,31 +950,81 @@ async def _get_dt_entries(
     try:
         # dicts are ordered so put all previously selected items at the top
         entries: DeviceEntries = _build_selected_device_entries(selected_devices)
-        arp_table: list = await client.get_arp_table(resolve_hostnames=resolve_hostnames)
-        if arp_table:
-            ip_by_mac: dict[str, str] = {}
-            # follow with all arp table entries
-            for entry in arp_table:
+        arp_table: list[Any] | None = None
+        ndp_table: list[Any] | None = None
+        try:
+            arp_table = await client.get_arp_table(resolve_hostnames=resolve_hostnames)
+        except OPNsenseError as err:
+            _LOGGER.warning("Unable to load the OPNsense ARP table for device selection: %s", err)
+
+        get_ndp_table = getattr(client, "get_ndp_table", None)
+        if get_ndp_table is not None:
+            try:
+                ndp_table = await get_ndp_table()
+            except OPNsenseError as err:
+                _LOGGER.warning(
+                    "Unable to load the OPNsense NDP table for device selection: %s", err
+                )
+        else:
+            _LOGGER.debug("The installed aiopnsense client does not provide NDP table support")
+
+        rows_by_mac: dict[str, list[Mapping[str, Any]]] = {}
+        addresses_by_mac: dict[str, list[str]] = {}
+        for table, is_ndp in ((arp_table, False), (ndp_table, True)):
+            if not isinstance(table, list):
+                continue
+            for entry in table:
                 if not isinstance(entry, Mapping):
                     continue
-                arp_mac = get_arp_mac(entry)
-                normalized_mac = normalize_mac_address(arp_mac)
-                mac: str = normalized_mac or arp_mac
-                if len(mac) < 1:
+                raw_mac = get_arp_mac(entry)
+                normalized_mac = normalize_mac_address(raw_mac)
+                if is_ndp and normalized_mac is None:
                     continue
-                ip_by_mac[mac] = get_arp_ip(entry)
-                label: str = _format_detected_device_label(entry)
-                entries[mac] = label
+                mac = normalized_mac or raw_mac
+                if not mac:
+                    continue
+                address = get_arp_ip(entry)
+                if is_ndp:
+                    try:
+                        ip_address = ipaddress.ip_address(address)
+                    except ValueError:
+                        continue
+                    if ip_address.version != 6:
+                        continue
+                    address = ip_address.compressed
+                rows_by_mac.setdefault(mac, []).append(entry)
+                if address and address not in addresses_by_mac.setdefault(mac, []):
+                    addresses_by_mac[mac].append(address)
 
-            # Sort entries: fallback labels first, then by IP address (ascending)
-            sorted_entries: DeviceEntries = dict(
-                sorted(
-                    entries.items(),
-                    key=lambda item: _device_entry_sort_key(item[0], item[1], ip_by_mac),
-                )
+        ip_by_mac: dict[str, str | list[str]] = {}
+        for mac, rows in rows_by_mac.items():
+            arp_row = next((row for row in rows if row.get("hostname")), None)
+            representative = arp_row or rows[0]
+            representative_data = dict(representative)
+            manufacturer = next(
+                (
+                    value.strip()
+                    for row in rows
+                    if isinstance((value := row.get("manufacturer")), str) and value.strip()
+                ),
+                None,
             )
-            return sorted_entries
-        return entries
+            if manufacturer:
+                representative_data["manufacturer"] = manufacturer
+            representative_data["mac"] = mac
+            entries[mac] = _format_detected_device_label(
+                representative_data,
+                addresses_by_mac.get(mac, []),
+            )
+            ip_by_mac[mac] = addresses_by_mac.get(mac, [])
+
+        # Sort entries: fallback labels first, then by numeric IP address.
+        return dict(
+            sorted(
+                entries.items(),
+                key=lambda item: _device_entry_sort_key(item[0], item[1], ip_by_mac),
+            )
+        )
     finally:
         await client.async_close()
 
