@@ -1986,35 +1986,51 @@ async def test_device_tracker_handles_both_neighbor_lookup_failures(
 
 
 @pytest.mark.asyncio
-async def test_device_tracker_picker_includes_ipv6_only_devices(
+@pytest.mark.parametrize(
+    ("arp_rows", "ndp_rows", "expected_label_parts"),
+    [
+        pytest.param(
+            [],
+            [{"mac": "AA-BB-CC-DD-EE-FF", "ip": "fe80::1%em0", "manufacturer": "vendor"}],
+            ["fe80::1%em0", "vendor"],
+            id="ipv6-only",
+        ),
+        pytest.param(
+            [{"mac": "AA-BB-CC-DD-EE-FF", "hostname": "phone", "ip": "192.0.2.10"}],
+            [
+                {"mac": "aa:bb:cc:dd:ee:ff", "ip": "2001:db8::1", "manufacturer": "vendor"},
+                {"mac": "AA-BB-CC-DD-EE-FF", "ip": "2001:db8::2"},
+            ],
+            ["phone", "192.0.2.10", "2001:db8::1", "2001:db8::2", "vendor"],
+            id="dual-stack-multiple-addresses",
+        ),
+    ],
+)
+async def test_device_tracker_picker_groups_neighbor_addresses_by_mac(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
+    arp_rows: list[dict[str, str]],
+    ndp_rows: list[dict[str, str]],
+    expected_label_parts: list[str],
 ) -> None:
-    """The options picker should expose a scoped IPv6-only neighbor by normalized MAC.
+    """The picker exposes one normalized MAC choice containing all observed addresses.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
         fake_client (Any): Factory for a fake OPNsense client.
+        arp_rows (list[dict[str, str]]): Observed IPv4 neighbors.
+        ndp_rows (list[dict[str, str]]): Observed IPv6 neighbors.
+        expected_label_parts (list[str]): Meaningful device details displayed in the picker.
     """
     cfg = make_config_entry(
         data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
         options={},
     )
     client = fake_client()()
-    client.get_arp_table = AsyncMock(return_value=[])
-    client.get_ndp_table = AsyncMock(
-        return_value=[
-            {
-                "mac": "AA-BB-CC-DD-EE-FF",
-                "ip": "fe80::1%em0",
-                "intf": "em0",
-                "intf_description": "LAN",
-                "manufacturer": "vendor",
-            }
-        ]
-    )
+    client.get_arp_table = AsyncMock(return_value=arp_rows)
+    client.get_ndp_table = AsyncMock(return_value=ndp_rows)
     _patch_device_tracker_client(monkeypatch, client)
 
     result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
@@ -2022,61 +2038,8 @@ async def test_device_tracker_picker_includes_ipv6_only_devices(
     assert result["type"] == "form"
     choices = _device_tracker_selector_options(result)
     assert set(choices) == {"aa:bb:cc:dd:ee:ff"}
-    assert "fe80::1%em0" in choices["aa:bb:cc:dd:ee:ff"]
-    assert "vendor" in choices["aa:bb:cc:dd:ee:ff"]
-    assert "aa:bb:cc:dd:ee:ff" in choices["aa:bb:cc:dd:ee:ff"]
-
-
-@pytest.mark.asyncio
-async def test_device_tracker_picker_merges_dual_stack_addresses_by_mac(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-    fake_client: Any,
-) -> None:
-    """The picker should render one choice containing both addresses for a dual-stack device.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
-        fake_client (Any): Factory for a fake OPNsense client.
-    """
-    cfg = make_config_entry(
-        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        options={},
-    )
-    client = fake_client()()
-    client.get_arp_table = AsyncMock(
-        return_value=[
-            {
-                "mac": "AA-BB-CC-DD-EE-FF",
-                "hostname": "phone",
-                "ip": "192.0.2.10",
-            }
-        ]
-    )
-    client.get_ndp_table = AsyncMock(
-        return_value=[
-            {
-                "mac": "aa:bb:cc:dd:ee:ff",
-                "ip": "2001:db8::1",
-                "intf": "em0",
-                "intf_description": "LAN",
-                "manufacturer": "vendor",
-            },
-            {"mac": "AA-BB-CC-DD-EE-FF", "ip": "2001:db8::2"},
-        ]
-    )
-    _patch_device_tracker_client(monkeypatch, client)
-
-    result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
-
-    choices = _device_tracker_selector_options(result)
-    assert set(choices) == {"aa:bb:cc:dd:ee:ff"}
-    assert "phone" in choices["aa:bb:cc:dd:ee:ff"]
-    assert "192.0.2.10" in choices["aa:bb:cc:dd:ee:ff"]
-    assert "2001:db8::1" in choices["aa:bb:cc:dd:ee:ff"]
-    assert "2001:db8::2" in choices["aa:bb:cc:dd:ee:ff"]
-    assert "vendor" in choices["aa:bb:cc:dd:ee:ff"]
+    for label_part in ["aa:bb:cc:dd:ee:ff", *expected_label_parts]:
+        assert label_part in choices["aa:bb:cc:dd:ee:ff"]
 
 
 @pytest.mark.asyncio

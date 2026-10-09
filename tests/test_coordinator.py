@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 
 from aiopnsense.exceptions import OPNsensePrivilegeMissing, OPNsenseTimeoutError
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -2093,76 +2094,51 @@ async def test_get_states_arp_hostname_resolution_defaults_to_disabled(
 
 
 @pytest.mark.asyncio
-async def test_get_states_handles_optional_ndp_permission_failure(
+async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
     make_config_entry: Callable[..., MockConfigEntry],
+    ph_hass: HomeAssistant,
 ) -> None:
-    """An NDP permission error should not discard a successful ARP response.
+    """A failed NDP refresh preserves cached rows without discarding fresh ARP data.
 
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-    """
-    client = MagicMock()
-    arp_rows = [{"mac": "00:11:22:33:44:55", "ip": "192.0.2.2"}]
-    client.get_arp_table = AsyncMock(return_value=arp_rows)
-    client.get_ndp_table = AsyncMock(side_effect=OPNsensePrivilegeMissing("NDP permission"))
-    coordinator = _arp_coordinator(client, make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"}))
-
-    state = await coordinator._get_states(
-        [
-            {"function": "get_arp_table", "state_key": "arp_table"},
-            {"function": "get_ndp_table", "state_key": "ndp_table"},
-        ]
-    )
-
-    assert state["arp_table"] == arp_rows
-    assert state["ndp_table"] is None
-    client.get_arp_table.assert_awaited_once_with(resolve_hostnames=False)
-    client.get_ndp_table.assert_awaited_once_with()
-
-
-@pytest.mark.asyncio
-async def test_dt_refresh_retains_previous_failed_neighbor_table_without_freshness_marker(
-    make_config_entry: Callable[..., MockConfigEntry],
-    fake_client: Any,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A failed table keeps its prior rows for display but is marked as stale.
-
-    Args:
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-        fake_client (Any): Factory for the fake OPNsense client.
-        monkeypatch (pytest.MonkeyPatch): Patch fixture used to replace coordinator call behavior.
+        ph_hass (HomeAssistant): Home Assistant instance used for coordinator refreshes.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
-    client = fake_client()()
-    coordinator = _arp_coordinator(client, entry)
+    client = MagicMock()
+    arp_rows = [{"mac": "00:11:22:33:44:55", "ip": "192.0.2.2"}]
     previous_ndp_rows = [{"mac": "00:11:22:33:44:55", "ip": "2001:db8::1"}]
-    coordinator._state = {"ndp_table": previous_ndp_rows}
+    client.get_device_unique_id = AsyncMock(return_value="id")
+    client.get_host_firmware_version = AsyncMock(return_value="26.1")
+    client.get_system_info = AsyncMock(return_value={})
+    client.get_arp_table = AsyncMock(side_effect=[[], arp_rows])
+    client.get_ndp_table = AsyncMock(
+        side_effect=[previous_ndp_rows, OPNsensePrivilegeMissing("NDP permission")]
+    )
     client.get_query_counts = AsyncMock(return_value=0)
+    client.reset_query_counts = AsyncMock()
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass=ph_hass,
+        client=client,
+        name="device tracker",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+        device_tracker_coordinator=True,
+    )
 
-    async def get_states(_categories: list[dict[str, str]]) -> dict[str, Any]:
-        """Return a successful ARP response and unavailable NDP response.
+    await coordinator.async_refresh()
+    assert coordinator.data["ndp_table"] == previous_ndp_rows
+    assert coordinator.data["unavailable_device_tracker_tables"] == []
 
-        Args:
-            _categories (list[dict[str, str]]): Coordinator categories requested for this refresh.
+    await coordinator.async_refresh()
 
-        Returns:
-            dict[str, Any]: Simulated state containing successful ARP and failed NDP results.
-        """
-        return {
-            "device_unique_id": "id",
-            "arp_table": [],
-            "ndp_table": None,
-        }
-
-    monkeypatch.setattr(coordinator, "_get_states", get_states)
-    monkeypatch.setattr(coordinator, "_check_device_unique_id", AsyncMock(return_value=True))
-
-    state = await coordinator._async_update_dt_data()
-
-    assert state["arp_table"] == []
-    assert state["ndp_table"] == previous_ndp_rows
-    assert state["unavailable_device_tracker_tables"] == ["ndp_table"]
+    assert coordinator.last_update_success is True
+    assert coordinator.data["arp_table"] == arp_rows
+    assert coordinator.data["ndp_table"] == previous_ndp_rows
+    assert coordinator.data["unavailable_device_tracker_tables"] == ["ndp_table"]
+    client.get_arp_table.assert_awaited_with(resolve_hostnames=False)
+    client.get_ndp_table.assert_awaited_with()
 
 
 @pytest.mark.parametrize(
