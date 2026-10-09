@@ -987,24 +987,22 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
     def _handle_coordinator_update(self) -> None:
         """Refresh tracker state from the latest ARP and NDP tables."""
         state: dict[str, Any] = self.coordinator.data
-        arp_table = dict_get(state, "arp_table", [])
-        ndp_table = dict_get(state, "ndp_table", [])
+        arp_table = dict_get(state, "arp_table")
+        ndp_table = dict_get(state, "ndp_table")
         if not isinstance(state, MutableMapping) or not any(
             isinstance(table, list) for table in (arp_table, ndp_table)
         ):
             self._mark_unavailable()
             return
+        arp_table_lookup_failed = not isinstance(arp_table, list)
+        ndp_table_lookup_failed = not isinstance(ndp_table, list)
         self._available = True
         arp_table = arp_table if isinstance(arp_table, list) else []
         ndp_table = ndp_table if isinstance(ndp_table, list) else []
         unavailable_tables = state.get("unavailable_device_tracker_tables", [])
         failed_tables = unavailable_tables if isinstance(unavailable_tables, list) else []
-        arp_failed = "arp_table" in failed_tables or not isinstance(
-            dict_get(state, "arp_table", []), list
-        )
-        ndp_lookup_failed = "ndp_table" in failed_tables or not isinstance(
-            dict_get(state, "ndp_table", []), list
-        )
+        arp_failed = "arp_table" in failed_tables or arp_table_lookup_failed
+        ndp_lookup_failed = "ndp_table" in failed_tables or ndp_table_lookup_failed
         ndp_failed = ndp_lookup_failed or not _track_all_table_entries_are_complete(
             ndp_table, ndp=True
         )

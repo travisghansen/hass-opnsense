@@ -515,6 +515,113 @@ def test_handle_coordinator_update_entry_present(
     assert ent.source_type == SourceType.ROUTER
 
 
+def test_handle_coordinator_update_empty_data_keeps_connected_tracker_unavailable(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Empty coordinator data must not turn a connected tracker into an away observation.
+
+    Args:
+        coordinator (MagicMock): Mock coordinator supplying entity data.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake config entry.
+    """
+    entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options={CONF_DEVICE_TRACKER_CONSIDER_HOME: 0},
+    )
+    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    coordinator.data = {"arp_table": [{"mac": "aa:bb:cc", "ip": "192.0.2.1"}]}
+    ent = OPNsenseScannerEntity(
+        config_entry=entry,
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc",
+        mac_vendor=None,
+        hostname=None,
+    )
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+
+    ent._handle_coordinator_update()
+
+    assert ent.available is True
+    assert ent.is_connected is True
+
+    coordinator.data = {}
+    ent._handle_coordinator_update()
+
+    assert ent.available is False
+    assert ent.is_connected is True
+
+
+@pytest.mark.parametrize(
+    ("missing_table", "successful_table", "successful_entry", "expected_ipv4", "expected_ipv6"),
+    [
+        pytest.param(
+            "arp_table",
+            "ndp_table",
+            {"mac": "aa:bb:cc:dd:ee:01", "ip": "2001:db8::2"},
+            ["192.0.2.1"],
+            ["2001:db8::2"],
+            id="missing-arp-with-ndp-sighting",
+        ),
+        pytest.param(
+            "ndp_table",
+            "arp_table",
+            {"mac": "aa:bb:cc:dd:ee:01", "ip": "192.0.2.2"},
+            ["192.0.2.2"],
+            ["2001:db8::1"],
+            id="missing-ndp-with-arp-sighting",
+        ),
+    ],
+)
+def test_handle_coordinator_update_missing_table_preserves_cached_family(
+    missing_table: str,
+    successful_table: str,
+    successful_entry: dict[str, str],
+    expected_ipv4: list[str],
+    expected_ipv6: list[str],
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A missing family is failed while a valid sighting from the other family still applies.
+
+    Args:
+        missing_table (str): Neighbor table omitted from the latest coordinator data.
+        successful_table (str): Neighbor table containing a fresh matching sighting.
+        successful_entry (dict[str, str]): Fresh row in the successful neighbor table.
+        expected_ipv4 (list[str]): Preserved and current IPv4 addresses.
+        expected_ipv6 (list[str]): Preserved and current IPv6 addresses.
+        coordinator (MagicMock): Mock coordinator supplying entity data.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake config entry.
+    """
+    coordinator_data = {
+        "arp_table": [{"mac": "aa:bb:cc:dd:ee:01", "ip": "192.0.2.1"}],
+        "ndp_table": [{"mac": "aa:bb:cc:dd:ee:01", "ip": "2001:db8::1"}],
+    }
+    ent = _make_scanner_entity(
+        coordinator=coordinator,
+        make_config_entry=make_config_entry,
+        coordinator_data=coordinator_data,
+        mac="aa:bb:cc:dd:ee:01",
+    )
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+    ent._handle_coordinator_update()
+
+    coordinator.data = {
+        successful_table: [successful_entry],
+        "update_time": 1_800_000_500.0,
+    }
+    ent._handle_coordinator_update()
+
+    assert ent.available is True
+    assert ent.is_connected is True
+    attributes = ent.extra_state_attributes
+    assert attributes is not None
+    assert attributes["ipv4_addresses"] == expected_ipv4
+    assert attributes["ipv6_addresses"] == expected_ipv6
+    assert missing_table not in coordinator.data
+
+
 def test_entity_registry_enabled_default_uses_existing_mac_device(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
@@ -2711,6 +2818,85 @@ async def test_setup_inventory_write_preserves_next_options_reload(
 
     # Main setup registers this listener only after platform forwarding finishes.
     entry.async_on_unload(entry.add_update_listener(init_mod._async_update_listener))
+    hass.config_entries.async_update_entry(
+        entry,
+        options={CONF_DEVICE_TRACKER_ENABLED: True, CONF_DEVICE_TRACKER_CONSIDER_HOME: 30},
+    )
+    await hass.async_block_till_done()
+
+    reload_entry.assert_awaited_once_with(entry.entry_id)
+
+
+@pytest.mark.asyncio
+async def test_poll_inventory_write_does_not_suppress_next_options_reload(
+    monkeypatch: pytest.MonkeyPatch,
+    hass: HomeAssistant,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+) -> None:
+    """A poll-driven family update consumes its marker before a later options reload.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Fixture isolating registry and reload operations.
+        hass (HomeAssistant): Home Assistant instance delivering entry update notifications.
+        coordinator (MagicMock): Coordinator exposing neighbor inventory and listeners.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for configuration entries.
+        fake_reg_factory (Any): Factory for the device registry test double.
+    """
+    mac_address = "aa:bb:cc:dd:ee:01"
+    entry = make_config_entry(
+        data={
+            TRACKED_MACS: [mac_address],
+            TRACKED_ARP_MACS: [mac_address],
+            TRACKED_NDP_MACS: [],
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={CONF_DEVICE_TRACKER_ENABLED: True},
+    )
+    entry.add_to_hass(hass)
+    setattr(entry.runtime_data, SHOULD_RELOAD, True)
+    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    coordinator.data = {
+        "arp_table": [{"mac": mac_address, "ip": "192.0.2.10"}],
+        "ndp_table": [],
+    }
+    coordinator_listeners: list[Callable[[], None]] = []
+
+    def capture_listener(listener: Callable[[], None]) -> Callable[[], None]:
+        """Capture a coordinator callback and return its unload function.
+
+        Args:
+            listener (Callable[[], None]): Callback registered for coordinator updates.
+
+        Returns:
+            Callable[[], None]: No-op listener cleanup function.
+        """
+        coordinator_listeners.append(listener)
+        return lambda: None
+
+    coordinator.async_add_listener.side_effect = capture_listener
+    registry = fake_reg_factory(device_exists=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: registry)
+    reload_entry = AsyncMock(return_value=True)
+    monkeypatch.setattr(hass.config_entries, "async_reload", reload_entry)
+
+    await dt_mod.async_setup_entry(hass, entry, MagicMock())
+    assert len(coordinator_listeners) == 1
+    entry.async_on_unload(entry.add_update_listener(init_mod._async_update_listener))
+
+    coordinator.data = {
+        "arp_table": [],
+        "ndp_table": [{"mac": mac_address, "ip": "2001:db8::10"}],
+    }
+    coordinator_listeners[0]()
+    await hass.async_block_till_done()
+
+    assert entry.data[TRACKED_ARP_MACS] == []
+    assert entry.data[TRACKED_NDP_MACS] == [mac_address]
+    reload_entry.assert_not_awaited()
+    assert getattr(entry.runtime_data, SHOULD_RELOAD) is True
+
     hass.config_entries.async_update_entry(
         entry,
         options={CONF_DEVICE_TRACKER_ENABLED: True, CONF_DEVICE_TRACKER_CONSIDER_HOME: 30},
