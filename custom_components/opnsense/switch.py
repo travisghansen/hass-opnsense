@@ -812,7 +812,11 @@ class OPNsenseSwitch(OPNsenseEntity, SwitchEntity):
             self._delay_update_remove()
 
         def _clear(_: Any) -> None:
-            """Clear the update delay after the timer fires."""
+            """Clear the update delay after the timer fires.
+
+            Args:
+                _ (Any): Timer callback timestamp, unused.
+            """
             self._delay_update = False
             self._delay_update_remove = None
 
