@@ -1516,6 +1516,61 @@ def test_successful_ndp_inventory_ages_ipv6_tracker_when_mac_is_missing(
     assert attributes["last_known_ip"] == "2001:db8::2"
 
 
+def test_both_lookups_failing_after_empty_scan_keeps_tracker_unavailable(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A full lookup outage must not age a tracker to away even with no cached addresses.
+
+    Args:
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options={CONF_DEVICE_TRACKER_CONSIDER_HOME: 30},
+    )
+    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    entity = OPNsenseScannerEntity(
+        config_entry=entry,
+        coordinator=coordinator,
+        enabled_default=False,
+        mac="aa:bb:cc:dd:ee:03",
+        mac_vendor=None,
+        hostname=None,
+    )
+    object.__setattr__(entity, "async_write_ha_state", MagicMock())
+
+    coordinator.data = {
+        "arp_table": [{"mac": "aa:bb:cc:dd:ee:03", "ip": "192.0.2.3", "intf": "em0"}],
+        "ndp_table": [],
+        "update_time": datetime.now(UTC).timestamp() - 10,
+    }
+    entity._handle_coordinator_update()
+    assert entity.is_connected is True
+
+    # A successful scan with no rows clears addresses but stays home within consider_home.
+    coordinator.data = {"arp_table": [], "ndp_table": []}
+    entity._handle_coordinator_update()
+    assert entity.available is True
+    assert entity.is_connected is True
+    attributes = entity.extra_state_attributes
+    assert attributes is not None
+    assert attributes["ipv4_addresses"] == []
+    assert attributes["ipv6_addresses"] == []
+
+    # The grace period expires while both lookups are failing.
+    entity._last_known_connected_time = datetime.now(UTC).astimezone() - timedelta(seconds=60)
+    coordinator.data = {
+        "arp_table": [],
+        "ndp_table": [],
+        "unavailable_device_tracker_tables": ["arp_table", "ndp_table"],
+    }
+    entity._handle_coordinator_update()
+
+    assert entity.available is False
+
+
 def test_device_info_uses_legacy_parent_identifier(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],

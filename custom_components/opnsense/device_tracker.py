@@ -1006,11 +1006,16 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         if (
             not fresh_arp_present
             and not fresh_ndp_present
-            and ((arp_failed and bool(ipv4_addresses)) or (ndp_failed and bool(ipv6_addresses)))
+            and (
+                (arp_failed and ndp_failed)
+                or (arp_failed and bool(ipv4_addresses))
+                or (ndp_failed and bool(ipv6_addresses))
+            )
         ):
-            # The family that previously confirmed this device is unavailable. Preserve its
-            # last-known address attributes and report the tracker as unavailable instead of
-            # treating a missing row from the other family as an away observation.
+            # Either both lookups failed (no successful refresh at all, regardless of cached
+            # addresses) or the family that previously confirmed this device is unavailable.
+            # Preserve last-known address attributes and report the tracker as unavailable
+            # instead of treating a missing row as an away observation.
             _update_arp_extra_state_attributes(
                 self._attr_extra_state_attributes,
                 arp_entry or ndp_entry,
