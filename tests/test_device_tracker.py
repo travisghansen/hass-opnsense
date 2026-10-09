@@ -1399,7 +1399,7 @@ def test_valid_ndp_sighting_survives_unrelated_malformed_row(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Usable IPv6 sightings refresh presence even when another neighbor row is incomplete.
+    """Usable rotating IPv6 sightings refresh presence and prune old addresses.
 
     Args:
         previously_observed (bool): Whether the tracker already has a saved IPv6 observation.
@@ -1441,22 +1441,41 @@ def test_valid_ndp_sighting_survives_unrelated_malformed_row(
     assert entity._last_known_connected_time.timestamp() == 1_900_000_000.0
     attributes = entity.extra_state_attributes
     assert attributes is not None
-    assert attributes["ipv6_addresses"] == (
-        ["2001:db8::1", "2001:db8::2"] if previously_observed else ["2001:db8::2"]
-    )
+    assert attributes["ipv6_addresses"] == ["2001:db8::2"]
+
+    coordinator.data = {
+        "arp_table": [],
+        "ndp_table": [
+            {"mac": "aa:bb:cc:dd:ee:01", "ip": "2001:db8::3"},
+            {"ip": "2001:db8::4"},
+        ],
+        "update_time": 2_000_000_000.0,
+    }
+    entity._handle_coordinator_update()
+
+    assert entity.is_connected is True
+    attributes = entity.extra_state_attributes
+    assert attributes is not None
+    assert attributes["ipv6_addresses"] == ["2001:db8::3"]
 
 
-def test_malformed_ndp_inventory_does_not_age_ipv6_tracker(
+@pytest.mark.parametrize("consider_home", [0, 30])
+def test_successful_ndp_inventory_ages_ipv6_tracker_when_mac_is_missing(
+    consider_home: int,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Malformed NDP rows preserve prior IPv6 presence without refreshing its sighting time.
+    """An incomplete unrelated row does not prevent a successful departure observation.
 
     Args:
+        consider_home (int): Presence grace period applied to the previous sighting.
         coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
-    entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
+    entry = make_config_entry(
+        data={CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options={CONF_DEVICE_TRACKER_CONSIDER_HOME: consider_home},
+    )
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
     entity = OPNsenseScannerEntity(
         config_entry=entry,
@@ -1467,10 +1486,11 @@ def test_malformed_ndp_inventory_does_not_age_ipv6_tracker(
         hostname=None,
     )
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
+    last_sighting = datetime.now(UTC).timestamp() - consider_home - 1
     coordinator.data = {
         "arp_table": [],
         "ndp_table": [{"mac": "aa:bb:cc:dd:ee:02", "ip": "2001:db8::2", "intf": "em0"}],
-        "update_time": 1_800_000_000.0,
+        "update_time": last_sighting,
     }
 
     entity._handle_coordinator_update()
@@ -1479,16 +1499,17 @@ def test_malformed_ndp_inventory_does_not_age_ipv6_tracker(
     coordinator.data = {
         "arp_table": [],
         "ndp_table": [{"ip": "2001:db8::3"}],
-        "update_time": 1_900_000_000.0,
     }
     entity._handle_coordinator_update()
 
-    assert entity.available is False
-    assert entity.is_connected is True
+    assert entity.available is True
+    assert entity.is_connected is False
+    assert entity.ip_address is None
     assert entity._last_known_connected_time == first_observation_time
     attributes = entity.extra_state_attributes
     assert attributes is not None
-    assert attributes["ipv6_addresses"] == ["2001:db8::2"]
+    assert attributes["ipv6_addresses"] == []
+    assert attributes["last_known_ip"] == "2001:db8::2"
 
 
 def test_device_info_uses_legacy_parent_identifier(
@@ -2841,17 +2862,27 @@ async def test_setup_inventory_write_preserves_next_options_reload(
     reload_entry.assert_awaited_once_with(entry.entry_id)
 
 
+@pytest.mark.parametrize(
+    "update_order",
+    [
+        "inventory_then_options",
+        "options_then_inventory",
+        "inventory_then_drained_options",
+    ],
+)
 @pytest.mark.asyncio
 async def test_poll_inventory_write_does_not_suppress_next_options_reload(
+    update_order: str,
     monkeypatch: pytest.MonkeyPatch,
     hass: HomeAssistant,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
 ) -> None:
-    """A poll-driven family update consumes its marker before a later options reload.
+    """Concurrent poll and options updates result in exactly one integration reload.
 
     Args:
+        update_order (str): Order and task-drain behavior for poll and options updates.
         monkeypatch (pytest.MonkeyPatch): Fixture isolating registry and reload operations.
         hass (HomeAssistant): Home Assistant instance delivering entry update notifications.
         coordinator (MagicMock): Coordinator exposing neighbor inventory and listeners.
@@ -2899,24 +2930,41 @@ async def test_poll_inventory_write_does_not_suppress_next_options_reload(
     assert len(coordinator_listeners) == 1
     entry.async_on_unload(entry.add_update_listener(init_mod._async_update_listener))
 
-    coordinator.data = {
-        "arp_table": [],
-        "ndp_table": [{"mac": mac_address, "ip": "2001:db8::10"}],
-    }
-    coordinator_listeners[0]()
+    def update_inventory() -> None:
+        """Apply one coordinator poll that moves the tracker from ARP to NDP."""
+        coordinator.data = {
+            "arp_table": [],
+            "ndp_table": [{"mac": mac_address, "ip": "2001:db8::10"}],
+        }
+        coordinator_listeners[0]()
+
+    def update_options() -> None:
+        """Apply a real options update to the config entry."""
+        hass.config_entries.async_update_entry(
+            entry,
+            options={CONF_DEVICE_TRACKER_ENABLED: True, CONF_DEVICE_TRACKER_CONSIDER_HOME: 30},
+        )
+
+    if update_order == "inventory_then_options":
+        update_inventory()
+        update_options()
+    elif update_order == "options_then_inventory":
+        update_options()
+        update_inventory()
+    else:
+        update_inventory()
+        await hass.async_block_till_done()
+        assert entry.data[TRACKED_ARP_MACS] == []
+        assert entry.data[TRACKED_NDP_MACS] == [mac_address]
+        reload_entry.assert_not_awaited()
+        assert getattr(entry.runtime_data, SHOULD_RELOAD) is True
+        update_options()
+
+    # Let both real async_update_entry notifications run only after both updates.
     await hass.async_block_till_done()
 
     assert entry.data[TRACKED_ARP_MACS] == []
     assert entry.data[TRACKED_NDP_MACS] == [mac_address]
-    reload_entry.assert_not_awaited()
-    assert getattr(entry.runtime_data, SHOULD_RELOAD) is True
-
-    hass.config_entries.async_update_entry(
-        entry,
-        options={CONF_DEVICE_TRACKER_ENABLED: True, CONF_DEVICE_TRACKER_CONSIDER_HOME: 30},
-    )
-    await hass.async_block_till_done()
-
     reload_entry.assert_awaited_once_with(entry.entry_id)
 
 

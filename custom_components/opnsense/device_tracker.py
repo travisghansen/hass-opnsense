@@ -1002,10 +1002,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         unavailable_tables = state.get("unavailable_device_tracker_tables", [])
         failed_tables = unavailable_tables if isinstance(unavailable_tables, list) else []
         arp_failed = "arp_table" in failed_tables or arp_table_lookup_failed
-        ndp_lookup_failed = "ndp_table" in failed_tables or ndp_table_lookup_failed
-        ndp_failed = ndp_lookup_failed or not _track_all_table_entries_are_complete(
-            ndp_table, ndp=True
-        )
+        ndp_failed = "ndp_table" in failed_tables or ndp_table_lookup_failed
         tracker_mac = self._attr_mac_address
         arp_entries = (
             _entries_for_mac(arp_table, tracker_mac) if isinstance(tracker_mac, str) else []
@@ -1016,7 +1013,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             else []
         )
         fresh_arp_entries = [] if arp_failed else arp_entries
-        fresh_ndp_entries = [] if ndp_lookup_failed else ndp_entries
+        fresh_ndp_entries = [] if ndp_failed else ndp_entries
         ipv4_addresses = _addresses_from_entries(arp_entries, version=4)
         ipv6_addresses = _addresses_from_entries(ndp_entries, version=6)
         last_ipv4_addresses = self._attr_extra_state_attributes.get("ipv4_addresses", [])
