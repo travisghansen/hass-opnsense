@@ -274,18 +274,6 @@ def _unavailable_device_tracker_tables(state: Mapping[str, Any]) -> list[str]:
     return unavailable_tables if isinstance(unavailable_tables, list) else []
 
 
-def _track_all_arp_entries_are_complete(arp_entries: list[Any]) -> bool:
-    """Return whether every ARP row is a mapping, so track-all reconciliation can trust it.
-
-    Args:
-        arp_entries (list[Any]): Raw ARP entries returned by OPNsense.
-
-    Returns:
-        bool: ``True`` when every row is a mapping, otherwise ``False``.
-    """
-    return all(isinstance(arp_entry, MutableMapping) for arp_entry in arp_entries)
-
-
 def _hostname_from_arp_entry(entry: MutableMapping[str, Any]) -> str | None:
     """Return the normalized hostname from an ARP entry.
 
@@ -546,7 +534,7 @@ def _update_track_all_source_inventory(
     arp_authoritative = (
         isinstance(arp_entries, list)
         and "arp_table" not in failed_tables
-        and _track_all_arp_entries_are_complete(arp_entries)
+        and _track_all_table_entries_are_complete(arp_entries, ndp=False)
     )
     ndp_authoritative = (
         isinstance(ndp_entries, list)
@@ -678,7 +666,7 @@ async def async_setup_entry(
         previous_ndp_macs = _normalize_mac_inventory(stored_ndp_macs, ndp=True)
         current_arp_macs = _mac_addresses_from_table_entries(arp_entries, ndp=False)
         current_ndp_macs = _mac_addresses_from_table_entries(ndp_entries, ndp=True)
-        arp_rows_complete = _track_all_arp_entries_are_complete(arp_entries)
+        arp_rows_complete = _track_all_table_entries_are_complete(arp_entries, ndp=False)
         ndp_rows_complete = _track_all_table_entries_are_complete(ndp_entries, ndp=True)
         arp_authoritative = not arp_table_unavailable and arp_rows_complete
         ndp_authoritative = not ndp_table_unavailable and ndp_rows_complete

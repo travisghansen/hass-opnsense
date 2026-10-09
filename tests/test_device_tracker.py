@@ -899,41 +899,25 @@ def test_device_from_tracker_entries_matches_case_insensitively_and_skips_bad_ma
     assert device == {"mac": "aa:bb:cc", "hostname": "TrackedHost", "manufacturer": "m"}
 
 
-def test_handle_coordinator_update_skips_malformed_arp_entries(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+@pytest.mark.parametrize(
+    "arp_table",
+    [[object()], [{"mac": "dd:ee:ff"}]],
+    ids=["malformed_row", "nonmatching_mapping_row"],
+)
+def test_handle_coordinator_update_skips_unusable_arp_entries(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry], arp_table: list[Any]
 ) -> None:
-    """Malformed ARP entries should be skipped while searching for the tracked MAC.
+    """Malformed or nonmatching ARP rows should be skipped while searching for the tracked MAC.
 
     Args:
         coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        arp_table (list[Any]): ARP rows that do not match the tracked MAC.
     """
     ent = _make_scanner_entity(
         coordinator=coordinator,
         make_config_entry=make_config_entry,
-        coordinator_data={"arp_table": [object()]},
-    )
-    object.__setattr__(ent, "async_write_ha_state", MagicMock())
-
-    ent._handle_coordinator_update()
-
-    assert ent.is_connected is False
-    assert ent.available is True
-
-
-def test_handle_coordinator_update_skips_nonmatching_mapping_arp_entries(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Nonmatching ARP mapping entries should be skipped while searching.
-
-    Args:
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-    """
-    ent = _make_scanner_entity(
-        coordinator=coordinator,
-        make_config_entry=make_config_entry,
-        coordinator_data={"arp_table": [{"mac": "dd:ee:ff"}]},
+        coordinator_data={"arp_table": arp_table},
     )
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
