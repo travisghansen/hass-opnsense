@@ -448,31 +448,6 @@ def _compile_tracked_devices(
     return devices, mac_addresses, False
 
 
-def _devices_from_mac_addresses(
-    mac_addresses: list[Any],
-) -> tuple[list[dict[str, Any]], list[str]]:
-    """Build MAC-only tracked devices from previously persisted MAC addresses.
-
-    Args:
-        mac_addresses (list[Any]): Persisted MAC addresses, which may include malformed values.
-
-    Returns:
-        tuple[list[dict[str, Any]], list[str]]: MAC-only device records and their normalized,
-            de-duplicated MAC addresses.
-    """
-    devices: list[dict[str, Any]] = []
-    normalized_macs: list[str] = []
-    for mac_address in mac_addresses:
-        if not isinstance(mac_address, str):
-            continue
-        normalized_mac = _normalize_mac_for_device_tracker(mac_address)
-        if not normalized_mac or normalized_mac in normalized_macs:
-            continue
-        normalized_macs.append(normalized_mac)
-        devices.append({"mac": normalized_mac})
-    return devices, normalized_macs
-
-
 def _normalize_mac_inventory(value: object, *, ndp: bool) -> list[str]:
     """Normalize a stored family inventory, keeping only unique usable MAC addresses.
 
@@ -660,8 +635,6 @@ async def async_setup_entry(
             stored_arp_macs = (
                 previous_mac_addresses if isinstance(previous_mac_addresses, list) else []
             )
-        if not isinstance(stored_ndp_macs, list):
-            stored_ndp_macs = []
         previous_arp_macs = _normalize_mac_inventory(stored_arp_macs, ndp=False)
         previous_ndp_macs = _normalize_mac_inventory(stored_ndp_macs, ndp=True)
         current_arp_macs = _mac_addresses_from_table_entries(arp_entries, ndp=False)

@@ -3165,13 +3165,3 @@ async def test_async_setup_entry_preserves_ndp_tracker_for_unusable_rows(
     assert entry.data[TRACKED_MACS] == [ndp_mac]
     assert entry.data[TRACKED_NDP_MACS] == [ndp_mac]
     assert entity_registry.async_get(retained_entity.entity_id) == retained_entity
-
-
-def test_devices_from_mac_addresses_skips_malformed_and_duplicate_macs() -> None:
-    """Persisted MACs should be normalized and de-duplicated, dropping unusable values."""
-    devices, mac_addresses = dt_mod._devices_from_mac_addresses(
-        ["AA-BB-CC-DD-EE-01", None, "aa:bb:cc:dd:ee:01", "", "aa:bb:cc:dd:ee:02"]
-    )
-
-    assert mac_addresses == ["aa:bb:cc:dd:ee:01", "aa:bb:cc:dd:ee:02"]
-    assert devices == [{"mac": "aa:bb:cc:dd:ee:01"}, {"mac": "aa:bb:cc:dd:ee:02"}]
