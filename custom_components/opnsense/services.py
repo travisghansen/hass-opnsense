@@ -31,6 +31,7 @@ from .const import (
     SERVICE_SYSTEM_HALT,
     SERVICE_SYSTEM_REBOOT,
     SERVICE_TOGGLE_ALIAS,
+    SERVICE_TOGGLE_INTERFACE,
 )
 from .helpers import is_carp_entry
 
@@ -48,6 +49,7 @@ _TRANSLATION_KEY_SERVICE_IDENTIFIER_REQUIRED = "service_identifier_required"
 _TRANSLATION_KEY_START_SERVICE_FAILED = "start_service_failed"
 _TRANSLATION_KEY_STOP_SERVICE_FAILED = "stop_service_failed"
 _TRANSLATION_KEY_TOGGLE_ALIAS_FAILED = "toggle_alias_failed"
+_TRANSLATION_KEY_TOGGLE_INTERFACE_FAILED = "toggle_interface_failed"
 _TRANSLATION_KEY_VOUCHER_SERVER_ERROR = "voucher_server_error"
 type OPNsenseServiceClient = OPNsenseClient
 type ServiceHandler = Callable[[HomeAssistant, ServiceCall], Awaitable[Any]]
@@ -280,6 +282,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         _targeted_schema(
             {
                 vol.Required("alias"): vol.Any(cv.string),
+                vol.Required("toggle_on_off", default="toggle"): vol.In(("toggle", "on", "off")),
+            }
+        ),
+    )
+
+    _register_service(
+        hass,
+        SERVICE_TOGGLE_INTERFACE,
+        _service_toggle_interface,
+        _targeted_schema(
+            {
+                vol.Required("interface"): vol.All(
+                    cv.string, vol.Match(r"^(?:wan|lan|opt[1-9][0-9]*)\Z")
+                ),
                 vol.Required("toggle_on_off", default="toggle"): vol.In(("toggle", "on", "off")),
             }
         ),
@@ -921,4 +937,27 @@ async def _service_toggle_alias(hass: HomeAssistant, call: ServiceCall) -> None:
         failure_translation_key=_TRANSLATION_KEY_TOGGLE_ALIAS_FAILED,
         failure_translation_placeholders={"alias": alias, "action": toggle_on_off},
         action=lambda client: client.toggle_alias(alias, toggle_on_off),
+    )
+
+
+async def _service_toggle_interface(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the toggle interface service call.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance owning the integration services.
+        call (ServiceCall): Service call payload received from Home Assistant.
+    """
+    clients = await _get_target_clients(hass, call)
+    interface: str = call.data["interface"]
+    toggle_on_off: str = call.data["toggle_on_off"]
+    target_state = None if toggle_on_off == "toggle" else toggle_on_off
+    await _run_boolean_client_action(
+        clients=clients,
+        log_prefix="service_toggle_interface",
+        action_name=toggle_on_off,
+        target_name="interface",
+        target_value=interface,
+        failure_translation_key=_TRANSLATION_KEY_TOGGLE_INTERFACE_FAILED,
+        failure_translation_placeholders={"interface": interface, "action": toggle_on_off},
+        action=lambda client: client.toggle_interface(interface, target_state),
     )
