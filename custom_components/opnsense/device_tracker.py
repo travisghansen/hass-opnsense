@@ -697,18 +697,8 @@ async def async_setup_entry(
             )
         if not isinstance(stored_ndp_macs, list):
             stored_ndp_macs = []
-        previous_arp_macs: list[str] = []
-        for mac in stored_arp_macs:
-            if isinstance(mac, str):
-                normalized = _normalize_mac_for_device_tracker(mac)
-                if normalized and normalized not in previous_arp_macs:
-                    previous_arp_macs.append(normalized)
-        previous_ndp_macs: list[str] = []
-        for mac in stored_ndp_macs:
-            if isinstance(mac, str):
-                normalized_ndp_mac = normalize_mac_address(mac)
-                if normalized_ndp_mac and normalized_ndp_mac not in previous_ndp_macs:
-                    previous_ndp_macs.append(normalized_ndp_mac)
+        previous_arp_macs = _normalize_mac_inventory(stored_arp_macs, ndp=False)
+        previous_ndp_macs = _normalize_mac_inventory(stored_ndp_macs, ndp=True)
         current_arp_macs = _mac_addresses_from_table_entries(arp_entries, ndp=False)
         current_ndp_macs = _mac_addresses_from_table_entries(ndp_entries, ndp=True)
         arp_rows_complete = _track_all_arp_entries_are_complete(arp_entries)
