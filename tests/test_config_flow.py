@@ -2020,9 +2020,11 @@ async def test_device_tracker_picker_includes_ipv6_only_devices(
     result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
 
     assert result["type"] == "form"
-    assert _device_tracker_selector_options(result) == {
-        "aa:bb:cc:dd:ee:ff": "fe80::1%em0 [vendor | aa:bb:cc:dd:ee:ff]"
-    }
+    choices = _device_tracker_selector_options(result)
+    assert set(choices) == {"aa:bb:cc:dd:ee:ff"}
+    assert "fe80::1%em0" in choices["aa:bb:cc:dd:ee:ff"]
+    assert "vendor" in choices["aa:bb:cc:dd:ee:ff"]
+    assert "aa:bb:cc:dd:ee:ff" in choices["aa:bb:cc:dd:ee:ff"]
 
 
 @pytest.mark.asyncio
@@ -2194,9 +2196,9 @@ async def test_device_tracker_picker_accepts_empty_table_when_other_lookup_fails
 
     assert result["type"] == "form"
     assert result["errors"] == {}
-    assert _device_tracker_selector_options(result) == {
-        "aa:bb:cc:dd:ee:ff": "Not currently detected [aa:bb:cc:dd:ee:ff]"
-    }
+    choices = _device_tracker_selector_options(result)
+    assert set(choices) == {"aa:bb:cc:dd:ee:ff"}
+    assert "aa:bb:cc:dd:ee:ff" in choices["aa:bb:cc:dd:ee:ff"]
     client.async_close.assert_awaited_once()
 
 

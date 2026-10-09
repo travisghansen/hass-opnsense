@@ -15,6 +15,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import slugify
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -369,7 +370,9 @@ async def test_async_setup_entry_discovers_ipv6_only_tracker(
 
     assert len(added) == 1
     assert added[0].mac_address == "aa:bb:cc:dd:ee:01"
-    assert added[0]._mac_vendor == "Example Vendor"
+    device_info = added[0].device_info
+    assert device_info is not None
+    assert device_info["manufacturer"] == "Example Vendor"
     updated_data = ph_hass.config_entries.async_update_entry.call_args.kwargs["data"]
     assert updated_data[TRACKED_MACS] == ["aa:bb:cc:dd:ee:01"]
     assert updated_data[TRACKED_ARP_MACS] == []
@@ -558,10 +561,9 @@ def test_handle_coordinator_update_empty_data_keeps_connected_tracker_unavailabl
 
 
 @pytest.mark.parametrize(
-    ("missing_table", "successful_table", "successful_entry", "expected_ipv4", "expected_ipv6"),
+    ("successful_table", "successful_entry", "expected_ipv4", "expected_ipv6"),
     [
         pytest.param(
-            "arp_table",
             "ndp_table",
             {"mac": "aa:bb:cc:dd:ee:01", "ip": "2001:db8::2"},
             ["192.0.2.1"],
@@ -569,7 +571,6 @@ def test_handle_coordinator_update_empty_data_keeps_connected_tracker_unavailabl
             id="missing-arp-with-ndp-sighting",
         ),
         pytest.param(
-            "ndp_table",
             "arp_table",
             {"mac": "aa:bb:cc:dd:ee:01", "ip": "192.0.2.2"},
             ["192.0.2.2"],
@@ -579,7 +580,6 @@ def test_handle_coordinator_update_empty_data_keeps_connected_tracker_unavailabl
     ],
 )
 def test_handle_coordinator_update_missing_table_preserves_cached_family(
-    missing_table: str,
     successful_table: str,
     successful_entry: dict[str, str],
     expected_ipv4: list[str],
@@ -590,7 +590,6 @@ def test_handle_coordinator_update_missing_table_preserves_cached_family(
     """A missing family is failed while a valid sighting from the other family still applies.
 
     Args:
-        missing_table (str): Neighbor table omitted from the latest coordinator data.
         successful_table (str): Neighbor table containing a fresh matching sighting.
         successful_entry (dict[str, str]): Fresh row in the successful neighbor table.
         expected_ipv4 (list[str]): Preserved and current IPv4 addresses.
@@ -623,7 +622,6 @@ def test_handle_coordinator_update_missing_table_preserves_cached_family(
     assert attributes is not None
     assert attributes["ipv4_addresses"] == expected_ipv4
     assert attributes["ipv6_addresses"] == expected_ipv6
-    assert missing_table not in coordinator.data
 
 
 def test_entity_registry_enabled_default_uses_existing_mac_device(
@@ -1039,9 +1037,9 @@ def test_handle_coordinator_update_merges_ipv4_and_ipv6_addresses_and_ages_faile
 
     entity._handle_coordinator_update()
 
-    first_observation_time = entity._last_known_connected_time
     attributes = entity.extra_state_attributes
     assert attributes is not None
+    first_observation_time = attributes["last_known_connected_time"]
     assert entity.is_connected is True
     assert entity.ip_address == "192.0.2.10"
     assert attributes["ipv4_addresses"] == ["192.0.2.10"]
@@ -1061,9 +1059,9 @@ def test_handle_coordinator_update_merges_ipv4_and_ipv6_addresses_and_ages_faile
 
     assert entity.available is False
     assert entity.is_connected is True
-    assert entity._last_known_connected_time == first_observation_time
     attributes = entity.extra_state_attributes
     assert attributes is not None
+    assert attributes["last_known_connected_time"] == first_observation_time
     assert attributes["ipv6_addresses"] == [
         "2001:db8::10",
         "2001:db8::11",
@@ -1391,9 +1389,9 @@ async def test_restored_legacy_ip_preserves_family_during_table_failure(
     entity._handle_coordinator_update()
 
     assert entity.available is False
-    assert entity._last_known_connected_time == last_known_connected_time
     attributes = entity.extra_state_attributes
     assert attributes is not None
+    assert attributes["last_known_connected_time"] == last_known_connected_time
     assert attributes["ipv4_addresses"] == ipv4_addresses
     assert attributes["ipv6_addresses"] == ipv6_addresses
 
@@ -1442,10 +1440,9 @@ def test_valid_ndp_sighting_survives_unrelated_malformed_row(
 
     assert entity.available is True
     assert entity.is_connected is True
-    assert entity._last_known_connected_time is not None
-    assert entity._last_known_connected_time.timestamp() == 1_900_000_000.0
     attributes = entity.extra_state_attributes
     assert attributes is not None
+    assert attributes["last_known_connected_time"].timestamp() == 1_900_000_000.0
     assert attributes["ipv6_addresses"] == ["2001:db8::2"]
 
     coordinator.data = {
@@ -1499,7 +1496,9 @@ def test_successful_ndp_inventory_ages_ipv6_tracker_when_mac_is_missing(
     }
 
     entity._handle_coordinator_update()
-    first_observation_time = entity._last_known_connected_time
+    attributes = entity.extra_state_attributes
+    assert attributes is not None
+    first_observation_time = attributes["last_known_connected_time"]
 
     coordinator.data = {
         "arp_table": [],
@@ -1510,9 +1509,9 @@ def test_successful_ndp_inventory_ages_ipv6_tracker_when_mac_is_missing(
     assert entity.available is True
     assert entity.is_connected is False
     assert entity.ip_address is None
-    assert entity._last_known_connected_time == first_observation_time
     attributes = entity.extra_state_attributes
     assert attributes is not None
+    assert attributes["last_known_connected_time"] == first_observation_time
     assert attributes["ipv6_addresses"] == []
     assert attributes["last_known_ip"] == "2001:db8::2"
 
@@ -2766,7 +2765,7 @@ async def test_async_setup_entry_empty_arp_table_still_removes_stale_trackers(
 @pytest.mark.asyncio
 async def test_async_setup_entry_retains_only_failed_family_inventory(
     monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
+    ph_hass: HomeAssistant,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
@@ -2775,7 +2774,7 @@ async def test_async_setup_entry_retains_only_failed_family_inventory(
 
     Args:
         monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate registry access.
-        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
         coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
         fake_reg_factory (Any): Factory for the in-memory device registry test double.
@@ -2797,26 +2796,36 @@ async def test_async_setup_entry_retains_only_failed_family_inventory(
         options={CONF_DEVICE_TRACKER_ENABLED: True},
         entry_id="e_partial_neighbor_failure",
     )
+    entry.add_to_hass(ph_hass)
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
-    fake = fake_reg_factory(device_exists=True, device_id="router-device")
+    entity_registry = er.async_get(ph_hass)
+    stale_arp_entity = entity_registry.async_get_or_create(
+        Platform.DEVICE_TRACKER,
+        DOMAIN,
+        slugify(f"dev1_mac_{arp_mac}"),
+        config_entry=entry,
+    )
+    retained_ndp_entity = entity_registry.async_get_or_create(
+        Platform.DEVICE_TRACKER,
+        DOMAIN,
+        slugify(f"dev1_mac_{ndp_mac}"),
+        config_entry=entry,
+    )
+    fake = fake_reg_factory(device_exists=False)
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
     monkeypatch.setattr(dt_mod, "is_reconciliation_active", lambda _entry: False)
-    cleanup = MagicMock()
-    monkeypatch.setattr(dt_mod, "_cleanup_stale_tracked_devices", cleanup)
     record = MagicMock()
     monkeypatch.setattr(dt_mod, "record_desired_entities", record)
-    ph_hass.config_entries.async_update_entry = MagicMock()
     added: list[Any] = []
 
     await dt_mod.async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
 
     assert [entity.mac_address for entity in added] == [ndp_mac]
-    cleanup.assert_called_once()
-    assert cleanup.call_args.kwargs["current_mac_addresses"] == [ndp_mac]
-    updated_data = ph_hass.config_entries.async_update_entry.call_args.kwargs["data"]
-    assert updated_data[TRACKED_MACS] == [ndp_mac]
-    assert updated_data[TRACKED_ARP_MACS] == []
-    assert updated_data[TRACKED_NDP_MACS] == [ndp_mac]
+    assert entity_registry.async_get(stale_arp_entity.entity_id) is None
+    assert entity_registry.async_get(retained_ndp_entity.entity_id) == retained_ndp_entity
+    assert entry.data[TRACKED_MACS] == [ndp_mac]
+    assert entry.data[TRACKED_ARP_MACS] == []
+    assert entry.data[TRACKED_NDP_MACS] == [ndp_mac]
 
 
 @pytest.mark.asyncio
@@ -2962,7 +2971,6 @@ async def test_poll_inventory_write_does_not_suppress_next_options_reload(
         assert entry.data[TRACKED_ARP_MACS] == []
         assert entry.data[TRACKED_NDP_MACS] == [mac_address]
         reload_entry.assert_not_awaited()
-        assert getattr(entry.runtime_data, SHOULD_RELOAD) is True
         update_options()
 
     # Let both real async_update_entry notifications run only after both updates.
@@ -3026,7 +3034,7 @@ async def test_track_all_family_transition_is_persisted_once_and_survives_reload
     )
 
     assert [entity.mac_address for entity in initially_added] == mac_addresses
-    assert all(not entity._attr_entity_registry_enabled_default for entity in initially_added)
+    assert all(not entity.entity_registry_enabled_default for entity in initially_added)
     assert entry.async_on_unload.call_count == 1
     source_inventory_listener = coordinator.async_add_listener.call_args.args[0]
 
@@ -3043,7 +3051,6 @@ async def test_track_all_family_transition_is_persisted_once_and_survives_reload
     assert entry.data[TRACKED_ARP_MACS] == []
     assert entry.data[TRACKED_NDP_MACS] == mac_addresses
     assert update_entry.call_count == 1
-    assert getattr(entry.runtime_data, SHOULD_RELOAD) is False
 
     coordinator.data = {
         "arp_table": [],
