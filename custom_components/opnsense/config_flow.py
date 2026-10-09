@@ -934,7 +934,10 @@ async def _get_dt_entries(
 
     Returns:
         DeviceEntries: Mapping of MAC addresses to user-facing labels.
-    """
+
+    Raises:
+        OPNsenseError: If neither neighbor table is available after a lookup failure.
+    """  # pydoclint noqa: DOC503 - Re-raise the captured error without changing its concrete type.
     url = config[CONF_URL].strip()
     username: str = config[CONF_USERNAME]
     password: str = config[CONF_PASSWORD]
@@ -952,9 +955,11 @@ async def _get_dt_entries(
         entries: DeviceEntries = _build_selected_device_entries(selected_devices)
         arp_table: list[Any] | None = None
         ndp_table: list[Any] | None = None
+        lookup_error: OPNsenseError | None = None
         try:
             arp_table = await client.get_arp_table(resolve_hostnames=resolve_hostnames)
         except OPNsenseError as err:
+            lookup_error = err
             _LOGGER.warning("Unable to load the OPNsense ARP table for device selection: %s", err)
 
         get_ndp_table = getattr(client, "get_ndp_table", None)
@@ -962,11 +967,20 @@ async def _get_dt_entries(
             try:
                 ndp_table = await get_ndp_table()
             except OPNsenseError as err:
+                if lookup_error is None:
+                    lookup_error = err
                 _LOGGER.warning(
                     "Unable to load the OPNsense NDP table for device selection: %s", err
                 )
         else:
             _LOGGER.debug("The installed aiopnsense client does not provide NDP table support")
+
+        if (
+            not isinstance(arp_table, list)
+            and not isinstance(ndp_table, list)
+            and lookup_error is not None
+        ):
+            raise lookup_error
 
         rows_by_mac: dict[str, list[Mapping[str, Any]]] = {}
         addresses_by_mac: dict[str, list[str]] = {}

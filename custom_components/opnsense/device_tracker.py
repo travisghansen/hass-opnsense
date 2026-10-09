@@ -1170,7 +1170,10 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             return
 
         self._last_known_hostname = state.get("last_known_hostname", None)
-        self._last_known_ip = state.get("last_known_ip", None)
+        last_known_ip = state.get("last_known_ip")
+        if not isinstance(last_known_ip, str) or not last_known_ip:
+            last_known_ip = state.get("ip")
+        self._last_known_ip = last_known_ip if isinstance(last_known_ip, str) else None
 
         if "ipv4_addresses" not in state:
             ipv4_address = _normalized_ip_address(self._last_known_ip, version=4)

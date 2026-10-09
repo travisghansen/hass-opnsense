@@ -1949,51 +1949,40 @@ async def test_device_tracker_shows_form_when_no_user_input(
     ],
 )
 @pytest.mark.asyncio
-async def test_device_tracker_handles_arp_lookup_failure(
+async def test_device_tracker_handles_both_neighbor_lookup_failures(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
-    exception_factory: type[BaseException],
+    fake_client: Any,
+    exception_factory: type[OPNsenseError],
     expected_base_error: str,
 ) -> None:
-    """ARP lookup failures should not abort device tracker form rendering.
+    """Failures reading both neighbor tables should map to device-picker form errors.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-        exception_factory (type[BaseException]): Factory creating the injected backend failure.
+        fake_client (Any): Factory for a fake OPNsense client.
+        exception_factory (type[OPNsenseError]): Factory creating the injected backend failure.
         expected_base_error (str): Base-flow error expected after validation.
     """
-    exc = exception_factory("boom")
     cfg = make_config_entry(
         data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
         options={CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
     )
-    flow = _make_options_flow(cfg)
-    flow._config = dict(cfg.data)
-    flow._options = dict(cfg.options)
+    client = fake_client()()
+    client.get_arp_table = AsyncMock(side_effect=exception_factory("ARP lookup failed"))
+    client.get_ndp_table = AsyncMock(
+        side_effect=aiopnsense_exceptions.OPNsenseConnectionError("NDP lookup failed")
+    )
+    client.async_close = AsyncMock()
+    _patch_device_tracker_client(monkeypatch, client)
 
-    async def _raise(*args: object, **kwargs: object) -> Never:
-        """Raise the parametrized exception so device-tracker lookup failures can be tested.
-
-        Args:
-            args (object): Additional positional arguments accepted by the test double.
-            kwargs (object): Additional keyword arguments accepted by the test double.
-
-        Returns:
-            Never: This test double always raises and never returns.
-
-        Raises:
-            exc: Always raised to exercise error handling in the options flow.
-        """
-        raise exc
-
-    monkeypatch.setattr(cf_mod, "_get_dt_entries", _raise)
-
-    res = await flow.async_step_device_tracker(user_input=None)
+    res = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
     assert res["type"] == "form"
     assert res["errors"]["base"] == expected_base_error
     validated = res["data_schema"]({})
     assert validated[CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
+    client.async_close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -2165,6 +2154,83 @@ async def test_device_tracker_picker_keeps_other_family_on_lookup_failure(
     choices = _device_tracker_selector_options(result)
     assert set(choices) == {expected_mac}
     assert expected_ip in choices[expected_mac]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failed_family", ["arp", "ndp"], ids=["arp-fails", "ndp-fails"])
+async def test_device_tracker_picker_accepts_empty_table_when_other_lookup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+    failed_family: str,
+) -> None:
+    """An empty successful neighbor table is enough to render the picker without an error.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
+        fake_client (Any): Factory for a fake OPNsense client.
+        failed_family (str): Neighbor-table family configured to fail.
+    """
+    cfg = make_config_entry(
+        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
+        options={CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
+    )
+    client = fake_client()()
+    if failed_family == "arp":
+        client.get_arp_table = AsyncMock(
+            side_effect=aiopnsense_exceptions.OPNsenseConnectionError("ARP unavailable")
+        )
+        client.get_ndp_table = AsyncMock(return_value=[])
+    else:
+        client.get_arp_table = AsyncMock(return_value=[])
+        client.get_ndp_table = AsyncMock(
+            side_effect=aiopnsense_exceptions.OPNsenseConnectionError("NDP unavailable")
+        )
+    client.async_close = AsyncMock()
+    _patch_device_tracker_client(monkeypatch, client)
+
+    result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
+
+    assert result["type"] == "form"
+    assert result["errors"] == {}
+    assert _device_tracker_selector_options(result) == {
+        "aa:bb:cc:dd:ee:ff": "Not currently detected [aa:bb:cc:dd:ee:ff]"
+    }
+    client.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_device_tracker_handles_arp_failure_without_ndp_support(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
+) -> None:
+    """An older client without NDP support should surface an ARP lookup failure.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
+        fake_client (Any): Factory for a fake OPNsense client without NDP support.
+    """
+    cfg = make_config_entry(
+        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
+        options={CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
+    )
+    client = fake_client()()
+    client.get_arp_table = AsyncMock(
+        side_effect=aiopnsense_exceptions.OPNsenseConnectionError("ARP unavailable")
+    )
+    client.async_close = AsyncMock()
+    _patch_device_tracker_client(monkeypatch, client)
+
+    result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
+
+    assert result["type"] == "form"
+    assert result["errors"]["base"] == "cannot_connect"
+    validated = result["data_schema"]({})
+    assert validated[CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
+    client.async_close.assert_awaited_once()
 
 
 @pytest.mark.asyncio

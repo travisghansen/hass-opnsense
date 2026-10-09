@@ -1318,15 +1318,27 @@ async def test_restored_ipv6_tracker_stays_unavailable_when_ndp_lookup_is_denied
 
 
 @pytest.mark.parametrize(
-    ("legacy_ip", "failed_table", "ipv4_addresses", "ipv6_addresses"),
+    (
+        "snapshot_ip_key",
+        "legacy_ip",
+        "failed_table",
+        "ipv4_addresses",
+        "ipv6_addresses",
+    ),
     [
-        ("192.0.2.8", "arp_table", ["192.0.2.8"], []),
-        ("2001:db8::8", "ndp_table", [], ["2001:db8::8"]),
+        ("last_known_ip", "192.0.2.8", "arp_table", ["192.0.2.8"], []),
+        ("last_known_ip", "2001:db8::8", "ndp_table", [], ["2001:db8::8"]),
+        ("ip", "192.0.2.10", "arp_table", ["192.0.2.10"], []),
     ],
-    ids=["legacy-ipv4-arp-failure", "legacy-ipv6-ndp-failure"],
+    ids=[
+        "legacy-ipv4-arp-failure",
+        "legacy-ipv6-ndp-failure",
+        "home-ip-arp-failure",
+    ],
 )
 @pytest.mark.asyncio
 async def test_restored_legacy_ip_preserves_family_during_table_failure(
+    snapshot_ip_key: str,
     legacy_ip: str,
     failed_table: str,
     ipv4_addresses: list[str],
@@ -1337,6 +1349,7 @@ async def test_restored_legacy_ip_preserves_family_during_table_failure(
     """Legacy scalar IP state should preserve family presence during a lookup failure.
 
     Args:
+        snapshot_ip_key (str): Snapshot attribute containing the saved IP address.
         legacy_ip (str): Scalar IP address in the legacy saved-state format.
         failed_table (str): Neighbor table whose lookup failed.
         ipv4_addresses (list[str]): Expected restored IPv4 address list.
@@ -1362,9 +1375,10 @@ async def test_restored_legacy_ip_preserves_family_during_table_failure(
     last_known_connected_time = datetime.now(UTC) - timedelta(minutes=5)
     last_state = MagicMock()
     last_state.attributes = {
-        "last_known_ip": legacy_ip,
+        snapshot_ip_key: legacy_ip,
         "last_known_connected_time": last_known_connected_time.isoformat(),
     }
+    last_state.state = "home"
     object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=last_state))
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
 
