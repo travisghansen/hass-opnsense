@@ -220,9 +220,7 @@ The persistent CARP maintenance switch remains on physical-node entries. Enablin
 * **opnsense.get_vnstat_metrics:** Get vnStat metrics and return action response data
 * **opnsense.generate_vouchers:** Generate Captive Portal vouchers
 * **opnsense.toggle_alias:** Toggle, enable, or disable an alias
-* **opnsense.toggle_interface:** Toggle, enable, or disable an interface (OPNsense 26.7.6+). Use a logical interface identifier (`wan`, `lan`, or `optN`) and `toggle_on_off`: `toggle` (default), `on`, or `off`. Optional `device_id` or `entity_id` selects a router; without a target, all configured routers receive the action.
-
-Interface toggling applies interface configuration and can disconnect Home Assistant. Resolve pending interface changes in the OPNsense UI before calling the action. If a call fails, review the interface and pending configuration before retrying. Coordinate other interface changes because OPNsense uses a shared apply queue; applying queued interfaces can reset advanced or file-based DHCP settings.
+* **opnsense.toggle_interface:** Toggle, enable, or disable an interface (OPNsense 26.7.6+)
 
 [How to use <ins>action response data</ins> in an HA script or automation](https://www.home-assistant.io/docs/scripts/perform-actions/#use-templates-to-handle-response-data)
 
