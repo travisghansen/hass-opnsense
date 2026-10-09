@@ -243,30 +243,47 @@ def _track_all_table_entries_are_complete(entries: object, *, ndp: bool) -> bool
     return True
 
 
+def _has_configured_macs(config_entry: ConfigEntry) -> bool:
+    """Return whether the options pin at least one non-blank tracker MAC.
+
+    Args:
+        config_entry (ConfigEntry): Config entry whose options hold the configured MACs.
+
+    Returns:
+        bool: ``True`` when at least one configured MAC is a non-blank string.
+    """
+    configured_macs = config_entry.options.get(CONF_DEVICES, [])
+    return bool(
+        isinstance(configured_macs, list)
+        and any(
+            isinstance(mac_address, str) and mac_address.strip() for mac_address in configured_macs
+        )
+    )
+
+
+def _unavailable_device_tracker_tables(state: Mapping[str, Any]) -> list[str]:
+    """Return the neighbor-table keys the coordinator reported as failed this poll.
+
+    Args:
+        state (Mapping[str, Any]): Latest coordinator state.
+
+    Returns:
+        list[str]: Failed table keys, or an empty list when the state carries none.
+    """
+    unavailable_tables = state.get("unavailable_device_tracker_tables", [])
+    return unavailable_tables if isinstance(unavailable_tables, list) else []
+
+
 def _track_all_arp_entries_are_complete(arp_entries: list[Any]) -> bool:
-    """Return whether every non-entity ARP row is skippable in track-all mode.
+    """Return whether every ARP row is a mapping, so track-all reconciliation can trust it.
 
     Args:
         arp_entries (list[Any]): Raw ARP entries returned by OPNsense.
 
     Returns:
-        bool: ``True`` when every row is a mapping and any row with a normalizable MAC
-        contributes a unique MAC address.
+        bool: ``True`` when every row is a mapping, otherwise ``False``.
     """
-    seen_macs: set[str] = set()
-    for arp_entry in arp_entries:
-        if not isinstance(arp_entry, MutableMapping):
-            return False
-        mac_address = get_arp_mac(arp_entry)
-        if not mac_address:
-            continue
-        normalized_mac = _normalize_mac_for_device_tracker(mac_address)
-        if not normalized_mac:
-            continue
-        if normalized_mac in seen_macs:
-            continue
-        seen_macs.add(normalized_mac)
-    return True
+    return all(isinstance(arp_entry, MutableMapping) for arp_entry in arp_entries)
 
 
 def _hostname_from_arp_entry(entry: MutableMapping[str, Any]) -> str | None:
@@ -513,11 +530,7 @@ def _update_track_all_source_inventory(
     if not isinstance(state, MutableMapping):
         return
     options = config_entry.options
-    configured_macs = options.get(CONF_DEVICES, [])
-    has_configured_macs = bool(
-        isinstance(configured_macs, list)
-        and any(isinstance(mac, str) and mac.strip() for mac in configured_macs)
-    )
+    has_configured_macs = _has_configured_macs(config_entry)
     if not options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED) or (
         has_configured_macs
     ):
@@ -529,8 +542,7 @@ def _update_track_all_source_inventory(
 
     arp_entries = state.get("arp_table")
     ndp_entries = state.get("ndp_table")
-    unavailable_tables = state.get("unavailable_device_tracker_tables", [])
-    failed_tables = unavailable_tables if isinstance(unavailable_tables, list) else []
+    failed_tables = _unavailable_device_tracker_tables(state)
     arp_authoritative = (
         isinstance(arp_entries, list)
         and "arp_table" not in failed_tables
@@ -629,32 +641,23 @@ async def async_setup_entry(
 
     arp_entries = dict_get(state, "arp_table")
     ndp_entries = dict_get(state, "ndp_table", [])
-    configured_macs = config_entry.options.get(CONF_DEVICES, [])
-    has_configured_macs = bool(
-        isinstance(configured_macs, list)
-        and any(
-            isinstance(mac_address, str) and mac_address.strip() for mac_address in configured_macs
-        )
+    has_configured_macs = _has_configured_macs(config_entry)
+    table_response_available = isinstance(state.get("arp_table"), list) or isinstance(
+        state.get("ndp_table"), list
     )
     if not has_configured_macs:
-        reconciliation_complete = isinstance(state.get("arp_table"), list) or isinstance(
-            state.get("ndp_table"), list
-        )
+        reconciliation_complete = table_response_available
     arp_table_unavailable = not isinstance(arp_entries, list)
     ndp_table_unavailable = "ndp_table" not in state or not isinstance(ndp_entries, list)
-    unavailable_tables = state.get("unavailable_device_tracker_tables", [])
-    if isinstance(unavailable_tables, list):
-        arp_table_unavailable = arp_table_unavailable or "arp_table" in unavailable_tables
-        ndp_table_unavailable = ndp_table_unavailable or "ndp_table" in unavailable_tables
+    unavailable_tables = _unavailable_device_tracker_tables(state)
+    arp_table_unavailable = arp_table_unavailable or "arp_table" in unavailable_tables
+    ndp_table_unavailable = ndp_table_unavailable or "ndp_table" in unavailable_tables
     if not isinstance(arp_entries, list):
         arp_entries = []
     if not isinstance(ndp_entries, list):
         ndp_entries = []
     devices, mac_addresses, enabled_default = _compile_tracked_devices(
         config_entry, arp_entries, ndp_entries
-    )
-    table_response_available = isinstance(state.get("arp_table"), list) or isinstance(
-        state.get("ndp_table"), list
     )
     track_all_enabled = bool(
         config_entry.options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)
@@ -695,9 +698,7 @@ async def async_setup_entry(
         reconciliation_complete = (
             (arp_table_unavailable or arp_rows_complete)
             and (ndp_table_unavailable or ndp_rows_complete)
-            and (
-                isinstance(state.get("arp_table"), list) or isinstance(state.get("ndp_table"), list)
-            )
+            and table_response_available
         )
     else:
         tracked_arp_macs = []
@@ -963,8 +964,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         self._available = True
         arp_table = arp_table if isinstance(arp_table, list) else []
         ndp_table = ndp_table if isinstance(ndp_table, list) else []
-        unavailable_tables = state.get("unavailable_device_tracker_tables", [])
-        failed_tables = unavailable_tables if isinstance(unavailable_tables, list) else []
+        failed_tables = _unavailable_device_tracker_tables(state)
         arp_failed = "arp_table" in failed_tables or arp_table_lookup_failed
         ndp_failed = "ndp_table" in failed_tables or ndp_table_lookup_failed
         tracker_mac = self._attr_mac_address

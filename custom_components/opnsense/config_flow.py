@@ -1010,7 +1010,6 @@ async def _get_dt_entries(
                 if address and address not in addresses_by_mac.setdefault(mac, []):
                     addresses_by_mac[mac].append(address)
 
-        ip_by_mac: dict[str, str | list[str]] = {}
         for mac, rows in rows_by_mac.items():
             arp_row = next((row for row in rows if row.get("hostname")), None)
             representative = arp_row or rows[0]
@@ -1030,13 +1029,12 @@ async def _get_dt_entries(
                 representative_data,
                 addresses_by_mac.get(mac, []),
             )
-            ip_by_mac[mac] = addresses_by_mac.get(mac, [])
 
         # Sort entries: fallback labels first, then by numeric IP address.
         return dict(
             sorted(
                 entries.items(),
-                key=lambda item: _device_entry_sort_key(item[0], item[1], ip_by_mac),
+                key=lambda item: _device_entry_sort_key(item[0], item[1], addresses_by_mac),
             )
         )
     finally:

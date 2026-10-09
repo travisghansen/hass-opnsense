@@ -57,6 +57,8 @@ _PREVIOUS_STATE_KEYS: tuple[str, ...] = (
     "arp_table",
     "ndp_table",
 )
+# Device-tracker neighbor lookups that may fail without failing the whole poll.
+_OPTIONAL_TRACKER_METHODS: frozenset[str] = frozenset({"get_arp_table", "get_ndp_table"})
 
 
 class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
@@ -175,7 +177,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     else:
                         state[cat.get("state_key")] = await method()
                 except OPNsenseError:
-                    if method_name not in {"get_arp_table", "get_ndp_table"}:
+                    if method_name not in _OPTIONAL_TRACKER_METHODS:
                         raise
                     state[cat.get("state_key")] = None
                     _LOGGER.warning(
@@ -192,7 +194,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     cat.get("function", ""),
                     elapsed_time,
                 )
-            elif method_name in {"get_arp_table", "get_ndp_table"}:
+            elif method_name in _OPTIONAL_TRACKER_METHODS:
                 state[cat.get("state_key")] = None
                 _LOGGER.debug("Optional device-tracker method %s is unavailable", method_name)
             else:
