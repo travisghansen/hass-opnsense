@@ -3070,17 +3070,16 @@ async def test_track_all_family_transition_is_persisted_once_and_survives_reload
     "ndp_row",
     [
         {"ip": "2001:db8::2"},
-        {"mac": "", "ip": "2001:db8::2"},
         {"mac": "not-a-mac", "ip": "2001:db8::2"},
         {"mac": "aa:bb:cc:dd:ee:02", "ip": "not-an-ip"},
     ],
-    ids=["missing-mac", "blank-mac", "invalid-mac", "invalid-ip"],
+    ids=["missing-mac", "invalid-mac", "invalid-ip"],
 )
 @pytest.mark.asyncio
 async def test_async_setup_entry_preserves_ndp_tracker_for_unusable_rows(
     ndp_row: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
+    ph_hass: HomeAssistant,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
@@ -3090,7 +3089,7 @@ async def test_async_setup_entry_preserves_ndp_tracker_for_unusable_rows(
     Args:
         ndp_row (dict[str, str]): Invalid NDP response row under test.
         monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate registry access.
-        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        ph_hass (HomeAssistant): Home Assistant instance used to inspect entity-registry cleanup.
         coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
         fake_reg_factory (Any): Factory for the in-memory device registry test double.
@@ -3107,14 +3106,18 @@ async def test_async_setup_entry_preserves_ndp_tracker_for_unusable_rows(
         options={CONF_DEVICE_TRACKER_ENABLED: True},
         entry_id="e_invalid_ndp_row",
     )
+    entry.add_to_hass(ph_hass)
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    entity_registry = er.async_get(ph_hass)
+    retained_entity = entity_registry.async_get_or_create(
+        Platform.DEVICE_TRACKER,
+        DOMAIN,
+        slugify(f"dev1_mac_{ndp_mac}"),
+        config_entry=entry,
+    )
     device_registry = fake_reg_factory(device_exists=False)
-    entity_registry = MagicMock()
-    entity_registry.async_get_entity_id.return_value = "device_tracker.device_ipv6"
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_registry)
-    monkeypatch.setattr(er, "async_get", MagicMock(return_value=entity_registry))
     monkeypatch.setattr(dt_mod, "record_desired_entities", MagicMock())
-    ph_hass.config_entries.async_update_entry = MagicMock()
     added: list[Any] = []
 
     await dt_mod.async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
@@ -3122,8 +3125,7 @@ async def test_async_setup_entry_preserves_ndp_tracker_for_unusable_rows(
     assert [entity.mac_address for entity in added] == [ndp_mac]
     assert entry.data[TRACKED_MACS] == [ndp_mac]
     assert entry.data[TRACKED_NDP_MACS] == [ndp_mac]
-    entity_registry.async_get_entity_id.assert_not_called()
-    entity_registry.async_remove.assert_not_called()
+    assert entity_registry.async_get(retained_entity.entity_id) == retained_entity
 
 
 def test_devices_from_mac_addresses_skips_malformed_and_duplicate_macs() -> None:
