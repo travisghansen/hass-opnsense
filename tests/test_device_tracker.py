@@ -71,28 +71,29 @@ def _make_scanner_entity(
     )
 
 
-def test_device_from_arp_entry_skips_malformed_and_nonmatching_entries() -> None:
+def test_device_from_tracker_entries_skips_malformed_and_nonmatching_arp_entries() -> None:
     """Device lookup should ignore malformed and nonmatching ARP entries."""
-    device = dt_mod._device_from_arp_entry(
+    device = dt_mod._device_from_tracker_entries(
         "aa:bb:cc",
         [
             object(),
             {"mac": "dd:ee:ff", "hostname": "other"},
             {"mac": "aa:bb:cc", "hostname": "tracked", "manufacturer": "maker"},
         ],
+        [],
     )
 
     assert device == {"mac": "aa:bb:cc", "hostname": "tracked", "manufacturer": "maker"}
 
 
-def test_device_from_arp_entry_returns_mac_fallback_without_entries() -> None:
+def test_device_from_tracker_entries_returns_mac_fallback_without_entries() -> None:
     """Device lookup should return a MAC-only fallback when no ARP entries exist."""
-    assert dt_mod._device_from_arp_entry("aa:bb:cc", []) == {"mac": "aa:bb:cc"}
+    assert dt_mod._device_from_tracker_entries("aa:bb:cc", [], []) == {"mac": "aa:bb:cc"}
 
 
-def test_devices_from_arp_entries_skips_malformed_invalid_and_duplicate_macs() -> None:
+def test_devices_from_tracker_entries_skips_malformed_invalid_and_duplicate_arp_macs() -> None:
     """ARP conversion should only return devices for unique valid MAC strings."""
-    devices, mac_addresses = dt_mod._devices_from_arp_entries(
+    devices, mac_addresses = dt_mod._devices_from_tracker_entries(
         [
             object(),
             {"mac": None},
@@ -103,6 +104,7 @@ def test_devices_from_arp_entries_skips_malformed_invalid_and_duplicate_macs() -
             {"mac": "aa:bb:cc:dd:ee:ff", "hostname": "lower"},
             {"mac": "11:22:33:44:55:66", "hostname": "first"},
         ],
+        [],
     )
 
     assert mac_addresses == ["aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66"]
@@ -147,20 +149,22 @@ def test_compile_tracked_devices_normalizes_and_deduplicates_configured_macs(
     ]
 
 
-def test_device_from_arp_entry_uses_raw_arp_keys() -> None:
+def test_device_from_tracker_entries_uses_raw_arp_keys() -> None:
     """Raw aiopnsense ARP keys should be discovered alongside normalized keys."""
-    device = dt_mod._device_from_arp_entry(
+    device = dt_mod._device_from_tracker_entries(
         "aa:bb:cc",
         [{"mac-address": "AA-BB-CC"}, {"mac": "11:22:33"}],
+        [],
     )
 
     assert device == {"mac": "aa:bb:cc"}
 
 
-def test_devices_from_arp_entries_reads_raw_mac_ip_keys() -> None:
+def test_devices_from_tracker_entries_reads_raw_mac_ip_keys() -> None:
     """Raw ARP key names should be consumed when scanning configured devices."""
-    devices, mac_addresses = dt_mod._devices_from_arp_entries(
+    devices, mac_addresses = dt_mod._devices_from_tracker_entries(
         [{"mac-address": "AA-BB-CC", "ip-address": "10.0.0.2", "hostname": "raw"}],
+        [],
     )
 
     assert mac_addresses == ["aa:bb:cc"]
@@ -886,11 +890,12 @@ def test_device_data_from_arp_entry_normalizes_hostname_and_filters_manufacturer
     assert device == {"mac": "dd:ee:ff", "hostname": "host"}
 
 
-def test_device_from_arp_entry_matches_mac_case_insensitively_and_rejects_non_string_macs() -> None:
+def test_device_from_tracker_entries_matches_case_insensitively_and_skips_bad_macs() -> None:
     """Device lookup should match MAC addresses case-insensitively and skip bad MAC types."""
-    device = dt_mod._device_from_arp_entry(
+    device = dt_mod._device_from_tracker_entries(
         "aa:bb:cc",
         [{"mac": 12345}, {"mac": "AA:BB:CC", "hostname": "TrackedHost", "manufacturer": "m"}],
+        [],
     )
 
     assert device == {"mac": "aa:bb:cc", "hostname": "TrackedHost", "manufacturer": "m"}

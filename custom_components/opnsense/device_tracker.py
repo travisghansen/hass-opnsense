@@ -158,19 +158,6 @@ def _device_from_tracker_entries(
     return device
 
 
-def _device_from_arp_entry(mac_address: str, arp_entries: list[Any]) -> dict[str, Any]:
-    """Build tracked device data from a configured MAC and matching ARP entry.
-
-    Args:
-        mac_address (str): Configured MAC address for the tracker entity.
-        arp_entries (list[Any]): Raw ARP entries returned by OPNsense.
-
-    Returns:
-        dict[str, Any]: A device dictionary for the matching ARP entry, or a MAC-only fallback.
-    """
-    return _device_from_tracker_entries(mac_address, arp_entries, [])
-
-
 def _devices_from_tracker_entries(
     arp_entries: list[Any],
     ndp_entries: list[Any],
@@ -213,19 +200,6 @@ def _devices_from_tracker_entries(
                     device[key] = entry_device[key]
     devices = list(devices_by_mac.values())
     return devices, list(devices_by_mac)
-
-
-def _devices_from_arp_entries(arp_entries: list[Any]) -> tuple[list[dict[str, Any]], list[str]]:
-    """Build tracked device data from unique ARP table MAC addresses.
-
-    Args:
-        arp_entries (list[Any]): Raw ARP entries returned by OPNsense.
-
-    Returns:
-        tuple[list[dict[str, Any]], list[str]]: A tuple of device dictionaries and the unique
-            MAC addresses found.
-    """
-    return _devices_from_tracker_entries(arp_entries, [])
 
 
 def _mac_addresses_from_table_entries(entries: list[Any], *, ndp: bool) -> list[str]:
@@ -490,7 +464,7 @@ def _devices_from_mac_addresses(
         if not normalized_mac or normalized_mac in normalized_macs:
             continue
         normalized_macs.append(normalized_mac)
-        devices.append(_device_from_arp_entry(normalized_mac, []))
+        devices.append({"mac": normalized_mac})
     return devices, normalized_macs
 
 
