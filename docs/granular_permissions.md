@@ -214,6 +214,13 @@ Applies to `opnsense.start_service`, `opnsense.stop_service`, and `opnsense.rest
 | --- | --- | --- |
 | Status: Interfaces | POST | `/api/interfaces/overview/reload_interface/{interface}` (or `/api/interfaces/overview/reloadInterface/{interface}`) |
 
+## Toggle Interface (`opnsense.toggle_interface`)
+
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Interfaces: Assign network ports | GET | `/api/interfaces/assignment/pending`<br>`/api/interfaces/assignment/get_item/{interface}` |
+| Interfaces: Assign network ports | POST | `/api/interfaces/assignment/set_item/{interface}`<br>`/api/interfaces/assignment/reconfigure` |
+
 ## Kill States (`opnsense.kill_states`)
 
 | OPNsense Permission | Method | API Endpoints |

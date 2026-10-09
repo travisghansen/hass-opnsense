@@ -225,6 +225,9 @@
     },
     "voucher_server_error": {
       "message": "Erreur lors de l'obtention des bons de {client}. {error}"
+    },
+    "toggle_interface_failed": {
+      "message": "Échec de la modification de l’interface. Interface : {interface}, action : {action}. Nécessite OPNsense 26.7.6 ou une version ultérieure. Vérifiez la configuration des interfaces en attente dans OPNsense avant de réessayer."
     }
   },
   "selector": {
@@ -594,6 +597,33 @@
         "entity_id": {
           "name": "Entité OPNsense",
           "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+        }
+      }
+    },
+    "toggle_interface": {
+      "name": "Basculer une interface",
+      "description": "Activer, désactiver ou basculer une interface. Nécessite OPNsense 26.7.6 ou une version ultérieure. Applique la configuration des interfaces et peut déconnecter Home Assistant.",
+      "fields": {
+        "toggle_on_off": {
+          "name": "Action sur l’interface",
+          "description": "Action à effectuer sur l’interface"
+        },
+        "device_id": {
+          "name": "Appareil OPNsense",
+          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+        },
+        "interface": {
+          "name": "Interface",
+          "description": "Identifiant logique de l’interface OPNsense : wan, lan ou optN (par exemple, opt1)."
         }
       },
       "sections": {

@@ -39,6 +39,7 @@ from custom_components.opnsense.const import (
     SERVICE_SYSTEM_HALT,
     SERVICE_SYSTEM_REBOOT,
     SERVICE_TOGGLE_ALIAS,
+    SERVICE_TOGGLE_INTERFACE,
 )
 
 _INTEGRATION_ROOT = Path(__file__).parents[1] / "custom_components" / "opnsense"
@@ -247,6 +248,7 @@ async def test_async_setup_services_registers_expected_service_contracts() -> No
         SERVICE_RUN_SPEEDTEST,
         SERVICE_GET_VNSTAT_METRICS,
         SERVICE_TOGGLE_ALIAS,
+        SERVICE_TOGGLE_INTERFACE,
     }
     assert registrations[SERVICE_GENERATE_VOUCHERS]["supports_response"] == SupportsResponse.ONLY
     assert registrations[SERVICE_KILL_STATES]["supports_response"] == SupportsResponse.OPTIONAL
@@ -262,6 +264,7 @@ async def test_async_setup_services_registers_expected_service_contracts() -> No
         SERVICE_SEND_WOL,
         SERVICE_RELOAD_INTERFACE,
         SERVICE_TOGGLE_ALIAS,
+        SERVICE_TOGGLE_INTERFACE,
     ):
         assert "supports_response" not in registrations[service]
 
@@ -1180,3 +1183,99 @@ async def test_toggle_alias_success_and_failure(monkeypatch: pytest.MonkeyPatch)
     hass.data = {DOMAIN: {"e2": c2}}
     with pytest.raises(ServiceValidationError):
         await services_mod._service_toggle_alias(hass, call)
+
+
+@pytest.mark.parametrize(
+    ("data", "expected"),
+    [
+        ({"interface": "wan"}, None),
+        ({"interface": "lan", "toggle_on_off": "toggle"}, None),
+        ({"interface": "opt8", "toggle_on_off": "on"}, "on"),
+        ({"interface": "opt1", "toggle_on_off": "off"}, "off"),
+    ],
+)
+async def test_toggle_interface_action(
+    ph_hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+    data: dict[str, str],
+    expected: str | None,
+) -> None:
+    """Dispatch validated interface actions to every selected client.
+
+    Args:
+        ph_hass (HomeAssistant): Home Assistant instance with a real service registry.
+        monkeypatch (pytest.MonkeyPatch): Fixture used to isolate clients.
+        data (dict[str, str]): Action payload, including an optional target state.
+        expected (str | None): Target state expected by aiopnsense.
+    """
+    clients = [MagicMock(), MagicMock()]
+    for client in clients:
+        client.toggle_interface = AsyncMock(return_value=True)
+    _patch_clients(monkeypatch, clients)
+    await services_mod.async_setup_services(ph_hass)
+    await ph_hass.services.async_call(DOMAIN, SERVICE_TOGGLE_INTERFACE, data, blocking=True)
+    for client in clients:
+        client.toggle_interface.assert_awaited_once_with(data["interface"], expected)
+
+
+@pytest.mark.parametrize("responses", [[], [False], [None], [True, False]])
+async def test_toggle_interface_action_failure(
+    ph_hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+    responses: list[bool | None],
+) -> None:
+    """Surface refused, suppressed, partial, and untargeted operations as localized errors.
+
+    Args:
+        ph_hass (HomeAssistant): Home Assistant instance with a real service registry.
+        monkeypatch (pytest.MonkeyPatch): Fixture used to isolate clients.
+        responses (list[bool | None]): Results reported by selected clients.
+    """
+    clients = [MagicMock() for _ in responses]
+    for client, response in zip(clients, responses, strict=True):
+        client.toggle_interface = AsyncMock(return_value=response)
+    _patch_clients(monkeypatch, clients)
+    await services_mod.async_setup_services(ph_hass)
+    with pytest.raises(ServiceValidationError) as error:
+        await ph_hass.services.async_call(
+            DOMAIN,
+            SERVICE_TOGGLE_INTERFACE,
+            {"interface": "opt8", "toggle_on_off": "off"},
+            blocking=True,
+        )
+    assert error.value.translation_key == "toggle_interface_failed"
+    assert error.value.translation_placeholders == {"interface": "opt8", "action": "off"}
+    for client in clients:
+        client.toggle_interface.assert_awaited_once_with("opt8", "off")
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {},
+        {"interface": "igb0"},
+        {"interface": "opt0"},
+        {"interface": "opt1/path"},
+        {"interface": "lan\n"},
+        {"interface": "lan", "toggle_on_off": "enable"},
+    ],
+)
+async def test_toggle_interface_action_validation(
+    ph_hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+    data: dict[str, str],
+) -> None:
+    """Reject invalid interface identifiers and actions before reaching the client.
+
+    Args:
+        ph_hass (HomeAssistant): Home Assistant instance with a real service registry.
+        monkeypatch (pytest.MonkeyPatch): Fixture used to isolate clients.
+        data (dict[str, str]): Invalid action payload.
+    """
+    client = MagicMock()
+    client.toggle_interface = AsyncMock()
+    _patch_clients(monkeypatch, [client])
+    await services_mod.async_setup_services(ph_hass)
+    with pytest.raises(vol.Invalid):
+        await ph_hass.services.async_call(DOMAIN, SERVICE_TOGGLE_INTERFACE, data, blocking=True)
+    client.toggle_interface.assert_not_awaited()
