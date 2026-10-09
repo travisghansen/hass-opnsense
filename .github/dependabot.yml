@@ -34,4 +34,8 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"
     open-pull-requests-limit: 10

@@ -65,7 +65,7 @@ require_serial = true
 
 [[repos]]
 repo = "https://github.com/jsh9/pydoclint"
-rev = "0.9.1"
+rev = "0.10.1"
 
 [[repos.hooks]]
 id = "pydoclint"
