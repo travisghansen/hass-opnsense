@@ -226,6 +226,9 @@
     },
     "voucher_server_error": {
       "message": "Error getting vouchers from {client}. {error}"
+    },
+    "toggle_interface_failed": {
+      "message": "Toggle interface failed. Interface: {interface}, action: {action}. Requires OPNsense 26.7.6 or newer. Review pending interface configuration in OPNsense before retrying."
     }
   },
   "selector": {
@@ -596,6 +599,33 @@
         "entity_id": {
           "name": "OPNsense Entity",
           "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Only needed if there is more than one OPNsense Router"
+        }
+      }
+    },
+    "toggle_interface": {
+      "name": "Toggle Interface",
+      "description": "Toggle, enable, or disable an interface. Requires OPNsense 26.7.6 or newer. Applies interface configuration and may disconnect Home Assistant.",
+      "fields": {
+        "toggle_on_off": {
+          "name": "Interface Action",
+          "description": "What action to take on the interface"
+        },
+        "device_id": {
+          "name": "OPNsense Device",
+          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+        },
+        "interface": {
+          "name": "Interface",
+          "description": "Logical OPNsense interface identifier: wan, lan, or optN (for example, opt1)."
         }
       },
       "sections": {

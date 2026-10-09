@@ -35,6 +35,7 @@ from custom_components.opnsense.const import (
 import custom_components.opnsense.device_tracker as dt_mod
 from custom_components.opnsense.device_tracker import OPNsenseScannerEntity
 from custom_components.opnsense.entity import OPNsenseBaseEntity
+from custom_components.opnsense.helpers import device_belongs_to_config_entry
 
 
 def _make_scanner_entity(
@@ -1791,7 +1792,7 @@ async def test_async_internal_added_to_hass_creates_integration_device_for_exist
     assert isinstance(linked_device, dr.DeviceEntry)
     assert linked_device.id != existing_device.id
     assert (dr.CONNECTION_NETWORK_MAC, mac_address) in linked_device.connections
-    assert entry.entry_id in linked_device.config_entries
+    assert device_belongs_to_config_entry(linked_device, entry.entry_id)
 
 
 @pytest.mark.asyncio

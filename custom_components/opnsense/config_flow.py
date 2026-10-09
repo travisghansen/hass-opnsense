@@ -1147,7 +1147,9 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="device",
-            data_schema=_build_user_input_schema(user_input=user_input),
+            # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
+            # Older HA annotations do not need the argument-type ignore.
+            data_schema=_build_user_input_schema(user_input=user_input),  # type: ignore[arg-type, unused-ignore]
             errors=errors,
             description_placeholders={
                 "firmware": firmware,
@@ -1195,7 +1197,9 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="carp",
-            data_schema=_build_carp_input_schema(user_input=user_input),
+            # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
+            # Older HA annotations do not need the argument-type ignore.
+            data_schema=_build_carp_input_schema(user_input=user_input),  # type: ignore[arg-type, unused-ignore]
             errors=errors,
             description_placeholders={
                 "firmware": firmware,
@@ -1235,7 +1239,9 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="granular_sync",
-            data_schema=_build_granular_sync_schema(user_input=user_input),
+            # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
+            # Older HA annotations do not need the argument-type ignore.
+            data_schema=_build_granular_sync_schema(user_input=user_input),  # type: ignore[arg-type, unused-ignore]
             errors=errors,
         )
 
@@ -1316,8 +1322,10 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="reconfigure",
+            # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
+            # Older HA annotations do not need the argument-type ignore.
             data_schema=(
-                _build_carp_input_schema(user_input=user_input, stored_values=self._config)
+                _build_carp_input_schema(user_input=user_input, stored_values=self._config)  # type: ignore[arg-type, unused-ignore]
                 if is_carp_entry(reconfigure_entry)
                 else _build_user_input_schema(
                     user_input=user_input, stored_values=self._config, reconf=True
@@ -1410,7 +1418,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
 
             return self.async_show_form(
                 step_id="init",
-                data_schema=_build_carp_options_schema(
+                # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
+                # Older HA annotations do not need the argument-type ignore.
+                data_schema=_build_carp_options_schema(  # type: ignore[arg-type, unused-ignore]
                     user_input=user_input,
                     stored_options=self._options,
                 ),
@@ -1450,7 +1460,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
 
         return self.async_show_form(
             step_id="init",
-            data_schema=_build_options_init_schema(
+            # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
+            # Older HA annotations do not need the argument-type ignore.
+            data_schema=_build_options_init_schema(  # type: ignore[arg-type, unused-ignore]
                 user_input=user_input, stored_config=self._config, stored_options=self._options
             ),
             errors=errors,
@@ -1493,7 +1505,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
 
         return self.async_show_form(
             step_id="granular_sync",
-            data_schema=_build_granular_sync_schema(
+            # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
+            # Older HA annotations do not need the argument-type ignore.
+            data_schema=_build_granular_sync_schema(  # type: ignore[arg-type, unused-ignore]
                 user_input=user_input,
                 stored_values=self._config,
             ),
@@ -1561,7 +1575,9 @@ class OPNsenseOptionsFlow(OptionsFlow):
 
         return self.async_show_form(
             step_id="device_tracker",
-            data_schema=_build_device_tracker_schema(
+            # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
+            # Older HA annotations do not need the argument-type ignore.
+            data_schema=_build_device_tracker_schema(  # type: ignore[arg-type, unused-ignore]
                 selected_devices=selected_devices,
                 dt_entries=dt_entries,
             ),

@@ -220,6 +220,7 @@ The persistent CARP maintenance switch remains on physical-node entries. Enablin
 * **opnsense.get_vnstat_metrics:** Get vnStat metrics and return action response data
 * **opnsense.generate_vouchers:** Generate Captive Portal vouchers
 * **opnsense.toggle_alias:** Toggle, enable, or disable an alias
+* **opnsense.toggle_interface:** Toggle, enable, or disable an interface (OPNsense 26.7.6+)
 
 [How to use <ins>action response data</ins> in an HA script or automation](https://www.home-assistant.io/docs/scripts/perform-actions/#use-templates-to-handle-response-data)
 
