@@ -3366,7 +3366,10 @@ def test_handle_coordinator_update_ignores_ndp_rows_without_valid_ipv6(
     assert attributes["ipv6_addresses"] == expected_ipv6
 
 
-_EMPTY_AUTHORITATIVE_STATE: dict[str, Any] = {"arp_table": [], "ndp_table": []}
+_NDP_AUTHORITATIVE_STATE_WITH_COVERAGE_MAC: dict[str, Any] = {
+    "arp_table": [],
+    "ndp_table": [{"mac": _COVERAGE_MAC, "ip": "2001:db8::1"}],
+}
 _NO_AUTHORITATIVE_STATE: dict[str, Any] = {
     "arp_table": None,
     "ndp_table": None,
@@ -3386,19 +3389,19 @@ _NO_AUTHORITATIVE_STATE: dict[str, Any] = {
         pytest.param(
             {CONF_DEVICE_TRACKER_ENABLED: False},
             None,
-            _EMPTY_AUTHORITATIVE_STATE,
+            _NDP_AUTHORITATIVE_STATE_WITH_COVERAGE_MAC,
             id="tracker_disabled",
         ),
         pytest.param(
             {CONF_DEVICE_TRACKER_ENABLED: True, CONF_DEVICES: ["11:22:33:44:55:66"]},
             None,
-            _EMPTY_AUTHORITATIVE_STATE,
+            _NDP_AUTHORITATIVE_STATE_WITH_COVERAGE_MAC,
             id="explicit_macs_configured",
         ),
         pytest.param(
             {CONF_DEVICE_TRACKER_ENABLED: True},
             {TRACKED_MACS: []},
-            _EMPTY_AUTHORITATIVE_STATE,
+            _NDP_AUTHORITATIVE_STATE_WITH_COVERAGE_MAC,
             id="no_tracked_macs",
         ),
         pytest.param(
@@ -3417,10 +3420,11 @@ def test_update_track_all_source_inventory_leaves_inventory_unchanged_when_inapp
     tracked_data: dict[str, Any] | None,
     state: object,
 ) -> None:
-    """Provenance is only refreshed for track-all trackers with an authoritative table.
+    """Provenance refresh applies only to enabled track-all trackers with tracked MACs.
 
-    Each case would otherwise drop the tracked MAC from the ARP inventory, so an unchanged
-    config entry proves the early return fired.
+    The disabled and explicit-MAC cases would otherwise move the tracked MAC from ARP to NDP.
+    The remaining cases verify that malformed state, no tracked MACs, and unavailable tables
+    leave the stored inventory unchanged.
 
     Args:
         ph_hass (HomeAssistant): Home Assistant test instance used to persist config-entry data.

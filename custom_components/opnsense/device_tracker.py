@@ -408,7 +408,7 @@ def _compile_tracked_devices(
     arp_entries: list[Any],
     ndp_entries: list[Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], bool]:
-    """Compile device tracker source data from options and ARP entries.
+    """Compile device tracker source data from options and both neighbor tables.
 
     Args:
         config_entry (ConfigEntry): Config entry containing device-tracker options.

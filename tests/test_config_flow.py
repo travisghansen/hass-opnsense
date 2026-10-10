@@ -1349,22 +1349,10 @@ async def test_get_dt_entries_labels_device_with_only_mac(
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
         fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
-    client_cls = fake_client()
-
-    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
-        """Return an ARP row that carries a MAC but no hostname or address.
-
-        Returns:
-            Any: Single ARP row with only a MAC address.
-
-        Args:
-            self (Any): Flow instance receiving the patched method call.
-            resolve_hostnames (bool): Resolve hostnames provided by pytest or the test case.
-        """
-        return [{"mac": "11:22:33:44:55:66"}]
-
-    client_cls.get_arp_table = _get_arp_table
-    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
+    client = fake_client()()
+    client.get_arp_table = AsyncMock(return_value=[{"mac": "11:22:33:44:55:66"}])
+    client.get_ndp_table = AsyncMock(return_value=[])
+    _patch_device_tracker_client(monkeypatch, client)
 
     res = await cf_mod._get_dt_entries(
         hass=MagicMock(),
@@ -1393,25 +1381,15 @@ async def test_get_dt_entries_skips_arp_rows_without_mac(
         fake_client (Any): Mock OPNsense client used at the integration boundary.
         unidentifiable_row (dict[str, str]): ARP row lacking any usable MAC address.
     """
-    client_cls = fake_client()
-
-    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
-        """Return one identifiable ARP row alongside the unidentifiable row.
-
-        Returns:
-            Any: ARP rows including the parametrized row without a MAC.
-
-        Args:
-            self (Any): Flow instance receiving the patched method call.
-            resolve_hostnames (bool): Resolve hostnames provided by pytest or the test case.
-        """
-        return [
+    client = fake_client()()
+    client.get_arp_table = AsyncMock(
+        return_value=[
             unidentifiable_row,
             {"mac": "aa-bb-cc-00-00-01", "ip": "10.0.0.10"},
         ]
-
-    client_cls.get_arp_table = _get_arp_table
-    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
+    )
+    client.get_ndp_table = AsyncMock(return_value=[])
+    _patch_device_tracker_client(monkeypatch, client)
 
     res = await cf_mod._get_dt_entries(
         hass=MagicMock(),
@@ -2161,77 +2139,77 @@ async def test_device_tracker_picker_filters_malformed_ndp_rows(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failed_family", ["arp", "ndp"], ids=["arp-fails", "ndp-fails"])
-async def test_device_tracker_picker_keeps_other_family_on_lookup_failure(
+@pytest.mark.parametrize(
+    ("failed_family", "other_family_rows", "selected_devices", "expected_mac", "expected_label"),
+    [
+        pytest.param(
+            "arp",
+            [{"mac": "aa:bb:cc:dd:ee:ff", "ip": "2001:db8::1"}],
+            [],
+            "aa:bb:cc:dd:ee:ff",
+            "2001:db8::1",
+            id="arp-fails-ndp-populated",
+        ),
+        pytest.param(
+            "ndp",
+            [{"mac": "11:22:33:44:55:66", "ip": "192.0.2.20"}],
+            [],
+            "11:22:33:44:55:66",
+            "192.0.2.20",
+            id="ndp-fails-arp-populated",
+        ),
+        pytest.param(
+            "arp",
+            [],
+            ["AA-BB-CC-DD-EE-FF"],
+            "aa:bb:cc:dd:ee:ff",
+            "aa:bb:cc:dd:ee:ff",
+            id="arp-fails-ndp-empty-preserves-selection",
+        ),
+        pytest.param(
+            "ndp",
+            [],
+            ["AA-BB-CC-DD-EE-FF"],
+            "aa:bb:cc:dd:ee:ff",
+            "aa:bb:cc:dd:ee:ff",
+            id="ndp-fails-arp-empty-preserves-selection",
+        ),
+    ],
+)
+async def test_device_tracker_picker_keeps_successful_family_on_lookup_failure(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
     failed_family: str,
+    other_family_rows: list[dict[str, str]],
+    selected_devices: list[str],
+    expected_mac: str,
+    expected_label: str,
 ) -> None:
-    """A failure reading one neighbor table should leave choices from the other table.
+    """A failed lookup leaves the other family's choices and selected devices intact.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to replace client construction.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
         fake_client (Any): Factory for a fake OPNsense client.
         failed_family (str): Neighbor-table family configured to fail.
+        other_family_rows (list[dict[str, str]]): Rows returned by the successful neighbor lookup.
+        selected_devices (list[str]): Previously selected MAC addresses.
+        expected_mac (str): Expected selectable device value.
+        expected_label (str): Expected address or selected MAC in the rendered label.
     """
     cfg = make_config_entry(
         data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        options={},
-    )
-    client = fake_client()()
-    arp_row = {"mac": "11:22:33:44:55:66", "ip": "192.0.2.20"}
-    ndp_row = {"mac": "aa:bb:cc:dd:ee:ff", "ip": "2001:db8::1"}
-    if failed_family == "arp":
-        client.get_arp_table = AsyncMock(
-            side_effect=aiopnsense_exceptions.OPNsenseConnectionError("ARP unavailable")
-        )
-        client.get_ndp_table = AsyncMock(return_value=[ndp_row])
-        expected_mac, expected_ip = "aa:bb:cc:dd:ee:ff", "2001:db8::1"
-    else:
-        client.get_arp_table = AsyncMock(return_value=[arp_row])
-        client.get_ndp_table = AsyncMock(
-            side_effect=aiopnsense_exceptions.OPNsenseConnectionError("NDP unavailable")
-        )
-        expected_mac, expected_ip = "11:22:33:44:55:66", "192.0.2.20"
-    _patch_device_tracker_client(monkeypatch, client)
-
-    result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
-
-    choices = _device_tracker_selector_options(result)
-    assert set(choices) == {expected_mac}
-    assert expected_ip in choices[expected_mac]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("failed_family", ["arp", "ndp"], ids=["arp-fails", "ndp-fails"])
-async def test_device_tracker_picker_accepts_empty_table_when_other_lookup_fails(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-    fake_client: Any,
-    failed_family: str,
-) -> None:
-    """An empty successful neighbor table is enough to render the picker without an error.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
-        fake_client (Any): Factory for a fake OPNsense client.
-        failed_family (str): Neighbor-table family configured to fail.
-    """
-    cfg = make_config_entry(
-        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        options={CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
+        options={CONF_DEVICES: selected_devices},
     )
     client = fake_client()()
     if failed_family == "arp":
         client.get_arp_table = AsyncMock(
             side_effect=aiopnsense_exceptions.OPNsenseConnectionError("ARP unavailable")
         )
-        client.get_ndp_table = AsyncMock(return_value=[])
+        client.get_ndp_table = AsyncMock(return_value=other_family_rows)
     else:
-        client.get_arp_table = AsyncMock(return_value=[])
+        client.get_arp_table = AsyncMock(return_value=other_family_rows)
         client.get_ndp_table = AsyncMock(
             side_effect=aiopnsense_exceptions.OPNsenseConnectionError("NDP unavailable")
         )
@@ -2243,8 +2221,8 @@ async def test_device_tracker_picker_accepts_empty_table_when_other_lookup_fails
     assert result["type"] == "form"
     assert result["errors"] == {}
     choices = _device_tracker_selector_options(result)
-    assert set(choices) == {"aa:bb:cc:dd:ee:ff"}
-    assert "aa:bb:cc:dd:ee:ff" in choices["aa:bb:cc:dd:ee:ff"]
+    assert set(choices) == {expected_mac}
+    assert expected_label in choices[expected_mac]
     client.async_close.assert_awaited_once()
 
 
