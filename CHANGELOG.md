@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.2.0](https://github.com/travisghansen/hass-opnsense/compare/v1.1.0...v1.2.0) (2026-10-10)
+
+
+### Features
+
+* add interface toggle action ([#756](https://github.com/travisghansen/hass-opnsense/issues/756)) ([6981585](https://github.com/travisghansen/hass-opnsense/commit/69815852f88324b4c74b74a320be1e09b899b650))
+
+
+### Bug Fixes
+
+* **ci:** simplify pytest authorization and automated PR coverage ([#760](https://github.com/travisghansen/hass-opnsense/issues/760)) ([9657181](https://github.com/travisghansen/hass-opnsense/commit/9657181d1e903a5c4dc4bad072a9ca49ee2b7fd5))
+* gate Dependabot merges on validation checks ([#750](https://github.com/travisghansen/hass-opnsense/issues/750)) ([98773bb](https://github.com/travisghansen/hass-opnsense/commit/98773bbdf273248d2132d5a88190a73fd3f34eb9))
+* handle HA schema alias in mypy and pin mypy hook to Python 3.14 ([#757](https://github.com/travisghansen/hass-opnsense/issues/757)) ([d0a5835](https://github.com/travisghansen/hass-opnsense/commit/d0a5835a8f6a6a667e4306639a26fdcd98a42e7c))
+* remove redundant awesomeversion manifest requirement ([#745](https://github.com/travisghansen/hass-opnsense/issues/745)) ([4f28836](https://github.com/travisghansen/hass-opnsense/commit/4f28836dd8a134fa112577da0a7ea9c472b931a8))
+* **tests:** avoid deprecated DeviceEntry.config_entries in device tracker test ([#758](https://github.com/travisghansen/hass-opnsense/issues/758)) ([3166420](https://github.com/travisghansen/hass-opnsense/commit/31664204888810b0194e324c2738e546ae99b483))
+* Update contributing aiopnsense logs ([#740](https://github.com/travisghansen/hass-opnsense/issues/740)) ([1fc1970](https://github.com/travisghansen/hass-opnsense/commit/1fc19708c858e117d5c986dbbce16e309ea51e0a))
+
+
+### Dependencies
+
+* **aiopnsense:** bump to 1.2.0 ([#755](https://github.com/travisghansen/hass-opnsense/issues/755)) ([3d61008](https://github.com/travisghansen/hass-opnsense/commit/3d61008e87225437b7cca0acaad068afcf699963))
+* update prek hooks ([#751](https://github.com/travisghansen/hass-opnsense/issues/751)) ([eaf685f](https://github.com/travisghansen/hass-opnsense/commit/eaf685f742ee2b4d8910299cdd57dee4e9c9134c))
+
+
+### Miscellaneous Chores
+
+* refresh pydoclint and dependency automation ([#752](https://github.com/travisghansen/hass-opnsense/issues/752)) ([e370d53](https://github.com/travisghansen/hass-opnsense/commit/e370d532e95be59dfc96a12bcb5da2ff40d68629))
+* update prek hooks ([#736](https://github.com/travisghansen/hass-opnsense/issues/736)) ([ad46756](https://github.com/travisghansen/hass-opnsense/commit/ad467568df3d76ca3a3de6bc9cfd5dd996337988))
+* update prek hooks ([#741](https://github.com/travisghansen/hass-opnsense/issues/741)) ([33082d6](https://github.com/travisghansen/hass-opnsense/commit/33082d6c36101af7dd3fc507636707edccb9e8ee))
+
+
+### Build System
+
+* **deps-dev:** bump pytest-homeassistant-custom-component ([#754](https://github.com/travisghansen/hass-opnsense/issues/754)) ([3e7ed26](https://github.com/travisghansen/hass-opnsense/commit/3e7ed26c238bcf9347dbe320fdf07c2f3fc774bc))
+* **deps-dev:** bump the python-dependencies group with 2 updates ([#748](https://github.com/travisghansen/hass-opnsense/issues/748)) ([fd7c2fa](https://github.com/travisghansen/hass-opnsense/commit/fd7c2fae6d9e268991f58c28f5fe09d6fab121fb))
+* **deps-dev:** bump the python-dependencies group with 5 updates ([#753](https://github.com/travisghansen/hass-opnsense/issues/753)) ([3635628](https://github.com/travisghansen/hass-opnsense/commit/3635628e0f5569fa37ae93afbbb7820d06a44a32))
+* **deps:** bump astral-sh/setup-uv from 10.1.0 to 10.2.0 ([#747](https://github.com/travisghansen/hass-opnsense/issues/747)) ([8652dde](https://github.com/travisghansen/hass-opnsense/commit/8652ddeda4a3e0c6857f5b0a4a56660721dea3c0))
+* **deps:** bump py-cov-action/python-coverage-comment-action ([#746](https://github.com/travisghansen/hass-opnsense/issues/746)) ([b5a5b11](https://github.com/travisghansen/hass-opnsense/commit/b5a5b11aab86cd09acc6362a5c4fd576f2926100))
+
+
+### Continuous Integration
+
+* update prek autoupdate workflow ([#744](https://github.com/travisghansen/hass-opnsense/issues/744)) ([ebcc6b0](https://github.com/travisghansen/hass-opnsense/commit/ebcc6b057f71d0d8e0c89a5a8c7ad9df464f2fbd))
+
 ## [1.1.0](https://github.com/travisghansen/hass-opnsense/compare/v1.0.8...v1.1.0) (2026-09-13)
 
 
