@@ -2869,6 +2869,85 @@ async def test_async_setup_entry_retains_only_failed_family_inventory(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("reload_state"),
+    [
+        pytest.param(
+            {
+                "arp_table": None,
+                "ndp_table": [],
+                "unavailable_device_tracker_tables": ["arp_table"],
+            },
+            id="arp_outage_ndp_empty",
+        ),
+        pytest.param(
+            {
+                "arp_table": None,
+                "ndp_table": None,
+                "unavailable_device_tracker_tables": ["arp_table", "ndp_table"],
+            },
+            id="both_tables_unavailable",
+        ),
+    ],
+)
+async def test_track_all_absent_device_keeps_last_family_across_arp_outage_reload(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    fake_reg_factory: Any,
+    reload_state: dict[str, Any],
+) -> None:
+    """A tracker absent from a successful scan keeps its last family across a later outage.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate registry access.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        fake_reg_factory (Any): Factory for the in-memory device registry test double.
+        reload_state (dict[str, Any]): Coordinator state present when the entry reloads.
+    """
+    mac = "aa:bb:cc:dd:ee:01"
+    entry = make_config_entry(
+        data={
+            TRACKED_MACS: [mac],
+            TRACKED_ARP_MACS: [mac],
+            TRACKED_NDP_MACS: [],
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+        },
+        options={CONF_DEVICE_TRACKER_ENABLED: True},
+        entry_id="e_absent_device_outage",
+    )
+    entry.add_to_hass(ph_hass)
+    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+
+    dt_mod._update_track_all_source_inventory(ph_hass, entry, {"arp_table": [], "ndp_table": []})
+    assert entry.data[TRACKED_ARP_MACS] == [mac]
+    assert entry.data[TRACKED_NDP_MACS] == []
+
+    entity_registry = er.async_get(ph_hass)
+    registered = entity_registry.async_get_or_create(
+        Platform.DEVICE_TRACKER,
+        DOMAIN,
+        slugify(f"dev1_mac_{mac}"),
+        config_entry=entry,
+    )
+    fake = fake_reg_factory(device_exists=False)
+    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
+    monkeypatch.setattr(dt_mod, "is_reconciliation_active", lambda _entry: False)
+    monkeypatch.setattr(dt_mod, "record_desired_entities", MagicMock())
+    coordinator.data = reload_state
+    added: list[Any] = []
+
+    await dt_mod.async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
+
+    assert [entity.mac_address for entity in added] == [mac]
+    assert entity_registry.async_get(registered.entity_id) == registered
+    assert entry.data[TRACKED_MACS] == [mac]
+
+
+@pytest.mark.asyncio
 async def test_setup_inventory_write_preserves_next_options_reload(
     monkeypatch: pytest.MonkeyPatch,
     hass: HomeAssistant,

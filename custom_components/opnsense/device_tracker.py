@@ -482,8 +482,9 @@ def _update_track_all_source_inventory(
     """Update family provenance for already tracked MACs from complete table results.
 
     Failed or malformed family tables retain their last persisted inventory. Successful table
-    results replace that family's membership, intersected with the existing tracked-MAC union,
-    so coordinator polling never discovers new entities.
+    results replace a MAC's membership only when that MAC is seen in an authoritative scan;
+    otherwise its last known family membership is kept. Membership is limited to the existing
+    tracked-MAC union, so coordinator polling never discovers new entities.
 
     Args:
         hass (HomeAssistant): Home Assistant runtime used to persist config-entry data.
@@ -533,16 +534,24 @@ def _update_track_all_source_inventory(
         if isinstance(ndp_entries, list)
         else []
     )
-    updated_arp_macs = [
-        mac_address
-        for mac_address in tracked_macs
-        if mac_address in (current_arp_macs if arp_authoritative else previous_arp_macs)
-    ]
-    updated_ndp_macs = [
-        mac_address
-        for mac_address in tracked_macs
-        if mac_address in (current_ndp_macs if ndp_authoritative else previous_ndp_macs)
-    ]
+    updated_arp_macs: list[str] = []
+    updated_ndp_macs: list[str] = []
+    for mac_address in tracked_macs:
+        seen_in_arp = arp_authoritative and mac_address in current_arp_macs
+        seen_in_ndp = ndp_authoritative and mac_address in current_ndp_macs
+        if seen_in_arp or seen_in_ndp:
+            # Positively seen: authoritative families reflect the scan, others keep provenance.
+            in_arp = seen_in_arp if arp_authoritative else mac_address in previous_arp_macs
+            in_ndp = seen_in_ndp if ndp_authoritative else mac_address in previous_ndp_macs
+        else:
+            # Absent from every authoritative scan: keep the last known membership so a later
+            # outage of the other family cannot orphan the device.
+            in_arp = mac_address in previous_arp_macs
+            in_ndp = mac_address in previous_ndp_macs
+        if in_arp:
+            updated_arp_macs.append(mac_address)
+        if in_ndp:
+            updated_ndp_macs.append(mac_address)
     if (
         config_entry.data.get(TRACKED_ARP_MACS) == updated_arp_macs
         and config_entry.data.get(TRACKED_NDP_MACS) == updated_ndp_macs

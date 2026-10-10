@@ -43,9 +43,9 @@ IP address uses IPv4 when available and otherwise uses IPv6.
 
 Use the manual MAC field when:
 
-- a device does not appear in the ARP-based list yet
+- a device does not appear in the ARP/NDP-based list yet
 - you want to preconfigure tracking before the device is online
-- the device is quiet on the network and disappears from the ARP table too often
+- the device is quiet on the network and disappears from the ARP or NDP table too often
 
 You can enter one or more MAC addresses separated by commas or new lines.
 
