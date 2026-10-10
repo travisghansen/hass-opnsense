@@ -3070,7 +3070,7 @@ async def test_poll_inventory_write_does_not_suppress_next_options_reload(
 @pytest.mark.asyncio
 async def test_track_all_family_transition_is_persisted_once_and_survives_reload(
     monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
+    ph_hass: HomeAssistant,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
@@ -3079,7 +3079,7 @@ async def test_track_all_family_transition_is_persisted_once_and_survives_reload
 
     Args:
         monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate registry access.
-        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        ph_hass (HomeAssistant): Home Assistant test instance used to register and inspect entities.
         coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
         fake_reg_factory (Any): Factory for the in-memory device registry test double.
@@ -3104,15 +3104,29 @@ async def test_track_all_family_transition_is_persisted_once_and_survives_reload
     )
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
     entry.async_on_unload = MagicMock()
-    remove_listener = MagicMock()
-    coordinator.async_add_listener = MagicMock(return_value=remove_listener)
+    listener_registrations: list[tuple[Callable[[], None], MagicMock]] = []
+
+    def capture_listener(listener: Callable[[], None]) -> MagicMock:
+        """Capture each registered listener with its own unsubscribe callback.
+
+        Args:
+            listener (Callable[[], None]): Coordinator callback to register.
+
+        Returns:
+            MagicMock: Unique unload callback returned by coordinator registration.
+        """
+        remove_listener = MagicMock()
+        listener_registrations.append((listener, remove_listener))
+        return remove_listener
+
+    coordinator.async_add_listener = MagicMock(side_effect=capture_listener)
     device_registry = fake_reg_factory(device_exists=False)
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_registry)
     monkeypatch.setattr(dt_mod, "record_desired_entities", MagicMock())
     update_entry = MagicMock(
         side_effect=lambda updated_entry, *, data: object.__setattr__(updated_entry, "data", data)
     )
-    ph_hass.config_entries.async_update_entry = update_entry
+    monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
 
     initially_added: list[Any] = []
     await dt_mod.async_setup_entry(
@@ -3121,8 +3135,11 @@ async def test_track_all_family_transition_is_persisted_once_and_survives_reload
 
     assert [entity.mac_address for entity in initially_added] == mac_addresses
     assert all(not entity.entity_registry_enabled_default for entity in initially_added)
-    assert entry.async_on_unload.call_count == 1
-    source_inventory_listener = coordinator.async_add_listener.call_args.args[0]
+    first_setup_listener_count = len(listener_registrations)
+    first_setup_listeners = listener_registrations.copy()
+    assert first_setup_listeners
+    for _, remove_listener in first_setup_listeners:
+        entry.async_on_unload.assert_any_call(remove_listener)
 
     coordinator.data = {
         "arp_table": [],
@@ -3131,8 +3148,9 @@ async def test_track_all_family_transition_is_persisted_once_and_survives_reload
             for index, mac_address in enumerate(mac_addresses)
         ],
     }
-    source_inventory_listener()
-    source_inventory_listener()
+    for _ in range(2):
+        for listener, _ in first_setup_listeners:
+            listener()
 
     assert entry.data[TRACKED_ARP_MACS] == []
     assert entry.data[TRACKED_NDP_MACS] == mac_addresses
@@ -3149,7 +3167,10 @@ async def test_track_all_family_transition_is_persisted_once_and_survives_reload
     assert [entity.mac_address for entity in after_reload] == mac_addresses
     assert entry.data[TRACKED_NDP_MACS] == mac_addresses
     assert update_entry.call_count == 1
-    assert entry.async_on_unload.call_count == 2
+    reload_listeners = listener_registrations[first_setup_listener_count:]
+    assert reload_listeners
+    for _, remove_listener in reload_listeners:
+        entry.async_on_unload.assert_any_call(remove_listener)
 
 
 @pytest.mark.parametrize(

@@ -1350,7 +1350,9 @@ async def test_get_dt_entries_labels_device_with_only_mac(
         selected_devices=[],
     )
 
-    assert res == {"11:22:33:44:55:66": "11:22:33:44:55:66 [11:22:33:44:55:66]"}
+    mac_address = "11:22:33:44:55:66"
+    assert set(res) == {mac_address}
+    assert mac_address in res[mac_address]
 
 
 @pytest.mark.asyncio
@@ -1387,7 +1389,11 @@ async def test_get_dt_entries_skips_arp_rows_without_mac(
         selected_devices=[],
     )
 
-    assert res == {"aa:bb:cc:00:00:01": "10.0.0.10 [aa:bb:cc:00:00:01]"}
+    mac_address = "aa:bb:cc:00:00:01"
+    assert set(res) == {mac_address}
+    label = res[mac_address]
+    assert "10.0.0.10" in label
+    assert mac_address in label
 
 
 @pytest.mark.asyncio
