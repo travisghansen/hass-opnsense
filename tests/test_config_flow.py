@@ -1340,6 +1340,89 @@ async def test_get_dt_entries_skips_non_mapping_arp_rows(
 
 
 @pytest.mark.asyncio
+async def test_get_dt_entries_labels_device_with_only_mac(
+    monkeypatch: pytest.MonkeyPatch, fake_client: Any
+) -> None:
+    """A detected device with no hostname and no IP should be labelled by its MAC only.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+    """
+    client_cls = fake_client()
+
+    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
+        """Return an ARP row that carries a MAC but no hostname or address.
+
+        Returns:
+            Any: Single ARP row with only a MAC address.
+
+        Args:
+            self (Any): Flow instance receiving the patched method call.
+            resolve_hostnames (bool): Resolve hostnames provided by pytest or the test case.
+        """
+        return [{"mac": "11:22:33:44:55:66"}]
+
+    client_cls.get_arp_table = _get_arp_table
+    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
+
+    res = await cf_mod._get_dt_entries(
+        hass=MagicMock(),
+        config={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
+        selected_devices=[],
+    )
+
+    assert res == {"11:22:33:44:55:66": "11:22:33:44:55:66 [11:22:33:44:55:66]"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "unidentifiable_row",
+    [{"ip": "10.0.0.9"}, {"mac": "", "ip": "10.0.0.9"}, {"hostname": "ghost"}],
+    ids=["missing-mac-key", "blank-mac", "hostname-only"],
+)
+async def test_get_dt_entries_skips_arp_rows_without_mac(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_client: Any,
+    unidentifiable_row: dict[str, str],
+) -> None:
+    """ARP rows with neither a raw nor a normalized MAC must not become device choices.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        fake_client (Any): Mock OPNsense client used at the integration boundary.
+        unidentifiable_row (dict[str, str]): ARP row lacking any usable MAC address.
+    """
+    client_cls = fake_client()
+
+    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
+        """Return one identifiable ARP row alongside the unidentifiable row.
+
+        Returns:
+            Any: ARP rows including the parametrized row without a MAC.
+
+        Args:
+            self (Any): Flow instance receiving the patched method call.
+            resolve_hostnames (bool): Resolve hostnames provided by pytest or the test case.
+        """
+        return [
+            unidentifiable_row,
+            {"mac": "aa-bb-cc-00-00-01", "ip": "10.0.0.10"},
+        ]
+
+    client_cls.get_arp_table = _get_arp_table
+    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
+
+    res = await cf_mod._get_dt_entries(
+        hass=MagicMock(),
+        config={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
+        selected_devices=[],
+    )
+
+    assert res == {"aa:bb:cc:00:00:01": "10.0.0.10 [aa:bb:cc:00:00:01]"}
+
+
+@pytest.mark.asyncio
 async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> None:
     """_get_dt_entries should close the client and request propagated errors.
 

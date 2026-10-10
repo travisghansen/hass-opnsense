@@ -2141,6 +2141,52 @@ async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
     client.get_ndp_table.assert_awaited_with()
 
 
+@pytest.mark.asyncio
+async def test_device_tracker_refresh_tolerates_client_without_ndp_method(
+    make_config_entry: Callable[..., MockConfigEntry],
+    ph_hass: HomeAssistant,
+) -> None:
+    """An older client without NDP support yields a None NDP table without failing the poll.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        ph_hass (HomeAssistant): Home Assistant instance used for coordinator refreshes.
+    """
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
+    arp_rows = [{"mac": "00:11:22:33:44:55", "ip": "192.0.2.2"}]
+    client = MagicMock(
+        spec=[
+            "get_device_unique_id",
+            "get_host_firmware_version",
+            "get_system_info",
+            "get_arp_table",
+            "get_query_counts",
+            "reset_query_counts",
+        ]
+    )
+    client.get_device_unique_id = AsyncMock(return_value="id")
+    client.get_host_firmware_version = AsyncMock(return_value="26.1")
+    client.get_system_info = AsyncMock(return_value={})
+    client.get_arp_table = AsyncMock(return_value=arp_rows)
+    client.get_query_counts = AsyncMock(return_value=0)
+    client.reset_query_counts = AsyncMock()
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass=ph_hass,
+        client=client,
+        name="device tracker",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+        device_tracker_coordinator=True,
+    )
+
+    await coordinator.async_refresh()
+
+    assert coordinator.last_update_success is True
+    assert coordinator.data["arp_table"] == arp_rows
+    assert coordinator.data["ndp_table"] is None
+
+
 @pytest.mark.parametrize(
     ("options", "expected"),
     [

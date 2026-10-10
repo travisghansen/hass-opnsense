@@ -218,18 +218,16 @@ def _mac_addresses_from_table_entries(entries: list[Any], *, ndp: bool) -> list[
     return mac_addresses
 
 
-def _track_all_table_entries_are_complete(entries: object, *, ndp: bool) -> bool:
+def _track_all_table_entries_are_complete(entries: list[Any], *, ndp: bool) -> bool:
     """Return whether a neighbor-table response can safely reconcile track-all devices.
 
     Args:
-        entries (object): Raw ARP or NDP response to validate.
+        entries (list[Any]): Raw ARP or NDP rows already known to be a list.
         ndp (bool): Whether the response is an NDP table, whose MACs must be complete.
 
     Returns:
         bool: Whether the response is a usable authoritative list.
     """
-    if not isinstance(entries, list):
-        return False
     for entry in entries:
         if not isinstance(entry, MutableMapping):
             return False
