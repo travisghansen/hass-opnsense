@@ -69,6 +69,8 @@
 - Use `importlib` only in workflow script tests; minimize `cast` and `Any` unless the test boundary requires them.
 - One test module per integration source file; achieve high coverage (target >= 80%).
 - Parameterize tests when appropriate; avoid duplicate test functions.
+- Add or update tests when they protect a meaningful behavioral contract or reproduce a bug that existing coverage would miss. Exercise observable behavior at the relevant interface, including failure paths when material; avoid tests that merely mirror implementation details, assert configuration text, or duplicate existing checks.
+- For documentation, declarative configuration, and small workflow changes, use relevant validators, linters, or focused runtime checks when those provide sufficient confidence. Add automated tests when executable logic or material operational risk warrants them; keep workflow tests separate from unrelated integration tests.
 - Mock `aiopnsense.OPNsenseClient` behavior at the integration boundary. Do not add tests for vendored or copied backend-client internals in this repository.
 - Cover config-entry migrations, entity registry cleanup, and firmware-gated behavior when changing setup, coordinator, or switch logic.
 
@@ -90,4 +92,4 @@
 
 - When editing code, prefer fixing root causes over surface patches.
 - Keep changes minimal and consistent with the codebase style.
-- Add tests for any changed behavior and update documentation if needed.
+- Verify changes in proportion to their risk and update documentation if needed. Follow the Testing guidance above when deciding whether to add tests.

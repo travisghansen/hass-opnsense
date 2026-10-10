@@ -13,6 +13,7 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.pull_request.user.login == 'prek-autoupdate-bot' ||
       github.event.pull_request.user.login == 'dependabot[bot]' ||
+      startsWith(github.event.pull_request.head.ref, 'release-please--') ||
       !(contains(github.event.pull_request.labels.*.name, 'dependencies') ||
       github.event.pull_request.user.type == 'Bot')
     runs-on: ubuntu-latest
@@ -80,10 +81,12 @@ jobs:
         run: uv run --locked --group pytest pytest
 
       - name: Generate coverage comment
+        # Keep required tests running for update and release PRs without posting coverage.
         if: >-
           github.event_name == 'pull_request' &&
           github.event.pull_request.user.login != 'prek-autoupdate-bot' &&
-          github.event.pull_request.user.login != 'dependabot[bot]'
+          github.event.pull_request.user.login != 'dependabot[bot]' &&
+          !startsWith(github.event.pull_request.head.ref, 'release-please--')
         id: coverage_comment
         uses: py-cov-action/python-coverage-comment-action@v4.5
         with:
