@@ -24,7 +24,9 @@ from custom_components.opnsense.const import (
     CONF_ENTRY_TYPE,
     DOMAIN,
     ENTRY_TYPE_CARP,
+    TRACKED_ARP_MACS,
     TRACKED_MACS,
+    TRACKED_NDP_MACS,
 )
 from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
 
@@ -2255,6 +2257,48 @@ def test_entry_matches_snapshot_invariants(
             allow_tracked_macs_mutation=allow_tracked_macs_mutation,
         )
         == expected_match
+    )
+
+
+@pytest.mark.parametrize(
+    ("key", "allow_tracked_macs_mutation", "expected_match"),
+    [
+        pytest.param(TRACKED_ARP_MACS, False, True, id="arp-strict-ignored"),
+        pytest.param(TRACKED_ARP_MACS, True, True, id="arp-recovery-ignored"),
+        pytest.param(TRACKED_NDP_MACS, False, True, id="ndp-strict-ignored"),
+        pytest.param(TRACKED_NDP_MACS, True, True, id="ndp-recovery-ignored"),
+        pytest.param(TRACKED_MACS, False, False, id="tracked-macs-strict-mismatch"),
+        pytest.param(TRACKED_MACS, True, True, id="tracked-macs-recovery-ignored"),
+        pytest.param("some_other_key", False, False, id="other-strict-mismatch"),
+        pytest.param("some_other_key", True, False, id="other-recovery-mismatch"),
+    ],
+)
+def test_entry_matches_snapshot_ignores_derived_family_inventories(
+    key: str,
+    allow_tracked_macs_mutation: bool,
+    expected_match: bool,
+) -> None:
+    """Runtime-derived ARP/NDP inventories never cause a snapshot mismatch.
+
+    Args:
+        key (str): Config-entry data key whose value changes after the snapshot.
+        allow_tracked_macs_mutation (bool): Whether recovery-mode matching is used.
+        expected_match (bool): Whether the entry should still match the snapshot.
+    """
+    entry = _make_entry()
+    baseline = {**entry.data, key: ["AA:BB:CC:DD"]}
+    object.__setattr__(entry, "data", {**baseline, key: ["11:22:33:44"]})
+
+    assert (
+        repairs._entry_matches_snapshot(
+            entry=entry,
+            entry_id=entry.entry_id,
+            data_snapshot=baseline,
+            options_snapshot=dict(entry.options),
+            unique_id_snapshot=entry.unique_id,
+            allow_tracked_macs_mutation=allow_tracked_macs_mutation,
+        )
+        is expected_match
     )
 
 
