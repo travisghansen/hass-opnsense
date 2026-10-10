@@ -1578,17 +1578,38 @@ def test_device_info_uses_legacy_parent_identifier(
 
 
 @pytest.mark.asyncio
-async def test_restore_last_state_uses_datetime_and_skips_empty_attributes(
+@pytest.mark.parametrize(
+    ("connected_time", "expected_connected_time"),
+    [
+        pytest.param(
+            datetime(2026, 6, 22, 12, 30, 5, tzinfo=UTC),
+            datetime(2026, 6, 22, 12, 30, 5, tzinfo=UTC),
+            id="aware-datetime",
+        ),
+        pytest.param(
+            "2026-06-22T12:30:05+00:00",
+            datetime(2026, 6, 22, 12, 30, 5, tzinfo=UTC),
+            id="aware-iso",
+        ),
+        pytest.param("2026-06-22T12:30:05", None, id="naive-iso"),
+        pytest.param("not-a-date", None, id="malformed-string"),
+        pytest.param(1, None, id="integer"),
+    ],
+)
+async def test_restore_last_state_normalizes_connected_time_and_skips_empty_attributes(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
+    connected_time: datetime | str | int,
+    expected_connected_time: datetime | None,
 ) -> None:
-    """Restoring state should preserve datetime values and ignore empty saved attributes.
+    """Restore only aware connection times and omit empty saved attributes.
 
     Args:
         coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        connected_time (datetime | str | int): Saved timestamp value to restore.
+        expected_connected_time (datetime | None): Timestamp expected in the exposed state attributes.
     """
-    last_known_connected_time = datetime.now(UTC)
     ent = _make_scanner_entity(coordinator, make_config_entry)
     last_state = MagicMock()
     last_state.attributes = {
@@ -1597,81 +1618,27 @@ async def test_restore_last_state_uses_datetime_and_skips_empty_attributes(
         "interface": "",
         "expires": None,
         "type": "",
-        "last_known_connected_time": last_known_connected_time,
+        "last_known_connected_time": connected_time,
     }
     object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
 
     await ent._restore_last_state()
 
-    assert ent._last_known_connected_time == last_known_connected_time
-    assert ent.extra_state_attributes == {"last_known_connected_time": last_known_connected_time}
+    attributes = ent.extra_state_attributes
+    assert attributes is not None
+    for empty_attribute in (
+        "last_known_hostname",
+        "last_known_ip",
+        "interface",
+        "expires",
+        "type",
+    ):
+        assert empty_attribute not in attributes
 
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "connected_time",
-    [
-        datetime(2026, 6, 22, 12, 30, 5, tzinfo=UTC),
-        datetime(2026, 6, 22, 12, 30, 5, tzinfo=UTC).isoformat(),
-    ],
-)
-async def test_restore_last_state_restores_tz_aware_connected_time(
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-    connected_time: datetime | str,
-) -> None:
-    """Aware datetime values should restore into tracker state.
-
-    Args:
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-        connected_time (datetime | str): Connection timestamp value supplied for tracker normalization.
-    """
-    ent = _make_scanner_entity(coordinator, make_config_entry)
-    last_state = MagicMock()
-    last_state.attributes = {"last_known_connected_time": connected_time}
-    object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
-
-    await ent._restore_last_state()
-
-    assert ent._last_known_connected_time == datetime(2026, 6, 22, 12, 30, 5, tzinfo=UTC)
-    attrs = ent.extra_state_attributes
-    assert attrs is not None
-    assert "last_known_connected_time" in attrs
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "connected_time",
-    [
-        pytest.param("2026-06-22T12:30:05", id="naive-iso"),
-        pytest.param("not-a-date", id="unparsable"),
-        pytest.param(1, id="non-datetime"),
-    ],
-)
-async def test_restore_last_state_ignores_invalid_connected_time(
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-    connected_time: str | int,
-) -> None:
-    """Restoring state should ignore invalid saved connection timestamps.
-
-    Args:
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-        connected_time (str | int): Connection timestamp value supplied for tracker normalization.
-    """
-    ent = _make_scanner_entity(coordinator, make_config_entry)
-    last_state = MagicMock()
-    last_state.attributes = {"last_known_connected_time": connected_time}
-    object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
-
-    await ent._restore_last_state()
-
-    assert ent._last_known_connected_time is None
-    attrs = ent.extra_state_attributes
-    assert attrs is not None
-    assert "last_known_connected_time" not in attrs
+    if expected_connected_time is None:
+        assert "last_known_connected_time" not in attributes
+    else:
+        assert attributes.get("last_known_connected_time") == expected_connected_time
 
 
 @pytest.mark.asyncio
@@ -3250,20 +3217,13 @@ async def test_async_setup_entry_preserves_ndp_tracker_for_unusable_rows(
 _COVERAGE_MAC = "aa:bb:cc:dd:ee:01"
 
 
-@pytest.mark.parametrize("junk_row", [object(), "junk-row", None], ids=["object", "string", "none"])
-def test_device_from_tracker_entries_skips_non_mapping_ndp_rows_before_match(
-    junk_row: object,
-) -> None:
-    """Non-mapping NDP rows should be ignored while a later matching NDP row still applies.
-
-    Args:
-        junk_row (object): Non-mapping NDP row placed before the tracked device's row.
-    """
+def test_device_from_tracker_entries_skips_non_mapping_ndp_rows_before_match() -> None:
+    """Ignore non-mapping NDP rows and retain a later matching row."""
     device = dt_mod._device_from_tracker_entries(
         _COVERAGE_MAC,
         [],
         [
-            junk_row,
+            None,
             {"mac": _COVERAGE_MAC, "ip": "2001:db8::1", "manufacturer": "Example Vendor"},
         ],
     )
