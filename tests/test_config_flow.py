@@ -115,16 +115,6 @@ def _device_tracker_selector_options(result: dict[str, Any]) -> dict[str, str]:
     return {option["value"]: option["label"] for option in device_selector.config["options"]}
 
 
-def _patch_device_tracker_client(monkeypatch: pytest.MonkeyPatch, client: Any) -> None:
-    """Patch client construction to return a configured API-boundary double.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        client (Any): Client double returned to the options flow.
-    """
-    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
-
-
 class _CarpFlowClient:
     """Fake client for CARP config-flow validation and setup tests."""
 
@@ -1352,7 +1342,7 @@ async def test_get_dt_entries_labels_device_with_only_mac(
     client = fake_client()()
     client.get_arp_table = AsyncMock(return_value=[{"mac": "11:22:33:44:55:66"}])
     client.get_ndp_table = AsyncMock(return_value=[])
-    _patch_device_tracker_client(monkeypatch, client)
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     res = await cf_mod._get_dt_entries(
         hass=MagicMock(),
@@ -1389,7 +1379,7 @@ async def test_get_dt_entries_skips_arp_rows_without_mac(
         ]
     )
     client.get_ndp_table = AsyncMock(return_value=[])
-    _patch_device_tracker_client(monkeypatch, client)
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     res = await cf_mod._get_dt_entries(
         hass=MagicMock(),
@@ -2036,7 +2026,7 @@ async def test_device_tracker_handles_both_neighbor_lookup_failures(
         side_effect=aiopnsense_exceptions.OPNsenseConnectionError("NDP lookup failed")
     )
     client.async_close = AsyncMock()
-    _patch_device_tracker_client(monkeypatch, client)
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     res = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
     assert res["type"] == "form"
@@ -2092,7 +2082,7 @@ async def test_device_tracker_picker_groups_neighbor_addresses_by_mac(
     client = fake_client()()
     client.get_arp_table = AsyncMock(return_value=arp_rows)
     client.get_ndp_table = AsyncMock(return_value=ndp_rows)
-    _patch_device_tracker_client(monkeypatch, client)
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
 
@@ -2131,7 +2121,7 @@ async def test_device_tracker_picker_filters_malformed_ndp_rows(
             {"mac": "aa:bb:cc:dd:ee:02", "ip": "192.0.2.2"},
         ]
     )
-    _patch_device_tracker_client(monkeypatch, client)
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
 
@@ -2214,7 +2204,7 @@ async def test_device_tracker_picker_keeps_successful_family_on_lookup_failure(
             side_effect=aiopnsense_exceptions.OPNsenseConnectionError("NDP unavailable")
         )
     client.async_close = AsyncMock()
-    _patch_device_tracker_client(monkeypatch, client)
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
 
@@ -2248,7 +2238,7 @@ async def test_device_tracker_handles_arp_failure_without_ndp_support(
         side_effect=aiopnsense_exceptions.OPNsenseConnectionError("ARP unavailable")
     )
     client.async_close = AsyncMock()
-    _patch_device_tracker_client(monkeypatch, client)
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
 
@@ -2280,7 +2270,7 @@ async def test_device_tracker_picker_supports_client_without_ndp_method(
     client.get_arp_table = AsyncMock(
         return_value=[{"mac": "11:22:33:44:55:66", "ip": "192.0.2.20"}]
     )
-    _patch_device_tracker_client(monkeypatch, client)
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
 
