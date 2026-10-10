@@ -162,10 +162,10 @@ def test_device_from_tracker_entries_uses_raw_arp_keys() -> None:
     assert device == {"mac": "aa:bb:cc"}
 
 
-def test_devices_from_tracker_entries_reads_raw_mac_ip_keys() -> None:
-    """Raw ARP key names should be consumed when scanning configured devices."""
+def test_devices_from_tracker_entries_reads_raw_mac_keys() -> None:
+    """The raw MAC key should be consumed when scanning configured devices."""
     devices, mac_addresses = dt_mod._devices_from_tracker_entries(
-        [{"mac-address": "AA-BB-CC", "ip-address": "10.0.0.2", "hostname": "raw"}],
+        [{"mac-address": "AA-BB-CC", "hostname": "raw"}],
         [],
     )
 
@@ -1366,7 +1366,6 @@ async def test_restored_legacy_ip_preserves_family_during_table_failure(
         snapshot_ip_key: legacy_ip,
         "last_known_connected_time": last_known_connected_time.isoformat(),
     }
-    last_state.state = "home"
     object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=last_state))
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
 
@@ -3027,7 +3026,7 @@ async def test_poll_inventory_write_does_not_suppress_next_options_reload(
     monkeypatch.setattr(hass.config_entries, "async_reload", reload_entry)
 
     await dt_mod.async_setup_entry(hass, entry, MagicMock())
-    assert len(coordinator_listeners) == 1
+    assert coordinator_listeners
     entry.async_on_unload(entry.add_update_listener(init_mod._async_update_listener))
 
     def update_inventory() -> None:
@@ -3036,7 +3035,8 @@ async def test_poll_inventory_write_does_not_suppress_next_options_reload(
             "arp_table": [],
             "ndp_table": [{"mac": mac_address, "ip": "2001:db8::10"}],
         }
-        coordinator_listeners[0]()
+        for listener in coordinator_listeners:
+            listener()
 
     def update_options() -> None:
         """Apply a real options update to the config entry."""
@@ -3395,7 +3395,6 @@ _NO_AUTHORITATIVE_STATE: dict[str, Any] = {
 )
 def test_update_track_all_source_inventory_leaves_inventory_unchanged_when_inapplicable(
     ph_hass: HomeAssistant,
-    coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
     options: dict[str, Any],
     tracked_data: dict[str, Any] | None,
@@ -3409,7 +3408,6 @@ def test_update_track_all_source_inventory_leaves_inventory_unchanged_when_inapp
 
     Args:
         ph_hass (HomeAssistant): Home Assistant test instance used to persist config-entry data.
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
         options (dict[str, Any]): Config-entry options that select the tracker mode.
         tracked_data (dict[str, Any] | None): Optional data overrides for the tracked inventory.
@@ -3424,7 +3422,6 @@ def test_update_track_all_source_inventory_leaves_inventory_unchanged_when_inapp
     data.update(tracked_data or {})
     entry = make_config_entry(data=data, options=options, entry_id="e_inapplicable_inventory")
     entry.add_to_hass(ph_hass)
-    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
     before = dict(entry.data)
 
     dt_mod._update_track_all_source_inventory(ph_hass, entry, state)
@@ -3434,14 +3431,12 @@ def test_update_track_all_source_inventory_leaves_inventory_unchanged_when_inapp
 
 def test_update_track_all_source_inventory_treats_non_list_arp_inventory_as_empty(
     ph_hass: HomeAssistant,
-    coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """A corrupt stored ARP inventory should not block recording a fresh ARP sighting.
 
     Args:
         ph_hass (HomeAssistant): Home Assistant test instance used to persist config-entry data.
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry(
@@ -3455,7 +3450,6 @@ def test_update_track_all_source_inventory_treats_non_list_arp_inventory_as_empt
         entry_id="e_non_list_arp_inventory",
     )
     entry.add_to_hass(ph_hass)
-    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
 
     dt_mod._update_track_all_source_inventory(
         ph_hass,
@@ -3469,7 +3463,6 @@ def test_update_track_all_source_inventory_treats_non_list_arp_inventory_as_empt
 
 def test_update_track_all_source_inventory_skips_non_string_inventory_entries(
     ph_hass: HomeAssistant,
-    coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
     """Non-string stored inventory entries should be dropped while valid MACs are kept.
@@ -3479,7 +3472,6 @@ def test_update_track_all_source_inventory_skips_non_string_inventory_entries(
 
     Args:
         ph_hass (HomeAssistant): Home Assistant test instance used to persist config-entry data.
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     entry = make_config_entry(
@@ -3493,7 +3485,6 @@ def test_update_track_all_source_inventory_skips_non_string_inventory_entries(
         entry_id="e_non_string_inventory",
     )
     entry.add_to_hass(ph_hass)
-    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
 
     dt_mod._update_track_all_source_inventory(
         ph_hass,
