@@ -189,9 +189,9 @@ The options flow supports three modes:
 * Track all detected devices
 * Track only selected devices
 
-The selectable device list is built from the current OPNsense ARP table, so only recently seen devices appear automatically. Devices that are not currently visible can still be added manually by MAC address.
+The selectable device list is built from the current OPNsense ARP and NDP tables, so only recently seen devices appear automatically. Devices that are not currently visible can still be added manually by MAC address.
 
-See [Device Tracker Guide](docs/device_tracker.md) for setup details, ARP behavior, and troubleshooting.
+See [Device Tracker Guide](docs/device_tracker.md) for setup details, ARP and NDP behavior, and troubleshooting.
 
 ### CARP VIP Entities and Limitations
 

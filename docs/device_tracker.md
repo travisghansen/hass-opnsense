@@ -24,19 +24,28 @@ Choose `Track only selected devices` to limit tracking to specific phones, table
 
 ### Where the device list comes from
 
-The selectable device list is built from the current OPNsense ARP table. That means:
+The selectable device list combines OPNsense's ARP and NDP tables. Entries with the same MAC
+address become one tracker, so a dual-stack device does not get separate IPv4 and IPv6 entities.
+IPv6 neighbors include SLAAC, DHCPv6, and temporary addresses when OPNsense reports them. That
+means:
 
 - only devices seen recently by OPNsense appear automatically
 - a device may be missing if it has been idle for too long
 - a device may not appear until it talks on the network again
+- an IPv6-only device needs the `Diagnostics: NDP Table` permission
+- ARP and NDP permissions are independent; a missing permission for one table does not disable
+  tracking from the other table
+
+Each tracker exposes `ipv4_addresses` and `ipv6_addresses` state attributes. The entity's primary
+IP address uses IPv4 when available and otherwise uses IPv6.
 
 ### When to use manual MAC addresses
 
 Use the manual MAC field when:
 
-- a device does not appear in the ARP-based list yet
+- a device does not appear in the ARP/NDP-based list yet
 - you want to preconfigure tracking before the device is online
-- the device is quiet on the network and disappears from the ARP table too often
+- the device is quiet on the network and disappears from the ARP or NDP table too often
 
 You can enter one or more MAC addresses separated by commas or new lines.
 
@@ -47,9 +56,16 @@ OPNsense and FreeBSD age out ARP entries over time. Because device tracking depe
 - devices can remain visible until their ARP entry expires
 - devices may disappear earlier or later depending on network behavior and OPNsense tuning
 
-`Device Tracker Consider Home (seconds)` adds extra time before Home Assistant marks a device as away after it stops appearing in scans.
+`Device Tracker Consider Home (seconds)` adds extra time before Home Assistant marks a device as
+away after it stops appearing in successful scans. If one neighbor-table lookup fails, the last
+known addresses are retained and that failed lookup does not count as a fresh sighting. The tracker
+is reported as unavailable while the failed table is needed to confirm its last-known addresses.
+Successful scans with no matching entry continue to use `consider_home` for departure aging.
 
-By default, OPNsense/FreeBSD uses a max age of 20 minutes for ARP entries (sysctl `net.link.ether.inet.max_age`). This can be lowered in <ins>OPNsense</ins> from `System -> Settings -> Tunables` if desired.
+By default, OPNsense/FreeBSD uses a max age of 20 minutes for ARP entries (sysctl
+`net.link.ether.inet.max_age`). This can be lowered in <ins>OPNsense</ins> from
+`System -> Settings -> Tunables` if desired. NDP entry lifetime is managed by OPNsense and can vary
+with the address and neighbor state.
 
 ## Troubleshooting
 
