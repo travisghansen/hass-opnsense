@@ -140,6 +140,10 @@ The permission is named `Services: Unbound (MVC)` on OPNsense 25.x and `Services
 | OPNsense Permission | Method | API Endpoints |
 | --- | --- | --- |
 | Diagnostics: ARP Table | GET | `/api/diagnostics/interface/search_arp` (availability probe)<br>`/api/diagnostics/interface/search_arp?resolve={yes-or-no}` |
+| Diagnostics: NDP Table | GET | `/api/diagnostics/interface/search_ndp` |
+
+The NDP permission is optional. Without it, IPv4 device tracking continues from the ARP table, but
+IPv6-only devices cannot be discovered or refreshed.
 
 ## NUT UPS Information
 

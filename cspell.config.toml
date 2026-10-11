@@ -29,6 +29,7 @@ words = [
     "pyopnsense",
     "pyproject",
     "pytest",
+    "slaac",
     "stddev",
     "tunables",
     "udpbroadcastrelay",

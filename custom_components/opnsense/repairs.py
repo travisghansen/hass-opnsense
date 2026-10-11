@@ -12,7 +12,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 import voluptuous as vol
 
-from .const import CONF_DEVICE_UNIQUE_ID, DOMAIN, TRACKED_MACS
+from .const import CONF_DEVICE_UNIQUE_ID, DOMAIN, TRACKED_ARP_MACS, TRACKED_MACS, TRACKED_NDP_MACS
 from .helpers import create_opnsense_client_from_config_entry, is_carp_entry
 from .repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker, parse_repair_marker
 
@@ -64,10 +64,14 @@ def _entry_matches_snapshot(
         allow_tracked_macs_mutation (bool): Whether tracked-MACS-only changes are ignored.
 
     Returns:
-        bool: ``True`` when the entry identity and persisted values are unchanged.
+        bool: ``True`` when the entry identity and persisted values are unchanged. The derived
+            ARP/NDP tracked-MAC inventories are always ignored because the device tracker
+            rewrites them at runtime.
     """
-    normalized_snapshot = data_snapshot
-    normalized_entry_data = dict(entry.data) if entry is not None else None
+    normalized_snapshot = _without_derived_tracked_inventories(data_snapshot)
+    normalized_entry_data = (
+        _without_derived_tracked_inventories(dict(entry.data)) if entry is not None else None
+    )
     if allow_tracked_macs_mutation:
         normalized_snapshot = _without_tracked_macs_for_recovery(normalized_snapshot)
         if normalized_entry_data is not None:
@@ -80,6 +84,21 @@ def _entry_matches_snapshot(
         and dict(entry.options) == options_snapshot
         and entry.unique_id == unique_id_snapshot
     )
+
+
+def _without_derived_tracked_inventories(payload: dict[str, object]) -> dict[str, object]:
+    """Return a copy without the runtime-derived ARP/NDP tracked-MAC inventories.
+
+    Returns:
+        dict[str, object]: Payload with the per-family tracked MAC inventories removed.
+
+    Args:
+        payload (dict[str, object]): Config-entry data mapping to normalize.
+    """
+    normalized_payload: dict[str, object] = dict(payload)
+    normalized_payload.pop(TRACKED_ARP_MACS, None)
+    normalized_payload.pop(TRACKED_NDP_MACS, None)
+    return normalized_payload
 
 
 def _without_tracked_macs_for_recovery(payload: dict[str, object]) -> dict[str, object]:
