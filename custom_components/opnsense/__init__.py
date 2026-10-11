@@ -601,7 +601,7 @@ async def _async_probe_router_for_setup(
     client: OPNsenseClient,
     config_device_id: str,
     repair_marker: RepairMarker | None,
-) -> str | None:
+) -> tuple[bool, str | None]:
     """Probe router identity and firmware, distinguishing unavailable data from a mismatch.
 
     Args:
@@ -612,7 +612,8 @@ async def _async_probe_router_for_setup(
         repair_marker (RepairMarker | None): Pending identity reconciliation marker.
 
     Returns:
-        str | None: Router firmware, or `None` when a valid identity mismatch prevents setup.
+        tuple[bool, str | None]: Whether the router identity matches, and its firmware when
+            available.
 
     Raises:
         ConfigEntryNotReady: If probes fail transiently or return unusable data.
@@ -637,18 +638,16 @@ async def _async_probe_router_for_setup(
             router_device_id,
             repair_marker,
         ):
-            return None
+            return False, None
 
         firmware: str | None = await client.get_host_firmware_version()
-        if not firmware:
-            raise ConfigEntryNotReady("OPNsense did not return a firmware version during setup")
     except (OPNsenseTimeoutError, TimeoutError) as err:
         raise ConfigEntryNotReady("OPNsense setup timed out") from err
     except OPNsenseConnectionError as err:
         if type(err) is not OPNsenseConnectionError:
             raise
         raise ConfigEntryNotReady("OPNsense setup could not connect") from err
-    return firmware
+    return True, firmware or None
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -723,10 +722,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     setup_succeeded: bool = False
     keep_reconciliation_runtime: bool = False
     try:
-        firmware = await _async_probe_router_for_setup(
+        identity_matches, firmware = await _async_probe_router_for_setup(
             hass, entry, client, config_device_id, repair_marker
         )
-        if firmware is None:
+        if not identity_matches:
             return False
         _LOGGER.info("OPNsense Firmware %s", firmware)
         try:

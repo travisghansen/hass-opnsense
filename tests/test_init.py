@@ -1413,7 +1413,6 @@ async def test_async_setup_entry_with_repair_marker_recreates_issue_on_early_pro
         ("firmware", OPNsenseConnectionError),
         ("firmware", OPNsenseTimeoutError),
         ("firmware", TimeoutError),
-        ("firmware", None),
         ("main_refresh", None),
         ("tracker_refresh", None),
     ],
@@ -1489,6 +1488,57 @@ async def test_async_setup_entry_recovers_after_incomplete_startup(
     assert isinstance(entry.runtime_data, init_mod.OPNsenseData)
     assert entry.runtime_data.opnsense_client is recovered_client
     recovered_client.async_close.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_continues_when_firmware_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Continue setup when validation and the firmware probe cannot identify the version.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Fixture used to replace API dependencies.
+        ph_hass (HomeAssistant): Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+        caplog (pytest.LogCaptureFixture): Captured logs for warning verification.
+    """
+    client = _make_valid_setup_client()
+    client.validate = AsyncMock(side_effect=OPNsenseUnknownFirmware("version endpoint missing"))
+    client.get_host_firmware_version = AsyncMock(return_value=None)
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(
+        init_mod,
+        "create_opnsense_client_from_config_entry",
+        lambda **_kwargs: client,
+    )
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+    create_issue = MagicMock()
+    monkeypatch.setattr(ir, "async_create_issue", create_issue)
+    forward = AsyncMock()
+    monkeypatch.setattr(ph_hass.config_entries, "async_forward_entry_setups", forward)
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_INTERFACES: False,
+        },
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+
+    with caplog.at_level(logging.WARNING, logger="custom_components.opnsense"):
+        assert await init_mod.async_setup_entry(ph_hass, entry) is True
+
+    assert "Unable to confirm OPNsense Firmware version" in caplog.text
+    client.get_device_unique_id.assert_awaited_once_with(expected_id="dev1")
+    client.get_host_firmware_version.assert_awaited_once()
+    create_issue.assert_not_called()
+    forward.assert_awaited_once()
+    client.async_close.assert_not_awaited()
 
 
 @pytest.mark.asyncio
