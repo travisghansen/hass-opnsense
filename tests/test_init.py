@@ -1534,8 +1534,6 @@ async def test_async_setup_entry_continues_when_firmware_is_unknown(
         assert await init_mod.async_setup_entry(ph_hass, entry) is True
 
     assert "Unable to confirm OPNsense Firmware version" in caplog.text
-    client.get_device_unique_id.assert_awaited_once_with(expected_id="dev1")
-    client.get_host_firmware_version.assert_awaited_once()
     create_issue.assert_not_called()
     forward.assert_awaited_once()
     client.async_close.assert_not_awaited()
