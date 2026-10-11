@@ -56,10 +56,9 @@ dev = [
 
 [tool.uv]
 required-version = ">=0.11.0"
-# Override Home Assistant's 48.0.1 pin until it includes the CVE-2026-69247 fix.
-override-dependencies = ["cryptography>=50.0.0"]
 # Keep transitive dependencies above the patched versions in Dependabot alerts.
 constraint-dependencies = [
+    "cryptography>=50.0.0",
     "multidict>=6.9.1",
     "PyJWT>=2.15.0",
     "urllib3>=2.8.0",
