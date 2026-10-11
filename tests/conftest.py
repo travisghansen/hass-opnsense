@@ -671,6 +671,7 @@ def fake_coordinator() -> Any:
                 kwargs (object): Additional keyword arguments accepted by the test double.
             """
             self._is_device_tracker = kwargs.get("device_tracker_coordinator", False)
+            self.data: dict[str, object] = {"device_unique_id": kwargs.get("device_unique_id")}
 
         async def async_config_entry_first_refresh(self) -> bool:
             # mark that initial refresh happened for assertions
