@@ -24,7 +24,7 @@ from aiopnsense.exceptions import (
     OPNsenseUnknownFirmware,
 )
 import awesomeversion
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
@@ -100,6 +100,7 @@ def _make_setup_coordinator() -> MagicMock:
         MagicMock: Mock client or dependency configured for the scenario.
     """
     coordinator = MagicMock()
+    coordinator.data = {"device_unique_id": "dev1"}
     coordinator.async_config_entry_first_refresh = AsyncMock(return_value=True)
     coordinator.async_shutdown = AsyncMock(return_value=True)
     return coordinator
@@ -671,8 +672,8 @@ async def test_async_setup_entry_carp_validation_firmware_errors_fail_setup(
 
 @pytest.mark.parametrize(
     "exc",
-    [OPNsenseTimeoutError, OPNsenseConnectionError],
-    ids=["timeout", "connection"],
+    [OPNsenseTimeoutError, OPNsenseConnectionError, TimeoutError],
+    ids=["timeout", "connection", "raw-timeout"],
 )
 @pytest.mark.asyncio
 async def test_async_setup_entry_carp_entry_retries_on_transient_validation_failures(
@@ -1104,12 +1105,12 @@ async def test_async_setup_entry_closes_client_when_validation_fails(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
+async def test_async_setup_entry_retries_raw_validation_timeout(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Setup should close the client and re-raise a raw validation timeout.
+    """Setup should close the client and retry a raw validation timeout.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
@@ -1148,7 +1149,7 @@ async def test_async_setup_entry_does_not_catch_raw_validation_timeout(
     hass.config_entries.async_reload = AsyncMock()
     hass.data = {}
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(ConfigEntryNotReady, match="validation timed out"):
         await init_mod.async_setup_entry(hass, entry)
 
     client.async_close.assert_awaited_once()
@@ -1228,22 +1229,27 @@ async def test_async_setup_entry_retries_on_transient_validation_failures(
     ],
 )
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure_method", ["validate", "get_device_unique_id", "get_host_firmware_version"]
+)
 async def test_async_setup_entry_does_not_retry_non_transient_validation_failures(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
     exc: type[BaseException],
+    failure_method: str,
 ) -> None:
-    """Non-transient validation failures should bubble as hard errors.
+    """Non-transient startup failures should bubble as hard errors.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
         ph_hass (HomeAssistant): Patched Home Assistant test instance.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
         exc (type[BaseException]): Exception supplied to the simulated context exit.
+        failure_method (str): Startup client method that raises the non-transient error.
     """
-    client = MagicMock()
-    client.validate = AsyncMock(side_effect=exc("invalid"))
+    client = _make_valid_setup_client()
+    getattr(client, failure_method).side_effect = exc("invalid")
     client.async_close = AsyncMock(return_value=True)
 
     def _create_client(**kwargs: Any) -> Any:
@@ -1363,10 +1369,10 @@ async def test_async_setup_entry_with_repair_marker_recreates_issue_on_early_pro
         with pytest.raises(ConfigEntryNotReady, match="validation timed out"):
             await init_mod.async_setup_entry(ph_hass, entry)
     elif failure_step == "device_probe":
-        with pytest.raises(OPNsenseConnectionError, match="probe timeout"):
+        with pytest.raises(ConfigEntryNotReady, match="setup could not connect"):
             await init_mod.async_setup_entry(ph_hass, entry)
     else:
-        with pytest.raises(OPNsenseConnectionError, match="firmware check timeout"):
+        with pytest.raises(ConfigEntryNotReady, match="setup could not connect"):
             await init_mod.async_setup_entry(ph_hass, entry)
 
     ph_hass.config_entries.async_forward_entry_setups.assert_not_awaited()
@@ -1394,6 +1400,192 @@ async def test_async_setup_entry_with_repair_marker_recreates_issue_on_early_pro
         assert entry.runtime_data is None
         coordinator.async_shutdown.assert_awaited_once()
     create_client.async_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure_step", "error_type"),
+    [
+        ("device", OPNsenseConnectionError),
+        ("device", OPNsenseTimeoutError),
+        ("device", TimeoutError),
+        ("device", None),
+        ("firmware", OPNsenseConnectionError),
+        ("firmware", OPNsenseTimeoutError),
+        ("firmware", TimeoutError),
+        ("main_refresh", None),
+        ("tracker_refresh", None),
+    ],
+)
+async def test_async_setup_entry_recovers_after_incomplete_startup(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    failure_step: str,
+    error_type: type[Exception] | None,
+) -> None:
+    """Incomplete startup must release resources and allow a later setup to succeed.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Fixture used to replace API dependencies.
+        ph_hass (HomeAssistant): Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+        failure_step (str): Probe or coordinator that fails on the first attempt.
+        error_type (type[Exception] | None): Raised failure, or a suppressed missing result.
+    """
+    client = _make_valid_setup_client()
+    main = _make_setup_coordinator()
+    tracker = _make_setup_coordinator()
+    if failure_step in {"device", "firmware"}:
+        method = (
+            client.get_device_unique_id
+            if failure_step == "device"
+            else client.get_host_firmware_version
+        )
+        if error_type is None:
+            method.return_value = None
+        else:
+            method.side_effect = error_type("router is starting")
+    elif failure_step == "main_refresh":
+        main.data = {}
+    else:
+        tracker.data = {}
+
+    create_client = MagicMock(return_value=client)
+    create_coordinator = MagicMock(side_effect=[main, tracker])
+    monkeypatch.setattr(init_mod, "create_opnsense_client_from_config_entry", create_client)
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", create_coordinator)
+    forward = AsyncMock()
+    monkeypatch.setattr(ph_hass.config_entries, "async_forward_entry_setups", forward)
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_INTERFACES: False,
+        },
+        options={CONF_DEVICE_TRACKER_ENABLED: failure_step == "tracker_refresh"},
+    )
+
+    with pytest.raises(ConfigEntryNotReady):
+        await init_mod.async_setup_entry(ph_hass, entry)
+    forward.assert_not_awaited()
+    assert entry.runtime_data is None
+    assert entry.entry_id not in ph_hass.data.get(DOMAIN, {})
+    client.async_close.assert_awaited_once()
+    main.async_shutdown.assert_awaited_once()
+    if failure_step == "tracker_refresh":
+        tracker.async_shutdown.assert_awaited_once()
+
+    recovered_client = _make_valid_setup_client()
+    recovered_main = _make_setup_coordinator()
+    recovered_tracker = _make_setup_coordinator()
+    create_client.return_value = recovered_client
+    create_coordinator.side_effect = [recovered_main, recovered_tracker]
+    assert await init_mod.async_setup_entry(ph_hass, entry) is True
+    forward.assert_awaited_once()
+    assert isinstance(entry.runtime_data, init_mod.OPNsenseData)
+    assert entry.runtime_data.opnsense_client is recovered_client
+    recovered_client.async_close.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_continues_when_firmware_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Continue setup when validation and the firmware probe cannot identify the version.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Fixture used to replace API dependencies.
+        ph_hass (HomeAssistant): Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+        caplog (pytest.LogCaptureFixture): Captured logs for warning verification.
+    """
+    client = _make_valid_setup_client()
+    client.validate = AsyncMock(side_effect=OPNsenseUnknownFirmware("version endpoint missing"))
+    client.get_host_firmware_version = AsyncMock(return_value=None)
+    coordinator = _make_setup_coordinator()
+    monkeypatch.setattr(
+        init_mod,
+        "create_opnsense_client_from_config_entry",
+        lambda **_kwargs: client,
+    )
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+    create_issue = MagicMock()
+    monkeypatch.setattr(ir, "async_create_issue", create_issue)
+    forward = AsyncMock()
+    monkeypatch.setattr(ph_hass.config_entries, "async_forward_entry_setups", forward)
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_INTERFACES: False,
+        },
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+
+    with caplog.at_level(logging.WARNING, logger="custom_components.opnsense"):
+        assert await init_mod.async_setup_entry(ph_hass, entry) is True
+
+    assert "Unable to confirm OPNsense Firmware version" in caplog.text
+    create_issue.assert_not_called()
+    forward.assert_awaited_once()
+    client.async_close.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_retries_empty_real_coordinator_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    fake_client: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A lost connection after the probe must retry even if first refresh returns normally.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Fixture used to replace the API client.
+        ph_hass (HomeAssistant): Home Assistant test instance.
+        fake_client (Any): Client factory replacing external API operations.
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+    """
+    client = fake_client()()
+    client.get_device_unique_id = AsyncMock(side_effect=["dev1", None, "dev1", "dev1"])
+    client.async_close = AsyncMock()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
+    )
+    forward = AsyncMock()
+    monkeypatch.setattr(ph_hass.config_entries, "async_forward_entry_setups", forward)
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_INTERFACES: False,
+        },
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+    entry._async_set_state(ph_hass, ConfigEntryState.SETUP_IN_PROGRESS, None)
+
+    with pytest.raises(ConfigEntryNotReady, match="no usable data"):
+        await init_mod.async_setup_entry(ph_hass, entry)
+    forward.assert_not_awaited()
+    client.async_close.assert_awaited_once()
+    assert entry.runtime_data is None
+
+    assert await init_mod.async_setup_entry(ph_hass, entry) is True
+    forward.assert_awaited_once()
+    assert isinstance(entry.runtime_data, init_mod.OPNsenseData)
+    assert entry.runtime_data.coordinator.data["device_unique_id"] == "dev1"
+    await entry.runtime_data.coordinator.async_shutdown()
+    await client.async_close()
 
 
 @pytest.mark.asyncio
@@ -1618,6 +1810,16 @@ async def test_async_setup_entry_device_id_mismatch(
         issue_kwargs.update(kwargs)
 
     monkeypatch.setattr(ir, "async_create_issue", _capture_issue)
+
+    if init_mod.is_valid_device_id(stored_device_id) and not init_mod.is_valid_device_id(
+        router_device_id
+    ):
+        with pytest.raises(ConfigEntryNotReady, match="usable Device ID"):
+            await init_mod.async_setup_entry(hass, entry)
+        assert not issue_kwargs
+        assert hass.config_entries.async_forward_entry_setups.await_count == 0
+        assert all(inst.shut for inst in coordinator_capture.instances)
+        return
 
     res = await init_mod.async_setup_entry(hass, entry)
     if should_create_issue:
@@ -5781,8 +5983,12 @@ async def test_async_setup_entry_deletes_stale_mismatch_issue_only_on_matching_v
     monkeypatch.setattr(ir, "async_delete_issue", delete_issue)
     ph_hass.data = {}
 
-    result = await init_mod.async_setup_entry(ph_hass, entry)
-    assert result is True
+    if expects_delete_issue:
+        assert await init_mod.async_setup_entry(ph_hass, entry) is True
+    else:
+        with pytest.raises(ConfigEntryNotReady, match="usable Device ID"):
+            await init_mod.async_setup_entry(ph_hass, entry)
+        ph_hass.config_entries.async_forward_entry_setups.assert_not_awaited()
 
     expected_issue_id = f"{entry.entry_id}_device_id_mismatched"
     delete_issue_ids = [call[0][2] for call in delete_issue.call_args_list if len(call[0]) > 2]
@@ -5916,12 +6122,14 @@ async def test_async_setup_entry_recreates_marker_issue_on_probe_mismatch_before
     create_issue = MagicMock()
     monkeypatch.setattr(ir, "async_create_issue", create_issue)
 
-    result = await init_mod.async_setup_entry(ph_hass, entry)
-
-    assert result is False
+    if init_mod.is_valid_device_id(router_device_id):
+        assert await init_mod.async_setup_entry(ph_hass, entry) is False
+    else:
+        with pytest.raises(ConfigEntryNotReady, match="usable Device ID"):
+            await init_mod.async_setup_entry(ph_hass, entry)
     assert ph_hass.config_entries.async_forward_entry_setups.await_count == 0
     assert ph_hass.config_entries.async_unload_platforms.await_count == 0
-    assert create_issue.call_count >= 2
+    assert create_issue.call_count >= 1
     issue_kwargs = create_issue.call_args_list[0].kwargs
     assert issue_kwargs["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
     assert issue_kwargs["is_fixable"] is True

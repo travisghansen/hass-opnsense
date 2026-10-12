@@ -195,10 +195,12 @@ async def _async_first_refresh_with_marker_issue(
         repair_marker (RepairMarker | None): Pending device-ID repair marker, if any.
 
     Raises:
-        ConfigEntryNotReady: If the coordinator cannot complete its first refresh.
+        ConfigEntryNotReady: If the coordinator cannot complete its first refresh with usable data.
     """
     try:
         await coordinator.async_config_entry_first_refresh()
+        if not coordinator.data:
+            raise ConfigEntryNotReady("OPNsense returned no usable data during initial refresh")
     except ConfigEntryNotReady:
         if repair_marker is not None:
             _async_create_marker_repair_issue(hass, entry, repair_marker)
@@ -494,7 +496,7 @@ async def _async_setup_carp_entry(hass: HomeAssistant, entry: ConfigEntry) -> bo
         client = create_opnsense_client_from_config_entry(hass=hass, config_entry=entry)
         try:
             await client.validate(require_device_id=False)
-        except OPNsenseTimeoutError as err:
+        except (OPNsenseTimeoutError, TimeoutError) as err:
             raise ConfigEntryNotReady("OPNsense validation timed out") from err
         except OPNsenseConnectionError as err:
             if type(err) is not OPNsenseConnectionError:
@@ -568,7 +570,6 @@ async def _async_create_validated_client(hass: HomeAssistant, entry: ConfigEntry
         ConfigEntryNotReady: If a transient connection failure prevents validation.
         OPNsenseConnectionError: If a connection-error subclass cannot be translated safely.
         OPNsenseError: If validation fails with a non-retryable client error.
-        TimeoutError: If validation raises a raw timeout.
     """
     client = create_opnsense_client_from_config_entry(hass=hass, config_entry=entry)
     try:
@@ -582,20 +583,78 @@ async def _async_create_validated_client(hass: HomeAssistant, entry: ConfigEntry
             _LOGGER.debug(
                 "Client validation reported firmware issues; continuing to firmware probes"
             )
-        except OPNsenseTimeoutError as err:
+        except (OPNsenseTimeoutError, TimeoutError) as err:
             raise ConfigEntryNotReady("OPNsense validation timed out") from err
         except OPNsenseConnectionError as err:
             if type(err) is not OPNsenseConnectionError:
                 raise
             raise ConfigEntryNotReady("OPNsense validation could not complete") from err
-    except ConfigEntryNotReady, TimeoutError, OPNsenseError:
+    except ConfigEntryNotReady, OPNsenseError:
         await client.async_close()
         raise
     return client
 
 
+async def _async_probe_router_for_setup(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    client: OPNsenseClient,
+    config_device_id: str,
+    repair_marker: RepairMarker | None,
+) -> tuple[bool, str | None]:
+    """Probe router identity and firmware, distinguishing unavailable data from a mismatch.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        entry (ConfigEntry): Config entry being set up.
+        client (OPNsenseClient): Validated router client.
+        config_device_id (str): Device ID stored in the config entry.
+        repair_marker (RepairMarker | None): Pending identity reconciliation marker.
+
+    Returns:
+        tuple[bool, str | None]: Whether the router identity matches, and its firmware when
+            available.
+
+    Raises:
+        ConfigEntryNotReady: If probes fail transiently or return unusable data.
+        OPNsenseConnectionError: If a specialized connection error must remain non-retryable.
+    """
+    try:
+        router_device_id: str | None = await client.get_device_unique_id(
+            expected_id=config_device_id
+        )
+        _LOGGER.debug(
+            "[init async_setup_entry]: config Device ID: %s, router Device ID: %s",
+            config_device_id,
+            router_device_id,
+        )
+        if not is_valid_device_id(router_device_id):
+            raise ConfigEntryNotReady("OPNsense did not return a usable Device ID during setup")
+        # Trigger repair task and shutdown if Device ID has changed
+        if not _resolve_device_id_probe_state(
+            hass,
+            entry,
+            config_device_id,
+            router_device_id,
+            repair_marker,
+        ):
+            return False, None
+
+        firmware: str | None = await client.get_host_firmware_version()
+    except (OPNsenseTimeoutError, TimeoutError) as err:
+        raise ConfigEntryNotReady("OPNsense setup timed out") from err
+    except OPNsenseConnectionError as err:
+        if type(err) is not OPNsenseConnectionError:
+            raise
+        raise ConfigEntryNotReady("OPNsense setup could not connect") from err
+    return True, firmware or None
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up an OPNsense config entry and its runtime resources.
+
+    Transient router failures and missing initial data raise ConfigEntryNotReady
+    through the setup helpers so Home Assistant can retry automatically.
 
     Args:
         hass (HomeAssistant): Home Assistant instance.
@@ -663,25 +722,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     setup_succeeded: bool = False
     keep_reconciliation_runtime: bool = False
     try:
-        # Trigger repair task and shutdown if Device ID has changed
-        router_device_id: str | None = await client.get_device_unique_id(
-            expected_id=config_device_id
+        identity_matches, firmware = await _async_probe_router_for_setup(
+            hass, entry, client, config_device_id, repair_marker
         )
-        _LOGGER.debug(
-            "[init async_setup_entry]: config Device ID: %s, router Device ID: %s",
-            config_device_id,
-            router_device_id,
-        )
-        if not _resolve_device_id_probe_state(
-            hass,
-            entry,
-            config_device_id,
-            router_device_id,
-            repair_marker,
-        ):
+        if not identity_matches:
             return False
-
-        firmware: str | None = await client.get_host_firmware_version()
         _LOGGER.info("OPNsense Firmware %s", firmware)
         try:
             if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
@@ -785,7 +830,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             # Fetch initial data so we have data when entities subscribe
             tracker_refreshed: bool = False
             try:
-                await device_tracker_coordinator.async_config_entry_first_refresh()
+                await _async_first_refresh_with_marker_issue(
+                    hass, entry, device_tracker_coordinator, repair_marker
+                )
                 tracker_refreshed = True
             finally:
                 if not tracker_refreshed and repair_marker is not None:
