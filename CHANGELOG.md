@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.1](https://github.com/travisghansen/hass-opnsense/compare/v1.2.0...v1.2.1) (2026-10-12)
+
+
+### Bug Fixes
+
+* retry setup after incomplete OPNsense startup ([#764](https://github.com/travisghansen/hass-opnsense/issues/764)) ([4f97394](https://github.com/travisghansen/hass-opnsense/commit/4f973940f9430b9ff463f50e0dcb925f9f7cf82d))
+
+
+### Dependencies
+
+* **aiopnsense:** bump to 1.2.1 ([#765](https://github.com/travisghansen/hass-opnsense/issues/765)) ([4203c9a](https://github.com/travisghansen/hass-opnsense/commit/4203c9acaf2115313a1020534393dbd95fc037c5))
+
 ## [1.2.0](https://github.com/travisghansen/hass-opnsense/compare/v1.1.0...v1.2.0) (2026-10-11)
 
 
