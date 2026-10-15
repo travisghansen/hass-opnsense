@@ -142,7 +142,7 @@ The permission is named `Services: Unbound (MVC)` on OPNsense 25.x and `Services
 | --- | --- | --- |
 | Diagnostics: ARP Table | GET | `/api/diagnostics/interface/search_arp` (availability probe)<br>`/api/diagnostics/interface/search_arp?resolve={yes-or-no}` |
 | Diagnostics: NDP Table | GET | `/api/diagnostics/interface/search_ndp` |
-| Interfaces: Neighbors: Automatic discovery | GET | `/api/hostdiscovery/service/search?rowCount=-1` |
+| Interfaces: Neighbors: Automatic discovery | POST | `/api/hostdiscovery/service/search` with JSON body `{"rowCount": -1}` |
 
 Automatic discovery access is optional and supplies timestamped observations for aging stale
 IPv6 neighbors. OPNsense automatic host discovery must also be enabled. Without it, NDP retains
