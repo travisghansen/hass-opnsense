@@ -6,7 +6,7 @@ calculations, and update flow.
 """
 
 from collections.abc import Callable, MutableMapping
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 import time
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call
@@ -2145,6 +2145,70 @@ async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
     assert coordinator.data["host_observations"] is None
     client.get_arp_table.assert_awaited_with(resolve_hostnames=False)
     client.get_ndp_table.assert_awaited_with()
+
+
+@pytest.mark.asyncio
+async def test_dt_refresh_indexes_latest_discovery_time_and_clears_unavailable_source(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Each tracker poll should publish only the latest available observation index.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
+    mac = "aa:bb:cc:dd:ee:ff"
+    older = datetime(2026, 10, 15, 12, tzinfo=UTC)
+    latest = datetime(2026, 10, 15, 13, tzinfo=UTC)
+    refreshed = datetime(2026, 10, 15, 14, tzinfo=UTC)
+    discovery_rows = {
+        "source": "discovery",
+        "rows": [
+            {"mac": "AA-BB-CC-DD-EE-FF", "ip": "192.0.2.1", "last_seen": older},
+            {"mac": mac, "ip": "2001:db8::1", "last_seen": latest},
+        ],
+    }
+    client = MagicMock()
+    client.get_device_unique_id = AsyncMock(return_value="id")
+    client.get_host_firmware_version = AsyncMock(return_value="26.1")
+    client.get_system_info = AsyncMock(return_value={})
+    client.get_arp_table = AsyncMock(return_value=[])
+    client.get_ndp_table = AsyncMock(return_value=[])
+    client.get_host_observations = AsyncMock(
+        side_effect=[
+            discovery_rows,
+            {
+                "source": "discovery",
+                "rows": [{"mac": mac, "ip": "192.0.2.2", "last_seen": refreshed}],
+            },
+            None,
+            {"source": "arp-ndp", "rows": []},
+        ]
+    )
+    client.get_query_counts = AsyncMock(return_value=0)
+    client.reset_query_counts = AsyncMock()
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="device tracker",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"}),
+        device_tracker_coordinator=True,
+    )
+
+    first_state = await coordinator._async_update_data()
+    assert coordinator.host_observation_times == {mac: latest}
+    assert first_state["host_observations"] == discovery_rows
+    assert "host_observation_times" not in first_state
+
+    await coordinator._async_update_data()
+    assert coordinator.host_observation_times == {mac: refreshed}
+
+    await coordinator._async_update_data()
+    assert coordinator.host_observation_times is None
+
+    await coordinator._async_update_data()
+    assert coordinator.host_observation_times is None
 
 
 @pytest.mark.asyncio

@@ -940,26 +940,25 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             and observations.get("source") == "discovery"
             and isinstance(observations.get("rows"), list)
         )
-        times: list[datetime] = []
         tracker_mac = (
             normalize_mac_address(self.mac_address) if isinstance(self.mac_address, str) else None
         )
-        if discovery_available and isinstance(observations, Mapping):
-            for row in observations["rows"]:
-                if not isinstance(row, Mapping):
-                    continue
-                mac = row.get("mac")
-                last_seen = row.get("last_seen")
-                if (
-                    tracker_mac is not None
-                    and isinstance(mac, str)
-                    and normalize_mac_address(mac) == tracker_mac
-                    and isinstance(last_seen, datetime)
-                    and last_seen.tzinfo is not None
-                    and last_seen.utcoffset() is not None
-                ):
-                    times.append(last_seen)
-        if times:
+        last_seen: datetime | None = None
+        observation_times = getattr(self.coordinator, "host_observation_times", None)
+        observation_index_available = isinstance(observation_times, Mapping)
+        if (
+            discovery_available
+            and tracker_mac is not None
+            and isinstance(observation_times, Mapping)
+        ):
+            indexed_time = observation_times.get(tracker_mac)
+            if (
+                isinstance(indexed_time, datetime)
+                and indexed_time.tzinfo is not None
+                and indexed_time.utcoffset() is not None
+            ):
+                last_seen = indexed_time
+        if last_seen is not None:
             self._ndp_uses_observations = True
         self._attr_extra_state_attributes["ndp_presence_source"] = (
             "host_discovery" if self._ndp_uses_observations else "neighbor_table"
@@ -968,11 +967,11 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             return False, False
         if not self._ndp_uses_observations:
             return True, False
-        if not discovery_available:
+        if not discovery_available or not observation_index_available:
             return False, True
-        if not times:
+        if last_seen is None:
             return False, False
-        age = datetime.now().astimezone() - max(times)
+        age = datetime.now().astimezone() - last_seen
         return age.total_seconds() < DEVICE_TRACKER_NDP_MAX_AGE, False
 
     @callback

@@ -10,6 +10,7 @@ from types import MappingProxyType
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call
 
+from aiopnsense.exceptions import OPNsenseTimeoutError
 from homeassistant.components.device_tracker import SourceType
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, State
@@ -32,6 +33,7 @@ from custom_components.opnsense.const import (
     TRACKED_MACS,
     TRACKED_NDP_MACS,
 )
+from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 import custom_components.opnsense.device_tracker as dt_mod
 from custom_components.opnsense.device_tracker import OPNsenseScannerEntity
 from custom_components.opnsense.entity import OPNsenseBaseEntity
@@ -61,6 +63,7 @@ def _make_scanner_entity(
         OPNsenseScannerEntity: A scanner entity for the requested MAC address.
     """
     coordinator.data = {"arp_table": []} if coordinator_data is None else coordinator_data
+    coordinator.host_observation_times = None
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
     return OPNsenseScannerEntity(
@@ -3633,6 +3636,7 @@ def test_timestamped_ndp_presence_supports_both_families_and_departure(
         "host_observations": {"source": "discovery", "rows": [observation]},
         "update_time": datetime.now(UTC).timestamp() - consider_home - 1,
     }
+    coordinator.host_observation_times = {mac: observation["last_seen"]}
     entity._handle_coordinator_update()
     identity = entity.unique_id
     assert entity.is_connected is True
@@ -3643,6 +3647,7 @@ def test_timestamped_ndp_presence_supports_both_families_and_departure(
     coordinator.data["arp_table"] = []
     coordinator.data["update_time"] = datetime.now(UTC).timestamp()
     observation["last_seen"] = datetime.now(UTC) - timedelta(hours=1)
+    coordinator.host_observation_times = {mac: observation["last_seen"]}
     for _ in range(2):
         entity._handle_coordinator_update()
         assert entity.available is True
@@ -3658,17 +3663,81 @@ def test_timestamped_ndp_presence_supports_both_families_and_departure(
             "last_seen": datetime.now(UTC),
         }
     ]
+    coordinator.host_observation_times = {"aa:bb:cc:dd:ee:02": datetime.now(UTC)}
     entity._handle_coordinator_update()
     assert entity.is_connected is False
 
     # The same tracker can return through IPv6 after previously being observed through ARP.
     coordinator.data["host_observations"]["rows"] = [observation]
     observation["last_seen"] = datetime.now(UTC)
+    coordinator.host_observation_times = {mac: observation["last_seen"]}
     entity._handle_coordinator_update()
     assert entity.is_connected is True
     assert entity.unique_id == identity
     assert entity.mac_address == mac
     assert attributes["ndp_presence_source"] == "host_discovery"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_observation_index_confirms_restored_ndp_tracker(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A fresh coordinator observation should confirm an established NDP source.
+
+    Args:
+        ph_hass (HomeAssistant): Home Assistant instance used for coordinator refreshes.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake config entry.
+    """
+    mac = "aa:bb:cc:dd:ee:01"
+    client = MagicMock()
+    client.get_device_unique_id = AsyncMock(return_value="dev1")
+    client.get_host_firmware_version = AsyncMock(return_value="26.1")
+    client.get_system_info = AsyncMock(return_value={})
+    client.get_arp_table = AsyncMock(return_value=[])
+    client.get_ndp_table = AsyncMock(return_value=[{"mac": mac, "ip": "2001:db8::1"}])
+    client.get_host_observations = AsyncMock(
+        return_value={
+            "source": "discovery",
+            "rows": [{"mac": mac, "ip": "192.0.2.1", "last_seen": datetime.now(UTC)}],
+        }
+    )
+    client.get_query_counts = AsyncMock(return_value=0)
+    client.reset_query_counts = AsyncMock(
+        side_effect=[None, OPNsenseTimeoutError("Query-count reset failed")]
+    )
+    entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass=ph_hass,
+        client=client,
+        name="device tracker",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="dev1",
+        config_entry=entry,
+        device_tracker_coordinator=True,
+    )
+    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    await coordinator.async_refresh()
+
+    entity = OPNsenseScannerEntity(entry, coordinator, True, mac, None, None)
+    saved_state = State(
+        "device_tracker.phone", "unavailable", {"ndp_presence_source": "host_discovery"}
+    )
+    object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=saved_state))
+    object.__setattr__(entity, "async_write_ha_state", MagicMock())
+    await entity._restore_last_state()
+    entity._handle_coordinator_update()
+
+    assert entity.available is True
+    assert entity.is_connected is True
+
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success is False
+    assert coordinator.data["host_observations"]["source"] == "discovery"
+
+    entity._handle_coordinator_update()
+    assert entity.available is False
+    assert entity.is_connected is True
 
 
 @pytest.mark.parametrize("failed_observations", [None, {"source": "arp-ndp", "rows": []}])

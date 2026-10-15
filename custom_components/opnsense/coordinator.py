@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Mapping, MutableMapping
 import copy
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .config_flow import normalize_mac_address
 from .const import (
     ATTR_UNBOUND_BLOCKLIST,
     CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
@@ -71,6 +72,45 @@ _OPTIONAL_TRACKER_METHODS: dict[str, str] = {
 }
 
 
+def _index_host_observation_times(observations: object) -> dict[str, datetime] | None:
+    """Index the newest timestamped discovery observation for each normalized MAC.
+
+    Args:
+        observations (object): Raw host-observation payload returned by the client.
+
+    Returns:
+        dict[str, datetime] | None: Latest aware timestamp per normalized MAC for an
+            available discovery source, or ``None`` when that source is unavailable.
+    """
+    if (
+        not isinstance(observations, Mapping)
+        or observations.get("source") != "discovery"
+        or not isinstance(observations.get("rows"), list)
+    ):
+        return None
+
+    latest_by_mac: dict[str, datetime] = {}
+    for row in observations["rows"]:
+        if not isinstance(row, Mapping):
+            continue
+        mac = row.get("mac")
+        last_seen = row.get("last_seen")
+        if (
+            not isinstance(mac, str)
+            or not isinstance(last_seen, datetime)
+            or last_seen.tzinfo is None
+            or last_seen.utcoffset() is None
+        ):
+            continue
+        normalized_mac = normalize_mac_address(mac)
+        if normalized_mac is None:
+            continue
+        previous = latest_by_mac.get(normalized_mac)
+        if previous is None or last_seen > previous:
+            latest_by_mac[normalized_mac] = last_seen
+    return latest_by_mac
+
+
 class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
     """Coordinator class for OPNsense."""
 
@@ -106,6 +146,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             raise ValueError("config_entry is required for OPNsenseDataUpdateCoordinator")
         self._client: OPNsenseClient = client
         self._state: dict[str, Any] = {}
+        self.host_observation_times: dict[str, datetime] | None = None
         self._device_tracker_coordinator: bool = device_tracker_coordinator
         self._mismatched_count = 0
         self._device_unique_id: str | None = device_unique_id
@@ -401,7 +442,11 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         prior_state = self._state.get("previous_state")
         if not isinstance(prior_state, Mapping):
             prior_state = self._state.copy()
+        self.host_observation_times = None
         fetched_state = await self._get_states(categories)
+        self.host_observation_times = _index_host_observation_times(
+            fetched_state.get("host_observations")
+        )
         self._state.update(fetched_state)
         unavailable_tables: list[str] = []
         for table_key in ("arp_table", "ndp_table"):
@@ -534,6 +579,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         self._updating = True
 
         try:
+            if self._device_tracker_coordinator:
+                self.host_observation_times = None
             _LOGGER.info(
                 "%sUpdating Data",
                 "DT " if self._device_tracker_coordinator else "",
