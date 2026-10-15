@@ -100,6 +100,30 @@ _VPN_TRAFFIC_PROPERTIES: tuple[str, ...] = (
 )
 _VPN_SERVER_PROPERTIES: tuple[str, ...] = ("status", "connected_clients")
 _VPN_WIREGUARD_CLIENT_PROPERTIES: tuple[str, ...] = ("connected_servers",)
+_VPN_IPSEC_CONNECTION_PROPERTIES: tuple[str, ...] = ("status",)
+_VPN_SENSOR_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("openvpn", ("servers",)),
+    ("wireguard", ("clients", "servers")),
+    ("ipsec", ("connections",)),
+)
+_VPN_TYPE_DISPLAY_NAMES: Mapping[str, str] = {
+    "openvpn": "OpenVPN",
+    "ipsec": "IPsec",
+}
+_VPN_IPSEC_STATUS_ATTRIBUTES: tuple[str, ...] = (
+    "uuid",
+    "name",
+    "connected",
+    "version",
+    "local_addrs",
+    "remote_addrs",
+    "local_id",
+    "remote_id",
+    "routed",
+    "install_time",
+    "total_packets_recv",
+    "total_packets_sent",
+)
 _ICON_MEMORY: Final[str] = "mdi:memory"
 _CARP_INTERFACE_ATTRIBUTES: Final[tuple[str, ...]] = (
     "interface",
@@ -237,10 +261,7 @@ def _vpn_sensor_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     Args:
         state (MutableMapping[str, Any]): Simulated payload used to exercise the scenario.
     """
-    for vpn_type, groups in (
-        ("openvpn", ("servers",)),
-        ("wireguard", ("clients", "servers")),
-    ):
+    for vpn_type, groups in _VPN_SENSOR_GROUPS:
         for group in groups:
             instances = dict_get(state, f"{vpn_type}.{group}", {})
             if not isinstance(instances, MutableMapping) or not all(
@@ -946,7 +967,8 @@ def _build_vpn_sensor_description(
     """Build a VPN sensor description.
 
     Args:
-        vpn_type (str): VPN implementation type, such as ``openvpn`` or ``wireguard``.
+        vpn_type (str): VPN implementation type, such as ``openvpn``, ``wireguard``, or
+            ``ipsec``.
         clients_servers (str): VPN collection type represented by the sensor.
         uuid (str): VPN instance identifier used in the entity key.
         instance_name (str): User-facing VPN instance name.
@@ -993,7 +1015,7 @@ def _build_vpn_sensor_description(
     return SensorEntityDescription(
         key=f"{vpn_type}.{clients_servers}.{uuid}.{prop_name}",
         name=(
-            f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} "
+            f"{_VPN_TYPE_DISPLAY_NAMES.get(vpn_type, vpn_type.title())} "
             f"{clients_servers.title().rstrip('s')} {instance_name} {prop_name}"
         ),
         native_unit_of_measurement=native_unit_of_measurement,
@@ -1765,8 +1787,8 @@ async def _compile_vpn_sensors(
         config_entry (ConfigEntry): Config entry being exercised by the helper or test.
         coordinator (OPNsenseDataUpdateCoordinator): Data update coordinator that caches OPNsense
             state for entities.
-        state (MutableMapping[str, Any]): Coordinator state snapshot that contains OpenVPN and
-            WireGuard metrics.
+        state (MutableMapping[str, Any]): Coordinator state snapshot that contains OpenVPN,
+            WireGuard, and IPsec metrics.
 
     Returns:
         list: Compiled VPN sensor entities.
@@ -1775,8 +1797,7 @@ async def _compile_vpn_sensors(
         return []
     entities: list = []
 
-    for vpn_type in ("openvpn", "wireguard"):
-        clients_servers_groups = ["servers"] if vpn_type == "openvpn" else ["clients", "servers"]
+    for vpn_type, clients_servers_groups in _VPN_SENSOR_GROUPS:
         for clients_servers in clients_servers_groups:
             vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
             if not isinstance(vpn_instances, MutableMapping):
@@ -1796,6 +1817,8 @@ async def _compile_vpn_sensors(
                     properties.extend(_VPN_SERVER_PROPERTIES)
                 if vpn_type == "wireguard" and clients_servers == "clients":
                     properties.extend(_VPN_WIREGUARD_CLIENT_PROPERTIES)
+                if vpn_type == "ipsec" and clients_servers == "connections":
+                    properties.extend(_VPN_IPSEC_CONNECTION_PROPERTIES)
                 entities.extend(
                     _create_sensor(
                         OPNsenseVPNSensor,
@@ -1907,10 +1930,14 @@ async def async_setup_entry(
         has_wireguard_inventory = "wireguard" in state and isinstance(
             state.get("wireguard"), MutableMapping
         )
+        # IPsec inventory is optional (older aiopnsense releases do not provide it),
+        # but when present it must be a mapping for reconciliation to be trusted.
+        has_ipsec_inventory = "ipsec" not in state or isinstance(state.get("ipsec"), MutableMapping)
         entities.extend(await _compile_vpn_sensors(config_entry, coordinator, state))
         if not (
             has_openvpn_inventory
             and has_wireguard_inventory
+            and has_ipsec_inventory
             and _vpn_sensor_rows_are_complete(state)
         ):
             reconciliation_complete = False
@@ -2799,8 +2826,10 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         self._available = True
 
         self._attr_extra_state_attributes = {}
-        if clients_servers == "servers" and prop_name == "status":
-            properties: list = [
+        if clients_servers == "connections" and prop_name == "status":
+            properties: list = list(_VPN_IPSEC_STATUS_ATTRIBUTES)
+        elif clients_servers == "servers" and prop_name == "status":
+            properties = [
                 "uuid",
                 "name",
                 "enabled",

@@ -2251,3 +2251,103 @@ async def test_dt_refresh_requests_arp_resolution_from_options(
     await coordinator._async_update_dt_data()
 
     client.get_arp_table.assert_awaited_once_with(resolve_hostnames=expected)
+
+
+@pytest.mark.asyncio
+async def test_build_categories_includes_ipsec_with_vpn_sync(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
+    """IPsec polling follows the shared VPN sync option.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
+    """
+    client = fake_client()()
+
+    entry_default = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
+    coord_default = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry_default,
+    )
+    categories = {
+        category["state_key"]: category["function"] for category in coord_default._categories
+    }
+    assert categories["openvpn"] == "get_openvpn"
+    assert categories["wireguard"] == "get_wireguard"
+    assert categories["ipsec"] == "get_ipsec"
+
+    entry_disabled = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", CONF_SYNC_VPN: False})
+    coord_disabled = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry_disabled,
+    )
+    assert "ipsec" not in [category["state_key"] for category in coord_disabled._categories]
+
+
+@pytest.mark.asyncio
+async def test_calculate_vpn_speeds_covers_ipsec_connections(
+    make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
+) -> None:
+    """IPsec connection byte counters produce the same rate fields as other VPN rows.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        fake_client (Any): Mocked OPNsense API client used by the coordinator.
+    """
+    entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_LIVE_TRAFFIC: False,
+        }
+    )
+    coord = OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=fake_client()(),
+        name="n",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+    )
+    now = time.time()
+    coord._state = {
+        "update_time": now,
+        "ipsec": {
+            "connections": {
+                "ike-1": {"total_bytes_recv": 40_000, "total_bytes_sent": 10_000},
+                "ike-new": {"total_bytes_recv": 5, "total_bytes_sent": 5},
+                "broken": "not-a-mapping",
+            }
+        },
+        "previous_state": {
+            "update_time": now - 2,
+            "ipsec": {
+                "connections": {
+                    "ike-1": {"total_bytes_recv": 20_000, "total_bytes_sent": 8_000},
+                }
+            },
+        },
+    }
+
+    await coord._calculate_entity_speeds()
+
+    ike_1 = coord._state["ipsec"]["connections"]["ike-1"]
+    # (40000-20000)/2 = 10000 B/s -> 10 KB/s ; (10000-8000)/2 = 1000 B/s -> 1 KB/s
+    assert ike_1["total_bytes_recv_kilobytes_per_second"] == 10
+    assert ike_1["total_bytes_sent_kilobytes_per_second"] == 1
+    # rows without a previous sample or malformed rows are left untouched
+    assert (
+        "total_bytes_recv_kilobytes_per_second"
+        not in coord._state["ipsec"]["connections"]["ike-new"]
+    )
+    assert coord._state["ipsec"]["connections"]["broken"] == "not-a-mapping"

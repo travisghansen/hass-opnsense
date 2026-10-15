@@ -165,6 +165,7 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 * CARP Interface status
 * DHCP Leases
 * OpenVPN and Wireguard server and client stats
+* IPsec phase 1 (IKE) connection status and traffic counters
 * Certificates
 * vnStat Metrics
 * Speedtest last and average results (download, upload, latency)
