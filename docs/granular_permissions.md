@@ -144,12 +144,16 @@ The permission is named `Services: Unbound (MVC)` on OPNsense 25.x and `Services
 | Diagnostics: NDP Table | GET | `/api/diagnostics/interface/search_ndp` |
 | Interfaces: Neighbors: Automatic discovery | POST | `/api/hostdiscovery/service/search` with JSON body `{"rowCount": -1}` |
 
-Automatic discovery access is optional and supplies timestamped observations for aging stale
-IPv6 neighbors. OPNsense automatic host discovery must also be enabled. Without it, NDP retains
-legacy neighbor-table presence behavior until timestamped observations become available.
+Timestamped host-discovery evidence for IPv6 presence is available starting with OPNsense
+Community 25.7.11. Enable automatic host discovery and select the interfaces it monitors, in
+addition to granting `Interfaces: Neighbors: Automatic discovery` access. Without usable,
+timestamped observations for the same MAC, a matching NDP row remains visible as IPv6 inventory
+but cannot confirm an IPv6-only device as home; its tracker is unavailable. This applies to older
+firmware, disabled discovery, missing permission, unsupported clients, and failed lookups. A
+successful NDP scan with no matching row can still confirm absence.
 
 The NDP permission is optional. Without it, IPv4 device tracking continues from the ARP table, but
-IPv6-only devices cannot be discovered or refreshed.
+IPv6-only addresses cannot be discovered or refreshed.
 
 ## NUT UPS Information
 

@@ -618,6 +618,19 @@ def test_handle_coordinator_update_missing_table_preserves_cached_family(
         successful_table: [successful_entry],
         "update_time": 1_800_000_500.0,
     }
+    if successful_table == "ndp_table":
+        last_seen = datetime.now(UTC)
+        coordinator.data["host_observations"] = {
+            "source": "discovery",
+            "rows": [
+                {
+                    "mac": "aa:bb:cc:dd:ee:01",
+                    "ip": "192.0.2.3",
+                    "last_seen": last_seen,
+                }
+            ],
+        }
+        coordinator.host_observation_times = {"aa:bb:cc:dd:ee:01": last_seen}
     ent._handle_coordinator_update()
 
     assert ent.available is True
@@ -1407,21 +1420,31 @@ def test_valid_ndp_sighting_survives_unrelated_malformed_row(
         hostname=None,
     )
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
+    observation: dict[str, str | datetime] = {
+        "mac": "aa:bb:cc:dd:ee:01",
+        "ip": "192.0.2.1",
+        "last_seen": datetime.now(UTC),
+    }
     if previously_observed:
         coordinator.data = {
             "arp_table": [],
             "ndp_table": [{"mac": "aa:bb:cc:dd:ee:01", "ip": "2001:db8::1"}],
+            "host_observations": {"source": "discovery", "rows": [observation]},
             "update_time": 1_800_000_000.0,
         }
+        coordinator.host_observation_times = {"aa:bb:cc:dd:ee:01": observation["last_seen"]}
         entity._handle_coordinator_update()
+    observation["last_seen"] = datetime.now(UTC)
     coordinator.data = {
         "arp_table": [],
         "ndp_table": [
             {"mac": "aa:bb:cc:dd:ee:01", "ip": "2001:db8::2"},
             {"ip": "2001:db8::3"},
         ],
+        "host_observations": {"source": "discovery", "rows": [observation]},
         "update_time": 1_900_000_000.0,
     }
+    coordinator.host_observation_times = {"aa:bb:cc:dd:ee:01": observation["last_seen"]}
 
     entity._handle_coordinator_update()
 
@@ -1438,8 +1461,11 @@ def test_valid_ndp_sighting_survives_unrelated_malformed_row(
             {"mac": "aa:bb:cc:dd:ee:01", "ip": "2001:db8::3"},
             {"ip": "2001:db8::4"},
         ],
+        "host_observations": {"source": "discovery", "rows": [observation]},
         "update_time": 2_000_000_000.0,
     }
+    observation["last_seen"] = datetime.now(UTC)
+    coordinator.host_observation_times = {"aa:bb:cc:dd:ee:01": observation["last_seen"]}
     entity._handle_coordinator_update()
 
     assert entity.is_connected is True
@@ -1481,6 +1507,12 @@ def test_successful_ndp_inventory_ages_ipv6_tracker_when_mac_is_missing(
         "ndp_table": [{"mac": "aa:bb:cc:dd:ee:02", "ip": "2001:db8::2", "intf": "em0"}],
         "update_time": last_sighting,
     }
+    observed_at = datetime.fromtimestamp(last_sighting, UTC)
+    coordinator.data["host_observations"] = {
+        "source": "discovery",
+        "rows": [{"mac": "aa:bb:cc:dd:ee:02", "ip": "192.0.2.2", "last_seen": observed_at}],
+    }
+    coordinator.host_observation_times = {"aa:bb:cc:dd:ee:02": observed_at}
 
     entity._handle_coordinator_update()
     attributes = entity.extra_state_attributes
@@ -3341,6 +3373,13 @@ def test_handle_coordinator_update_ignores_ndp_rows_without_valid_ipv6(
         mac=_COVERAGE_MAC,
     )
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
+    if expected_connected:
+        last_seen = datetime.now(UTC)
+        coordinator.data["host_observations"] = {
+            "source": "discovery",
+            "rows": [{"mac": _COVERAGE_MAC, "ip": "192.0.2.5", "last_seen": last_seen}],
+        }
+        coordinator.host_observation_times = {_COVERAGE_MAC: last_seen}
 
     ent._handle_coordinator_update()
 
@@ -3665,7 +3704,9 @@ def test_timestamped_ndp_presence_supports_both_families_and_departure(
     ]
     coordinator.host_observation_times = {"aa:bb:cc:dd:ee:02": datetime.now(UTC)}
     entity._handle_coordinator_update()
+    assert entity.available is False
     assert entity.is_connected is False
+    assert attributes["ndp_presence_source"] == "unavailable"
 
     # The same tracker can return through IPv6 after previously being observed through ARP.
     coordinator.data["host_observations"]["rows"] = [observation]
@@ -3740,14 +3781,220 @@ async def test_coordinator_observation_index_confirms_restored_ndp_tracker(
     assert entity.is_connected is True
 
 
+@pytest.mark.parametrize("saved_state_kind", ["brand_new", "legacy_home"])
+@pytest.mark.parametrize(
+    "observation_case",
+    ["missing", "disabled", "invalid_payload", "missing_index", "unobserved_mac", "invalid_index"],
+)
+@pytest.mark.asyncio
+async def test_first_ndp_sighting_requires_current_same_mac_observation(
+    saved_state_kind: str,
+    observation_case: str,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A matching NDP row cannot establish home without a usable same-MAC timestamp.
+
+    Args:
+        saved_state_kind (str): Whether the tracker is new or restores legacy home state.
+        observation_case (str): Unavailable, disabled, malformed, or nonmatching observation data.
+        coordinator (MagicMock): Coordinator supplying API boundary state.
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+    """
+    mac = "aa:bb:cc:dd:ee:01"
+    observations_by_case: dict[str, tuple[object, object]] = {
+        "missing": (None, None),
+        "disabled": ({"source": "arp-ndp", "rows": []}, None),
+        "invalid_payload": ({"source": "discovery", "rows": "invalid"}, {}),
+        "missing_index": (
+            {"source": "discovery", "rows": [{"mac": mac, "last_seen": datetime.now(UTC)}]},
+            None,
+        ),
+        "unobserved_mac": (
+            {
+                "source": "discovery",
+                "rows": [{"mac": "aa:bb:cc:dd:ee:02", "last_seen": datetime.now(UTC)}],
+            },
+            {"aa:bb:cc:dd:ee:02": datetime.now(UTC)},
+        ),
+        "invalid_index": (
+            {"source": "discovery", "rows": [{"mac": mac, "last_seen": datetime.now(UTC)}]},
+            {mac: "not-a-timestamp"},
+        ),
+    }
+    observations, observation_times = observations_by_case[observation_case]
+    coordinator.data = {
+        "arp_table": [],
+        "ndp_table": [{"mac": mac, "ip": "2001:db8::1"}],
+        "host_observations": observations,
+    }
+    coordinator.host_observation_times = observation_times
+    entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    entity = OPNsenseScannerEntity(entry, coordinator, True, mac, None, None)
+    object.__setattr__(entity, "async_write_ha_state", MagicMock())
+    if saved_state_kind == "legacy_home":
+        saved_state = State(
+            "device_tracker.phone",
+            "home",
+            {
+                "ndp_presence_source": "neighbor_table",
+                "ipv6_addresses": ["2001:db8::1"],
+                "last_known_connected_time": datetime.now(UTC).isoformat(),
+            },
+        )
+        object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=saved_state))
+        await entity._restore_last_state()
+
+    entity._handle_coordinator_update()
+
+    assert entity.available is False
+    assert entity.is_connected is False
+    attributes = entity.extra_state_attributes
+    assert attributes is not None
+    assert attributes["ipv6_addresses"] == ["2001:db8::1"]
+    assert attributes["ndp_presence_source"] == "unavailable"
+
+    coordinator.data["arp_table"] = [{"mac": mac, "ip": "192.0.2.1"}]
+    coordinator.data["update_time"] = datetime.now(UTC).timestamp()
+    entity._handle_coordinator_update()
+
+    assert entity.available is True
+    assert entity.is_connected is True
+
+
+@pytest.mark.asyncio
+async def test_matching_ndp_mac_with_invalid_ip_cannot_keep_restored_home(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A matching but unusable NDP row still needs presence evidence to retain home state.
+
+    Args:
+        coordinator (MagicMock): Coordinator supplying API boundary state.
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+    """
+    mac = "aa:bb:cc:dd:ee:01"
+    coordinator.data = {
+        "arp_table": [],
+        "ndp_table": [{"mac": mac, "ip": "not-an-ip"}],
+        "host_observations": None,
+    }
+    coordinator.host_observation_times = None
+    entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
+    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    entity = OPNsenseScannerEntity(entry, coordinator, True, mac, None, None)
+    saved_state = State(
+        "device_tracker.phone",
+        "home",
+        {"ndp_presence_source": "neighbor_table", "ipv6_addresses": []},
+    )
+    object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=saved_state))
+    object.__setattr__(entity, "async_write_ha_state", MagicMock())
+    await entity._restore_last_state()
+
+    entity._handle_coordinator_update()
+
+    assert entity.available is False
+    assert entity.is_connected is False
+    attributes = entity.extra_state_attributes
+    assert attributes is not None
+    assert attributes["ipv6_addresses"] == []
+    assert attributes["ndp_presence_source"] == "unavailable"
+
+    coordinator.data["arp_table"] = [{"mac": mac, "ip": "192.0.2.1"}]
+    coordinator.data["update_time"] = datetime.now(UTC).timestamp()
+    entity._handle_coordinator_update()
+
+    assert entity.available is True
+    assert entity.is_connected is True
+
+
+@pytest.mark.parametrize(
+    ("firmware_version", "supports_host_observations"),
+    [("25.1", False), ("25.7.10", True)],
+    ids=["old-client-without-method", "unsupported-endpoint-returns-none"],
+)
+@pytest.mark.asyncio
+async def test_old_firmware_ndp_metadata_does_not_confirm_presence_without_observations(
+    firmware_version: str,
+    supports_host_observations: bool,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Older firmware or unavailable discovery keeps NDP metadata without confirming home.
+
+    Args:
+        firmware_version (str): OPNsense firmware reported by the real coordinator.
+        supports_host_observations (bool): Whether the simulated client exposes the optional method.
+        ph_hass (HomeAssistant): Home Assistant instance used for coordinator refreshes.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake config entry.
+    """
+    mac = "aa:bb:cc:dd:ee:01"
+    methods = [
+        "get_device_unique_id",
+        "get_host_firmware_version",
+        "get_system_info",
+        "get_arp_table",
+        "get_ndp_table",
+        "get_query_counts",
+        "reset_query_counts",
+    ]
+    if supports_host_observations:
+        methods.append("get_host_observations")
+    client = MagicMock(spec=methods)
+    client.get_device_unique_id = AsyncMock(return_value="dev1")
+    client.get_host_firmware_version = AsyncMock(return_value=firmware_version)
+    client.get_system_info = AsyncMock(return_value={})
+    client.get_arp_table = AsyncMock(return_value=[])
+    client.get_ndp_table = AsyncMock(return_value=[{"mac": mac, "ip": "2001:db8::1"}])
+    if supports_host_observations:
+        client.get_host_observations = AsyncMock(return_value=None)
+    client.get_query_counts = AsyncMock(return_value=0)
+    client.reset_query_counts = AsyncMock()
+    entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass=ph_hass,
+        client=client,
+        name="device tracker",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="dev1",
+        config_entry=entry,
+        device_tracker_coordinator=True,
+    )
+    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
+    entity = OPNsenseScannerEntity(entry, coordinator, True, mac, None, None)
+    object.__setattr__(entity, "async_write_ha_state", MagicMock())
+
+    await coordinator.async_refresh()
+    entity._handle_coordinator_update()
+
+    assert coordinator.last_update_success is True
+    assert coordinator.data["ndp_table"] == [{"mac": mac, "ip": "2001:db8::1"}]
+    assert entity.available is False
+    assert entity.is_connected is False
+    attributes = entity.extra_state_attributes
+    assert attributes is not None
+    assert attributes["ipv6_addresses"] == ["2001:db8::1"]
+    assert attributes["ndp_presence_source"] == "unavailable"
+
+    client.get_arp_table.return_value = [{"mac": mac, "ip": "192.0.2.1"}]
+    await coordinator.async_refresh()
+    entity._handle_coordinator_update()
+
+    assert coordinator.last_update_success is True
+    assert entity.available is True
+    assert entity.is_connected is True
+
+
 @pytest.mark.parametrize("failed_observations", [None, {"source": "arp-ndp", "rows": []}])
 @pytest.mark.asyncio
-async def test_restored_observation_source_never_falls_back_to_stale_ndp(
+async def test_restored_home_needs_current_ndp_evidence(
     failed_observations: dict[str, Any] | None,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """A failed established observation source means unavailable, with ARP still usable.
+    """A restored home state cannot revive NDP presence without a current observation.
 
     Args:
         failed_observations (dict[str, Any] | None): Unavailable or disabled observation source.
@@ -3783,8 +4030,7 @@ async def test_restored_observation_source_never_falls_back_to_stale_ndp(
     entity._handle_coordinator_update()
     assert entity.available is False
 
-    # Publishing unavailable before the first successful scan must preserve the source
-    # through another restart, rather than allowing a stale NDP row to confirm home.
+    # Restoring the just-published unavailable state must not let the same NDP row revive home.
     published = entity.extra_state_attributes
     assert published is not None
     saved = State("device_tracker.phone", "unavailable", published)
