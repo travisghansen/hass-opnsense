@@ -64,7 +64,11 @@ _VPN_COUNTER_GROUPS: dict[str, tuple[str, ...]] = {
     "ipsec": ("connections",),
 }
 # Device-tracker neighbor lookups that may fail without failing the whole poll.
-_OPTIONAL_TRACKER_METHODS: frozenset[str] = frozenset({"get_arp_table", "get_ndp_table"})
+_OPTIONAL_TRACKER_METHODS: dict[str, str] = {
+    "get_arp_table": "ARP",
+    "get_ndp_table": "NDP",
+    "get_host_observations": "Host observation",
+}
 
 
 class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
@@ -188,7 +192,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     state[cat.get("state_key")] = None
                     _LOGGER.warning(
                         "%s lookup failed; retaining its last successful device-tracker data",
-                        "ARP" if method_name == "get_arp_table" else "NDP",
+                        _OPTIONAL_TRACKER_METHODS[method_name],
                         exc_info=True,
                     )
                 end_time: float = time.perf_counter()
@@ -392,6 +396,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 "resolve_hostnames": self._resolve_arp_hostnames(),
             },
             {"function": "get_ndp_table", "state_key": "ndp_table"},
+            {"function": "get_host_observations", "state_key": "host_observations"},
         ]
         prior_state = self._state.get("previous_state")
         if not isinstance(prior_state, Mapping):

@@ -40,6 +40,8 @@ DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL = 150
 
 CONF_DEVICE_TRACKER_CONSIDER_HOME = "device_tracker_consider_home"
 DEFAULT_DEVICE_TRACKER_CONSIDER_HOME = 0
+# Match the default IPv4 ARP lifetime when aging timestamped IPv6 observations.
+DEVICE_TRACKER_NDP_MAX_AGE = 20 * 60
 
 CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES = "device_tracker_resolve_hostnames"
 DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES = False

@@ -2112,6 +2112,10 @@ async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
     client.get_host_firmware_version = AsyncMock(return_value="26.1")
     client.get_system_info = AsyncMock(return_value={})
     client.get_arp_table = AsyncMock(side_effect=[[], arp_rows])
+    host_observations = {"source": "discovery", "rows": []}
+    client.get_host_observations = AsyncMock(
+        side_effect=[host_observations, OPNsensePrivilegeMissing("Host discovery permission")]
+    )
     client.get_ndp_table = AsyncMock(
         side_effect=[previous_ndp_rows, OPNsensePrivilegeMissing("NDP permission")]
     )
@@ -2129,6 +2133,7 @@ async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
 
     await coordinator.async_refresh()
     assert coordinator.data["ndp_table"] == previous_ndp_rows
+    assert coordinator.data["host_observations"] == host_observations
     assert coordinator.data["unavailable_device_tracker_tables"] == []
 
     await coordinator.async_refresh()
@@ -2137,6 +2142,7 @@ async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
     assert coordinator.data["arp_table"] == arp_rows
     assert coordinator.data["ndp_table"] == previous_ndp_rows
     assert coordinator.data["unavailable_device_tracker_tables"] == ["ndp_table"]
+    assert coordinator.data["host_observations"] is None
     client.get_arp_table.assert_awaited_with(resolve_hostnames=False)
     client.get_ndp_table.assert_awaited_with()
 
@@ -2240,6 +2246,7 @@ async def test_dt_refresh_requests_arp_resolution_from_options(
     client.get_host_firmware_version = AsyncMock(return_value="26.1")
     client.get_system_info = AsyncMock(return_value={})
     client.get_arp_table = AsyncMock(return_value=[])
+    client.get_host_observations = AsyncMock(return_value=None)
     client.get_ndp_table = AsyncMock(return_value=[])
     client.get_query_counts = AsyncMock(return_value=0)
     entry = make_config_entry(

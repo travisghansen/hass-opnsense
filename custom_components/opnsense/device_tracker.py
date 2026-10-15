@@ -31,6 +31,7 @@ from .const import (
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEVICE_TRACKER_COORDINATOR,
+    DEVICE_TRACKER_NDP_MAX_AGE,
     DOMAIN,
     SHOULD_RELOAD,
     TRACKED_ARP_MACS,
@@ -838,6 +839,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         self._last_known_ip: str | None = None
         self._last_known_hostname: str | None = None
         self._is_connected: bool = False
+        self._ndp_uses_observations: bool = False
         self._last_known_connected_time: datetime | None = None
         self._attr_entity_registry_enabled_default: bool = enabled_default
         self._attr_hostname: str | None = hostname
@@ -916,6 +918,63 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             return False
         return self._has_matching_enabled_mac_device()
 
+    def _ndp_presence_from_observations(
+        self,
+        state: Mapping[str, Any],
+        ndp_present: bool,
+    ) -> tuple[bool, bool]:
+        """Qualify NDP presence using timestamped observations of the same MAC.
+
+        Args:
+            state (Mapping[str, Any]): Latest coordinator payload.
+            ndp_present (bool): Whether a successful NDP scan contains this MAC.
+
+        Returns:
+            tuple[bool, bool]: Whether NDP confirms presence and whether its observation
+                source failed. Legacy NDP behavior remains until this MAC has timestamped
+                observations; an established source never falls back after a failure.
+        """
+        observations = state.get("host_observations")
+        discovery_available = (
+            isinstance(observations, Mapping)
+            and observations.get("source") == "discovery"
+            and isinstance(observations.get("rows"), list)
+        )
+        times: list[datetime] = []
+        tracker_mac = (
+            normalize_mac_address(self.mac_address) if isinstance(self.mac_address, str) else None
+        )
+        if discovery_available and isinstance(observations, Mapping):
+            for row in observations["rows"]:
+                if not isinstance(row, Mapping):
+                    continue
+                mac = row.get("mac")
+                last_seen = row.get("last_seen")
+                if (
+                    tracker_mac is not None
+                    and isinstance(mac, str)
+                    and normalize_mac_address(mac) == tracker_mac
+                    and isinstance(last_seen, datetime)
+                    and last_seen.tzinfo is not None
+                    and last_seen.utcoffset() is not None
+                ):
+                    times.append(last_seen)
+        if times:
+            self._ndp_uses_observations = True
+        self._attr_extra_state_attributes["ndp_presence_source"] = (
+            "host_discovery" if self._ndp_uses_observations else "neighbor_table"
+        )
+        if not ndp_present:
+            return False, False
+        if not self._ndp_uses_observations:
+            return True, False
+        if not discovery_available:
+            return False, True
+        if not times:
+            return False, False
+        age = datetime.now().astimezone() - max(times)
+        return age.total_seconds() < DEVICE_TRACKER_NDP_MAX_AGE, False
+
     @callback
     def _handle_coordinator_update(self) -> None:
         """Refresh tracker state from the latest ARP and NDP tables."""
@@ -970,7 +1029,10 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             self._last_known_hostname = self._attr_hostname
 
         fresh_arp_present = any(not entry.get("expired", False) for entry in fresh_arp_entries)
-        fresh_ndp_present = bool(fresh_ndp_entries)
+        fresh_ndp_present, observations_failed = self._ndp_presence_from_observations(
+            state, bool(fresh_ndp_entries)
+        )
+        ndp_failed = ndp_failed or observations_failed
         if (
             not fresh_arp_present
             and not fresh_ndp_present
@@ -1102,6 +1164,11 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         state = last_state.attributes
         if not isinstance(state, Mapping):
             return
+
+        ndp_presence_source = state.get("ndp_presence_source")
+        self._ndp_uses_observations = ndp_presence_source == "host_discovery"
+        if ndp_presence_source in ("host_discovery", "neighbor_table"):
+            self._attr_extra_state_attributes["ndp_presence_source"] = ndp_presence_source
 
         self._last_known_hostname = state.get("last_known_hostname", None)
         last_known_ip = state.get("last_known_ip")

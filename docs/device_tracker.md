@@ -37,7 +37,8 @@ means:
   tracking from the other table
 
 Each tracker exposes `ipv4_addresses` and `ipv6_addresses` state attributes. The entity's primary
-IP address uses IPv4 when available and otherwise uses IPv6.
+IP address uses IPv4 when available and otherwise uses IPv6. MAC addresses remain the tracker
+identity: a device can move between IPv4 and IPv6 without creating a new tracker.
 
 ### When to use manual MAC addresses
 
@@ -65,7 +66,23 @@ Successful scans with no matching entry continue to use `consider_home` for depa
 By default, OPNsense/FreeBSD uses a max age of 20 minutes for ARP entries (sysctl
 `net.link.ether.inet.max_age`). This can be lowered in <ins>OPNsense</ins> from
 `System -> Settings -> Tunables` if desired. NDP entry lifetime is managed by OPNsense and can vary
-with the address and neighbor state.
+with the address and neighbor state. Its API does not expose reachability, and stale NDP rows can
+remain long after a device leaves.
+
+When OPNsense automatic host discovery is enabled and the API user has
+`Interfaces: Neighbors: Automatic discovery` access, timestamped packet observations qualify NDP
+presence. The newest observation for a MAC from either IPv4 or IPv6 is used. An NDP row qualifies
+as present only while that observation is less than 20 minutes old; `consider_home` then adds its
+configured grace period. IPv6 addresses remain visible as metadata even when an old neighbor row
+no longer confirms presence. The `ndp_presence_source` attribute shows `host_discovery` when this
+freshness check applies.
+
+On older firmware, with host discovery disabled, or before a MAC has any timestamped observations,
+NDP uses the legacy neighbor-table behavior (`ndp_presence_source: neighbor_table`). Such trackers
+can remain home until OPNsense removes stale NDP entries. Once a MAC has used timestamped
+observations, losing that source reports the tracker as unavailable when NDP is needed; it does
+not resume treating stale rows as fresh sightings. A fresh ARP entry can still confirm presence.
+The source choice survives Home Assistant restarts.
 
 ## Troubleshooting
 
@@ -85,3 +102,6 @@ Check both:
 
 - OPNsense ARP aging behavior
 - the configured `Device Tracker Consider Home (seconds)` value
+
+For devices visible only in NDP, check `ndp_presence_source`. Enable automatic host discovery and
+grant its API permission to use timestamped observations instead of cached neighbor inventory.
