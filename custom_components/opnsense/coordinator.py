@@ -63,7 +63,7 @@ _VPN_COUNTER_GROUPS: dict[str, tuple[str, ...]] = {
     "wireguard": ("clients", "servers"),
     "ipsec": ("connections",),
 }
-# Device-tracker neighbor lookups that may fail without failing the whole poll.
+# Device-tracker lookups that may fail without failing the whole poll.
 _OPTIONAL_TRACKER_METHODS: dict[str, str] = {
     "get_arp_table": "ARP",
     "get_ndp_table": "NDP",
@@ -191,7 +191,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                         raise
                     state[cat.get("state_key")] = None
                     _LOGGER.warning(
-                        "%s lookup failed; retaining its last successful device-tracker data",
+                        "%s lookup failed; this scan cannot provide fresh presence evidence",
                         _OPTIONAL_TRACKER_METHODS[method_name],
                         exc_info=True,
                     )
