@@ -27,7 +27,7 @@ jobs:
       # For details, refer to https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
       - name: Check for coverage comment artifact
         id: comment_artifact
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
