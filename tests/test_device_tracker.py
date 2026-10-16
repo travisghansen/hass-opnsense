@@ -4061,6 +4061,62 @@ def test_ndp_freshness_window_scales_with_scan_interval(
     assert entity.is_connected is expected_connected
 
 
+@pytest.mark.parametrize(
+    ("observation_age_secs", "indexed", "expected_available", "expected_connected", "source"),
+    [
+        pytest.param(None, "no_index", False, False, "no_evidence", id="index-none"),
+        pytest.param(None, "other_mac", False, False, "no_evidence", id="index-without-mac"),
+        pytest.param(3 * 3600, "tracker_mac", True, False, "host_discovery", id="stale-away"),
+        pytest.param(60, "tracker_mac", True, True, "host_discovery", id="fresh-home"),
+    ],
+)
+def test_expired_arp_with_ndp_row_requires_timestamp_evidence(
+    observation_age_secs: int | None,
+    indexed: str,
+    expected_available: bool,
+    expected_connected: bool,
+    source: str,
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """An expired ARP entry plus an NDP row is unknown without a timestamp, away if stale.
+
+    Args:
+        observation_age_secs (int | None): Age of the discovery timestamp, if one is indexed.
+        indexed (str): Whether the index is absent, lacks the tracker MAC, or has it.
+        expected_available (bool): Whether the tracker should report a known state.
+        expected_connected (bool): Whether the tracker should be home.
+        source (str): Expected ``ndp_presence_source`` attribute.
+        coordinator (MagicMock): Coordinator supplying API boundary state.
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+    """
+    mac = "aa:bb:cc:dd:ee:01"
+    entity = _make_scanner_entity(
+        coordinator,
+        make_config_entry,
+        mac=mac,
+        coordinator_data={
+            "arp_table": [{"mac": mac, "ip": "192.0.2.1", "expired": True}],
+            "ndp_table": [{"mac": mac, "ip": "2001:db8::1"}],
+            "update_time": datetime.now(UTC).timestamp(),
+        },
+    )
+    object.__setattr__(entity, "async_write_ha_state", MagicMock())
+    if indexed == "other_mac":
+        coordinator.host_observation_times = {"aa:bb:cc:dd:ee:02": datetime.now(UTC)}
+    elif indexed == "tracker_mac" and observation_age_secs is not None:
+        coordinator.host_observation_times = {
+            mac: datetime.now(UTC) - timedelta(seconds=observation_age_secs)
+        }
+
+    entity._handle_coordinator_update()
+
+    assert entity.available is expected_available
+    assert entity.is_connected is expected_connected
+    assert entity.extra_state_attributes is not None
+    assert entity.extra_state_attributes["ndp_presence_source"] == source
+
+
 def test_no_evidence_attribute_describes_ndp_evidence_only(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
