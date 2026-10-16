@@ -31,7 +31,7 @@ from .const import (
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEVICE_TRACKER_COORDINATOR,
-    DEVICE_TRACKER_NDP_MAX_AGE,
+    DEVICE_TRACKER_NDP_MAX_SECS,
     DOMAIN,
     SHOULD_RELOAD,
     TRACKED_ARP_MACS,
@@ -964,7 +964,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         if last_seen is None:
             return False, True
         age = datetime.now().astimezone() - last_seen
-        return age.total_seconds() < DEVICE_TRACKER_NDP_MAX_AGE, False
+        return age.total_seconds() < DEVICE_TRACKER_NDP_MAX_SECS, False
 
     @callback
     def _handle_coordinator_update(self) -> None:
