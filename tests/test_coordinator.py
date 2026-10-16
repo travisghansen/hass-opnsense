@@ -24,6 +24,7 @@ from custom_components.opnsense.const import (
     ATTR_UNBOUND_BLOCKLIST,
     CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
     CONF_DEVICE_UNIQUE_ID,
+    CONF_DEVICES,
     CONF_ENTRY_TYPE,
     CONF_FIRMWARE_VERSION,
     CONF_SYNC_CARP,
@@ -2488,13 +2489,40 @@ async def test_dt_refresh_fetches_observations_only_for_tracked_ndp_rows(
     observations = AsyncMock(
         return_value={"source": "discovery", "rows": [{"mac": mac, "last_seen": seen}]}
     )
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
+    entry = make_config_entry(
+        {CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]}, options={CONF_DEVICES: [mac]}
+    )
     coordinator = _dt_observation_coordinator(entry, ndp_rows, observations)
 
     await coordinator._async_update_data()
 
     assert observations.await_count == (1 if expect_call else 0)
     assert coordinator.host_observation_times == ({mac: seen} if expect_call else None)
+
+
+@pytest.mark.asyncio
+async def test_dt_refresh_track_all_fetches_observations_for_new_untracked_ndp_mac(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Track-all mode fetches observations for a new NDP-only MAC despite persisted MACs.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
+    new_mac = "11:22:33:44:55:66"
+    seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
+    observations = AsyncMock(
+        return_value={"source": "discovery", "rows": [{"mac": new_mac, "last_seen": seen}]}
+    )
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: ["aa:bb:cc:dd:ee:ff"]})
+    coordinator = _dt_observation_coordinator(
+        entry, [{"mac": new_mac, "ip": "2001:db8::9"}], observations
+    )
+
+    await coordinator._async_update_data()
+
+    assert observations.await_count == 1
+    assert coordinator.host_observation_times == {new_mac: seen}
 
 
 @pytest.mark.asyncio

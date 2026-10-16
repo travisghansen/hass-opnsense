@@ -79,8 +79,10 @@ fresh. The freshness window is 20 minutes or twice the configured device tracker
 whichever is longer, so long scan intervals do not outlive their evidence. `consider_home` then
 adds its configured grace period.
 
-The host-observation request is made only when the NDP table contains a row for a tracked MAC, so
-scans without any relevant NDP row do not add an extra API call. If the request fails, the
+The host-observation request is made when the NDP table contains a row for a tracked MAC. When
+you track all devices (no manually selected devices), any NDP row with a valid MAC qualifies, so
+newly discovered devices get timestamp evidence on their first scan. Scans without any relevant NDP
+row do not add an extra API call. If the request fails, the
 integration logs one warning when the failure starts, then only debug messages until it recovers.
 
 The `ipv6_addresses` attribute describes addresses in the NDP neighbor inventory; it does not

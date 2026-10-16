@@ -318,6 +318,23 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             if isinstance(raw_mac, str) and (normalized := normalize_mac_address(raw_mac))
         }
 
+    def _track_all_devices(self) -> bool:
+        """Return whether the device tracker runs in track-all mode.
+
+        Mirrors the device tracker platform: manual mode applies only when the options pin at
+        least one non-blank MAC in ``CONF_DEVICES``.
+
+        Returns:
+            bool: ``True`` when no manually selected devices are configured.
+        """
+        if self.config_entry is None:
+            return True
+        configured = self.config_entry.options.get(CONF_DEVICES)
+        return not (
+            isinstance(configured, list)
+            and any(isinstance(mac, str) and mac.strip() for mac in configured)
+        )
+
     def _ndp_table_needs_observations(self, ndp_table: object) -> bool:
         """Return whether the NDP table has a row that needs timestamped evidence.
 
@@ -325,12 +342,15 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             ndp_table (object): NDP rows from the current scan, or ``None`` when unavailable.
 
         Returns:
-            bool: ``True`` when a row belongs to a tracked MAC. When no MACs are tracked yet
-                (first track-all discovery), any row with a valid MAC qualifies.
+            bool: ``True`` when a row belongs to a tracked MAC. In track-all mode (no manually
+                selected devices) or while no MACs are tracked yet, any row with a valid MAC
+                qualifies so newly seen devices get timestamp evidence on first sight.
         """
         if not isinstance(ndp_table, list):
             return False
         tracked_macs = self._tracked_ndp_macs()
+        if self._track_all_devices():
+            tracked_macs = set()
         for row in ndp_table:
             if not isinstance(row, Mapping):
                 continue
