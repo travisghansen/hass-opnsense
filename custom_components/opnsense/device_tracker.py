@@ -22,14 +22,15 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import slugify
 
-from .config_flow import normalize_mac_address
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
+    CONF_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_DEVICE_UNIQUE_ID,
     CONF_DEVICES,
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
+    DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEVICE_TRACKER_COORDINATOR,
     DEVICE_TRACKER_NDP_MAX_SECS,
     DOMAIN,
@@ -49,6 +50,7 @@ from .helpers import (
     get_arp_ip,
     get_arp_mac,
     normalize_arp_mac,
+    normalize_mac_address,
 )
 from .repair_reconciliation import is_reconciliation_active, record_desired_entities
 
@@ -917,15 +919,29 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             return False
         return self._has_matching_enabled_mac_device()
 
+    def _ndp_freshness_window_secs(self) -> int:
+        """Return how old a discovery timestamp may be while still confirming NDP presence.
+
+        The window is the larger of ``DEVICE_TRACKER_NDP_MAX_SECS`` and twice the configured
+        device-tracker scan interval, so long intervals do not outlive the evidence between scans.
+
+        Returns:
+            int: Freshness window in seconds.
+        """
+        scan_interval = self.config_entry.options.get(
+            CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
+        )
+        if not isinstance(scan_interval, (int, float)) or isinstance(scan_interval, bool):
+            scan_interval = DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
+        return max(DEVICE_TRACKER_NDP_MAX_SECS, int(2 * scan_interval))
+
     def _ndp_presence_from_observations(
         self,
-        state: Mapping[str, Any],
         ndp_present: bool,
     ) -> tuple[bool, bool]:
         """Qualify a matching NDP row using current timestamped observations.
 
         Args:
-            state (Mapping[str, Any]): Latest coordinator payload.
             ndp_present (bool): Whether a successful NDP scan contains this MAC.
 
         Returns:
@@ -933,22 +949,12 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
                 source failed. A matching neighbor row without a usable timestamp for this MAC
                 cannot confirm presence.
         """
-        observations = state.get("host_observations")
-        discovery_available = (
-            isinstance(observations, Mapping)
-            and observations.get("source") == "discovery"
-            and isinstance(observations.get("rows"), list)
-        )
         tracker_mac = (
             normalize_mac_address(self.mac_address) if isinstance(self.mac_address, str) else None
         )
         last_seen: datetime | None = None
         observation_times = getattr(self.coordinator, "host_observation_times", None)
-        if (
-            discovery_available
-            and tracker_mac is not None
-            and isinstance(observation_times, Mapping)
-        ):
+        if tracker_mac is not None and isinstance(observation_times, Mapping):
             indexed_time = observation_times.get(tracker_mac)
             if (
                 isinstance(indexed_time, datetime)
@@ -957,14 +963,14 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             ):
                 last_seen = indexed_time
         self._attr_extra_state_attributes["ndp_presence_source"] = (
-            "host_discovery" if last_seen is not None else "unavailable"
+            "host_discovery" if last_seen is not None else "no_evidence"
         )
         if not ndp_present:
             return False, False
         if last_seen is None:
             return False, True
         age = datetime.now().astimezone() - last_seen
-        return age.total_seconds() < DEVICE_TRACKER_NDP_MAX_SECS, False
+        return age.total_seconds() < self._ndp_freshness_window_secs(), False
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -975,7 +981,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         if not isinstance(state, MutableMapping) or not any(
             isinstance(table, list) for table in (arp_table, ndp_table)
         ):
-            self._attr_extra_state_attributes["ndp_presence_source"] = "unavailable"
+            self._attr_extra_state_attributes["ndp_presence_source"] = "no_evidence"
             self._mark_unavailable()
             return
         arp_table_lookup_failed = not isinstance(arp_table, list)
@@ -1025,7 +1031,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
 
         fresh_arp_present = any(not entry.get("expired", False) for entry in fresh_arp_entries)
         fresh_ndp_present, observations_failed = self._ndp_presence_from_observations(
-            state, bool(fresh_ndp_presence_entries)
+            bool(fresh_ndp_presence_entries)
         )
         ndp_failed = ndp_failed or observations_failed
         if (

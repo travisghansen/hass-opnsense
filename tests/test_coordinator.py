@@ -7,6 +7,7 @@ calculations, and update flow.
 
 from collections.abc import Callable, MutableMapping
 from datetime import UTC, datetime, timedelta
+import logging
 import time
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call
@@ -44,6 +45,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_VPN,
     DOMAIN,
     ENTRY_TYPE_CARP,
+    TRACKED_MACS,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
@@ -2133,7 +2135,8 @@ async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
 
     await coordinator.async_refresh()
     assert coordinator.data["ndp_table"] == previous_ndp_rows
-    assert coordinator.data["host_observations"] == host_observations
+    assert coordinator.host_observation_times == {}
+    assert "host_observations" not in coordinator.data
     assert coordinator.data["unavailable_device_tracker_tables"] == []
 
     await coordinator.async_refresh()
@@ -2142,7 +2145,7 @@ async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
     assert coordinator.data["arp_table"] == arp_rows
     assert coordinator.data["ndp_table"] == previous_ndp_rows
     assert coordinator.data["unavailable_device_tracker_tables"] == ["ndp_table"]
-    assert coordinator.data["host_observations"] is None
+    assert coordinator.host_observation_times is None
     client.get_arp_table.assert_awaited_with(resolve_hostnames=False)
     client.get_ndp_table.assert_awaited_with()
 
@@ -2172,7 +2175,7 @@ async def test_dt_refresh_indexes_latest_discovery_time_and_clears_unavailable_s
     client.get_host_firmware_version = AsyncMock(return_value="26.1")
     client.get_system_info = AsyncMock(return_value={})
     client.get_arp_table = AsyncMock(return_value=[])
-    client.get_ndp_table = AsyncMock(return_value=[])
+    client.get_ndp_table = AsyncMock(return_value=[{"mac": mac, "ip": "2001:db8::1"}])
     client.get_host_observations = AsyncMock(
         side_effect=[
             discovery_rows,
@@ -2198,7 +2201,7 @@ async def test_dt_refresh_indexes_latest_discovery_time_and_clears_unavailable_s
 
     first_state = await coordinator._async_update_data()
     assert coordinator.host_observation_times == {mac: latest}
-    assert first_state["host_observations"] == discovery_rows
+    assert "host_observations" not in first_state
     assert "host_observation_times" not in first_state
 
     await coordinator._async_update_data()
@@ -2422,3 +2425,156 @@ async def test_calculate_vpn_speeds_covers_ipsec_connections(
         not in coord._state["ipsec"]["connections"]["ike-new"]
     )
     assert coord._state["ipsec"]["connections"]["broken"] == "not-a-mapping"
+
+
+def _dt_observation_coordinator(
+    entry: MockConfigEntry,
+    ndp_rows: list[dict[str, str]],
+    observations: AsyncMock,
+) -> OPNsenseDataUpdateCoordinator:
+    """Build a device-tracker coordinator around a mocked client.
+
+    Args:
+        entry (MockConfigEntry): Config entry owning the coordinator.
+        ndp_rows (list[dict[str, str]]): Rows returned by the NDP lookup.
+        observations (AsyncMock): Mock used for the host-observation lookup.
+
+    Returns:
+        OPNsenseDataUpdateCoordinator: Device-tracker coordinator under test.
+    """
+    client = MagicMock()
+    client.get_device_unique_id = AsyncMock(return_value="id")
+    client.get_host_firmware_version = AsyncMock(return_value="26.1")
+    client.get_system_info = AsyncMock(return_value={})
+    client.get_arp_table = AsyncMock(return_value=[])
+    client.get_ndp_table = AsyncMock(return_value=ndp_rows)
+    client.get_host_observations = observations
+    client.get_query_counts = AsyncMock(return_value=0)
+    client.reset_query_counts = AsyncMock()
+    return OPNsenseDataUpdateCoordinator(
+        hass=MagicMock(),
+        client=client,
+        name="device tracker",
+        update_interval=timedelta(seconds=1),
+        device_unique_id="id",
+        config_entry=entry,
+        device_tracker_coordinator=True,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("ndp_rows", "expect_call"),
+    [
+        ([], False),
+        ([{"mac": "11:22:33:44:55:66", "ip": "2001:db8::9"}], False),
+        ([{"mac": "AA-BB-CC-DD-EE-FF", "ip": "2001:db8::1"}], True),
+    ],
+)
+async def test_dt_refresh_fetches_observations_only_for_tracked_ndp_rows(
+    make_config_entry: Callable[..., MockConfigEntry],
+    ndp_rows: list[dict[str, str]],
+    expect_call: bool,
+) -> None:
+    """Host observations are requested only when a tracked MAC appears in the NDP table.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        ndp_rows (list[dict[str, str]]): Rows returned by the NDP lookup.
+        expect_call (bool): Whether the observation lookup should run.
+    """
+    mac = "aa:bb:cc:dd:ee:ff"
+    seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
+    observations = AsyncMock(
+        return_value={"source": "discovery", "rows": [{"mac": mac, "last_seen": seen}]}
+    )
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
+    coordinator = _dt_observation_coordinator(entry, ndp_rows, observations)
+
+    await coordinator._async_update_data()
+
+    assert observations.await_count == (1 if expect_call else 0)
+    assert coordinator.host_observation_times == ({mac: seen} if expect_call else None)
+
+
+@pytest.mark.asyncio
+async def test_dt_refresh_resets_observation_index_when_next_poll_needs_none(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A poll that skips the observation lookup never reuses the previous index.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
+    mac = "aa:bb:cc:dd:ee:ff"
+    seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
+    observations = AsyncMock(
+        return_value={"source": "discovery", "rows": [{"mac": mac, "last_seen": seen}]}
+    )
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
+    coordinator = _dt_observation_coordinator(
+        entry, [{"mac": mac, "ip": "2001:db8::1"}], observations
+    )
+    await coordinator._async_update_data()
+    assert coordinator.host_observation_times == {mac: seen}
+
+    cast("MagicMock", coordinator._client).get_ndp_table = AsyncMock(return_value=[])
+    await coordinator._async_update_data()
+
+    assert coordinator.host_observation_times is None
+    assert observations.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_optional_lookup_failure_warns_once_then_debug_then_recovers(
+    make_config_entry: Callable[..., MockConfigEntry],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Repeated optional lookup failures log one warning, then debug, then an info recovery.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        caplog (pytest.LogCaptureFixture): Captured log records.
+    """
+    mac = "aa:bb:cc:dd:ee:ff"
+    observations = AsyncMock(
+        side_effect=[
+            OPNsensePrivilegeMissing("denied"),
+            OPNsensePrivilegeMissing("denied"),
+            {"source": "discovery", "rows": []},
+            OPNsensePrivilegeMissing("denied"),
+        ]
+    )
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
+    coordinator = _dt_observation_coordinator(
+        entry, [{"mac": mac, "ip": "2001:db8::1"}], observations
+    )
+    caplog.set_level(logging.DEBUG, logger="custom_components.opnsense.coordinator")
+
+    def lookup_records(level: int) -> list[logging.LogRecord]:
+        """Return host-observation log records at one level.
+
+        Args:
+            level (int): Logging level to filter on.
+
+        Returns:
+            list[logging.LogRecord]: Matching records.
+        """
+        return [
+            r for r in caplog.records if r.levelno == level and "Host observation" in r.getMessage()
+        ]
+
+    await coordinator._async_update_data()
+    await coordinator._async_update_data()
+    warnings = lookup_records(logging.WARNING)
+    assert len(warnings) == 1
+    assert warnings[0].exc_info is not None
+    debug_records = lookup_records(logging.DEBUG)
+    assert len(debug_records) == 1
+    assert debug_records[0].exc_info is None
+
+    await coordinator._async_update_data()
+    assert len(lookup_records(logging.INFO)) == 1
+
+    await coordinator._async_update_data()
+    assert len(lookup_records(logging.WARNING)) == 2

@@ -13,10 +13,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .config_flow import normalize_mac_address
 from .const import (
     ATTR_UNBOUND_BLOCKLIST,
     CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
+    CONF_DEVICES,
     CONF_SYNC_CARP,
     CONF_SYNC_CERTIFICATES,
     CONF_SYNC_DHCP_LEASES,
@@ -36,8 +36,16 @@ from .const import (
     DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
     DEFAULT_SYNC_OPTION_VALUE,
     DOMAIN,
+    TRACKED_MACS,
+    TRACKED_NDP_MACS,
 )
-from .helpers import dict_get, get_smart_device_name, is_carp_entry
+from .helpers import (
+    dict_get,
+    get_arp_mac,
+    get_smart_device_name,
+    is_carp_entry,
+    normalize_mac_address,
+)
 from .repair_reconciliation import has_repair_marker
 from .repairs import (
     async_create_device_id_mismatch_issue,
@@ -151,6 +159,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         self._mismatched_count = 0
         self._device_unique_id: str | None = device_unique_id
         self._updating: bool = False
+        # Optional tracker lookups currently failing, used to log each outage only once.
+        self._failing_optional_methods: set[str] = set()
         super().__init__(
             hass=hass,
             logger=_LOGGER,
@@ -227,15 +237,13 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                         )
                     else:
                         state[cat.get("state_key")] = await method()
-                except OPNsenseError:
+                except OPNsenseError as err:
                     if method_name not in _OPTIONAL_TRACKER_METHODS:
                         raise
                     state[cat.get("state_key")] = None
-                    _LOGGER.warning(
-                        "%s lookup failed; this scan cannot provide fresh presence evidence",
-                        _OPTIONAL_TRACKER_METHODS[method_name],
-                        exc_info=True,
-                    )
+                    self._log_optional_lookup_failure(method_name, err)
+                else:
+                    self._log_optional_lookup_recovery(method_name)
                 end_time: float = time.perf_counter()
                 elapsed_time: float = end_time - start_time
                 total_time += elapsed_time
@@ -252,6 +260,84 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Method %s not found", cat.get("function", ""))
 
         return state
+
+    def _log_optional_lookup_failure(self, method_name: str, error: OPNsenseError) -> None:
+        """Log an optional device-tracker lookup failure without repeating the stack trace.
+
+        The first failure after a success is logged as a warning with the stack trace. While
+        the lookup keeps failing, later failures are logged at debug level only.
+
+        Args:
+            method_name (str): Optional client method that failed.
+            error (OPNsenseError): Failure raised by the lookup.
+        """
+        label = _OPTIONAL_TRACKER_METHODS[method_name]
+        if method_name in self._failing_optional_methods:
+            _LOGGER.debug("%s lookup is still failing; no fresh presence evidence", label)
+            return
+        self._failing_optional_methods.add(method_name)
+        _LOGGER.warning(
+            "%s lookup failed; this scan cannot provide fresh presence evidence. Further "
+            "failures are logged at debug level until it recovers",
+            label,
+            exc_info=error,
+        )
+
+    def _log_optional_lookup_recovery(self, method_name: str) -> None:
+        """Log recovery of an optional device-tracker lookup after a reported failure.
+
+        Args:
+            method_name (str): Client method that just succeeded.
+        """
+        if method_name in self._failing_optional_methods:
+            self._failing_optional_methods.discard(method_name)
+            _LOGGER.info("%s lookup recovered", _OPTIONAL_TRACKER_METHODS[method_name])
+
+    def _tracked_ndp_macs(self) -> set[str]:
+        """Return normalized MACs that device-tracker entities may confirm through NDP.
+
+        Combines the persisted tracked-MAC inventories with manually configured devices. An
+        empty result means entities have not been determined yet.
+
+        Returns:
+            set[str]: Normalized tracked MAC addresses.
+        """
+        raw_macs: list[Any] = []
+        if self.config_entry is None:
+            return set()
+        for source in (
+            self.config_entry.data.get(TRACKED_MACS),
+            self.config_entry.data.get(TRACKED_NDP_MACS),
+            self.config_entry.options.get(CONF_DEVICES),
+        ):
+            if isinstance(source, list):
+                raw_macs.extend(source)
+        return {
+            normalized
+            for raw_mac in raw_macs
+            if isinstance(raw_mac, str) and (normalized := normalize_mac_address(raw_mac))
+        }
+
+    def _ndp_table_needs_observations(self, ndp_table: object) -> bool:
+        """Return whether the NDP table has a row that needs timestamped evidence.
+
+        Args:
+            ndp_table (object): NDP rows from the current scan, or ``None`` when unavailable.
+
+        Returns:
+            bool: ``True`` when a row belongs to a tracked MAC. When no MACs are tracked yet
+                (first track-all discovery), any row with a valid MAC qualifies.
+        """
+        if not isinstance(ndp_table, list):
+            return False
+        tracked_macs = self._tracked_ndp_macs()
+        for row in ndp_table:
+            if not isinstance(row, Mapping):
+                continue
+            row_mac = normalize_mac_address(get_arp_mac(row))
+            if row_mac is not None and (not tracked_macs or row_mac in tracked_macs):
+                return True
+        return False
 
     def _build_categories(self) -> list[dict[str, str]]:
         """Build API call categories based on integration sync options.
@@ -437,16 +523,19 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 "resolve_hostnames": self._resolve_arp_hostnames(),
             },
             {"function": "get_ndp_table", "state_key": "ndp_table"},
-            {"function": "get_host_observations", "state_key": "host_observations"},
         ]
         prior_state = self._state.get("previous_state")
         if not isinstance(prior_state, Mapping):
             prior_state = self._state.copy()
         self.host_observation_times = None
         fetched_state = await self._get_states(categories)
-        self.host_observation_times = _index_host_observation_times(
-            fetched_state.get("host_observations")
-        )
+        if self._ndp_table_needs_observations(fetched_state.get("ndp_table")):
+            observation_state = await self._get_states(
+                [{"function": "get_host_observations", "state_key": "host_observations"}]
+            )
+            self.host_observation_times = _index_host_observation_times(
+                observation_state.get("host_observations")
+            )
         self._state.update(fetched_state)
         unavailable_tables: list[str] = []
         for table_key in ("arp_table", "ndp_table"):
