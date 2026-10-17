@@ -64,6 +64,19 @@ def _service_identity(service: Mapping[str, Any]) -> str | None:
     return None
 
 
+_VPN_SWITCH_GROUPS: tuple[tuple[str, str], ...] = (
+    ("openvpn", "clients"),
+    ("openvpn", "servers"),
+    ("wireguard", "clients"),
+    ("wireguard", "servers"),
+    ("ipsec", "connections"),
+)
+_VPN_SWITCH_TYPE_DISPLAY_NAMES: dict[str, str] = {
+    "openvpn": "OpenVPN",
+    "ipsec": "IPsec",
+}
+
+
 def _is_valid_vpn_switch_row(instance: Any) -> bool:
     """Return whether a VPN instance row can produce a switch.
 
@@ -122,6 +135,22 @@ def _is_valid_nat_rule_row(rule_key: Any, rule: Any) -> bool:
     return bool(rule_id) and isinstance(interface, str) and bool(interface.strip())
 
 
+def _is_known_ipsec_switch_row(connection: Any) -> bool:
+    """Return whether an IPsec connection row reports its enabled state.
+
+    aiopnsense omits ``enabled`` when the IPsec connections configuration could
+    not be read, and reports ``None`` for sessions without a configured
+    connection, which cannot be toggled and therefore produce no switch.
+
+    Returns:
+        bool: Whether the row is a mapping that carries the ``enabled`` key.
+
+    Args:
+        connection (Any): IPsec connection payload to validate.
+    """
+    return isinstance(connection, MutableMapping) and "enabled" in connection
+
+
 def _vpn_switch_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     """Return whether every VPN row consumed by the switch compiler is valid.
 
@@ -138,7 +167,10 @@ def _vpn_switch_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
                 _is_valid_vpn_switch_row(instance) for instance in instances.values()
             ):
                 return False
-    return True
+    connections = dict_get(state, "ipsec.connections", {})
+    return isinstance(connections, MutableMapping) and all(
+        _is_known_ipsec_switch_row(connection) for connection in connections.values()
+    )
 
 
 def _create_switch[EntityT: OPNsenseSwitch](
@@ -213,7 +245,7 @@ def _build_vpn_switch_description(
     return SwitchEntityDescription(
         key=f"{vpn_type}.{clients_servers}.{uuid}",
         name=(
-            f"{'OpenVPN' if vpn_type == 'openvpn' else vpn_type.title()} "
+            f"{_VPN_SWITCH_TYPE_DISPLAY_NAMES.get(vpn_type, vpn_type.title())} "
             f"{clients_servers.title().rstrip('s')} {instance_name}"
         ),
         icon="mdi:folder-key-network-outline",
@@ -377,25 +409,24 @@ async def _compile_vpn_switches(
         list: A list of OPNsenseVPNSwitch entities.
     """
     entities: list = []
-    for vpn_type in ("openvpn", "wireguard"):
-        for clients_servers in ("clients", "servers"):
-            if not isinstance(state, MutableMapping):
-                return []
-            vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
-            if not isinstance(vpn_instances, MutableMapping):
+    for vpn_type, clients_servers in _VPN_SWITCH_GROUPS:
+        if not isinstance(state, MutableMapping):
+            return []
+        vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
+        if not isinstance(vpn_instances, MutableMapping):
+            continue
+        for uuid, instance in vpn_instances.items():
+            if not _is_valid_vpn_switch_row(instance):
                 continue
-            for uuid, instance in vpn_instances.items():
-                if not _is_valid_vpn_switch_row(instance):
-                    continue
 
-                entities.append(
-                    _create_switch(
-                        OPNsenseVPNSwitch,
-                        config_entry,
-                        coordinator,
-                        _build_vpn_switch_description(vpn_type, clients_servers, uuid, instance),
-                    )
+            entities.append(
+                _create_switch(
+                    OPNsenseVPNSwitch,
+                    config_entry,
+                    coordinator,
+                    _build_vpn_switch_description(vpn_type, clients_servers, uuid, instance),
                 )
+            )
     return entities
 
 
@@ -713,10 +744,12 @@ async def async_setup_entry(
         has_wireguard_inventory = "wireguard" in state and isinstance(
             state.get("wireguard"), MutableMapping
         )
+        has_ipsec_inventory = "ipsec" in state and isinstance(state.get("ipsec"), MutableMapping)
         entities.extend(await _compile_vpn_switches(config_entry, coordinator, state))
         if not (
             has_openvpn_inventory
             and has_wireguard_inventory
+            and has_ipsec_inventory
             and _vpn_switch_rows_are_complete(state)
         ):
             reconciliation_complete = False
@@ -1574,10 +1607,14 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
             self._mark_unavailable()
             return
         try:
-            self._attr_is_on = instance["enabled"]
+            enabled = instance["enabled"]
         except TypeError, KeyError, AttributeError:
             self._mark_unavailable()
             return
+        if enabled is None:
+            self._mark_unavailable()
+            return
+        self._attr_is_on = enabled
         self._available = True
         self._attr_extra_state_attributes = {}
         if self._clients_servers == "servers":
@@ -1607,6 +1644,8 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
                 "latest_handshake",
                 "servers",
             ]
+        elif self._clients_servers == "connections":
+            properties = ["uuid", "name", "status", "version", "local_addrs", "remote_addrs"]
         else:
             properties = ["uuid", "name"]
 
