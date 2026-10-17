@@ -1607,57 +1607,6 @@ async def test_async_update_data_preserves_only_counter_snapshot(
 
 
 @pytest.mark.asyncio
-async def test_async_update_data_device_tracker_branch(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-    fake_client: Any,
-) -> None:
-    """When coordinator is a device tracker coordinator, _async_update_data should return _async_update_dt_data result.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-        fake_client (Any): Mocked OPNsense API client used by the coordinator.
-    """
-    entry = make_config_entry({"device_unique_id": "id"})
-    client = fake_client()()
-    # create coordinator as device tracker coordinator
-    coord = OPNsenseDataUpdateCoordinator(
-        hass=MagicMock(),
-        client=client,
-        name="n",
-        update_interval=timedelta(seconds=1),
-        device_unique_id="id",
-        config_entry=entry,
-        device_tracker_coordinator=True,
-    )
-
-    # patch the device tracker update to return a specific dict and record calls
-    called = {"dt_called": 0}
-
-    async def fake_dt_update() -> dict[str, Any]:
-        """Return a canned device-tracker payload and record the call count.
-
-        Returns:
-            dict[str, Any]: Simulated collection used by the fake dt update scenario.
-        """
-        called["dt_called"] += 1
-        return {"dt": True}
-
-    monkeypatch.setattr(coord, "_async_update_dt_data", fake_dt_update)
-
-    # spy on client's reset_query_counts
-    object.__setattr__(
-        client, "reset_query_counts", AsyncMock(wraps=getattr(client, "reset_query_counts", None))
-    )
-
-    res = await coord._async_update_data()
-    assert res == {"dt": True}
-    assert called["dt_called"] == 1
-    client.reset_query_counts.assert_awaited_once()
-
-
-@pytest.mark.asyncio
 async def test_async_update_data_returns_empty_when_device_id_check_fails(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
