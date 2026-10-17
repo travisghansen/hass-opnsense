@@ -1930,9 +1930,7 @@ async def async_setup_entry(
         has_wireguard_inventory = "wireguard" in state and isinstance(
             state.get("wireguard"), MutableMapping
         )
-        # IPsec inventory is optional (older aiopnsense releases do not provide it),
-        # but when present it must be a mapping for reconciliation to be trusted.
-        has_ipsec_inventory = "ipsec" not in state or isinstance(state.get("ipsec"), MutableMapping)
+        has_ipsec_inventory = "ipsec" in state and isinstance(state.get("ipsec"), MutableMapping)
         entities.extend(await _compile_vpn_sensors(config_entry, coordinator, state))
         if not (
             has_openvpn_inventory
@@ -2917,7 +2915,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         if len(key_parts) != 4:
             return super().icon
         prop_name = key_parts[3]
-        if prop_name == "status" and self.native_value != "up":
+        if prop_name == "status" and self.native_value not in {"up", "connected"}:
             return "mdi:close-network-outline"
         return super().icon
 

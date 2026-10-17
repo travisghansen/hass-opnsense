@@ -3705,6 +3705,7 @@ async def test_async_setup_entry_handles_partial_or_malformed_dynamic_sensor_pay
     [
         ({"openvpn": {}}, "Missing wireguard inventory"),
         ({"wireguard": {}, "openvpn": "bad"}, "Malformed wireguard inventory"),
+        ({"wireguard": {}, "openvpn": {}}, "Missing ipsec inventory"),
         ({"wireguard": {}, "openvpn": {}, "ipsec": "bad"}, "Malformed ipsec inventory"),
         (
             {"wireguard": {}, "openvpn": {}, "ipsec": {"connections": {"ike-1": "bad"}}},
@@ -3871,6 +3872,7 @@ async def test_async_setup_entry_ignores_unconsumed_openvpn_client_rows(
         coordinator_data={
             "openvpn": {"clients": {"bad": None}, "servers": {}},
             "wireguard": {"clients": {}, "servers": {}},
+            "ipsec": {"connections": {}},
         },
         sync_vpn=True,
     )
@@ -3904,7 +3906,7 @@ async def test_async_setup_entry_ignores_unconsumed_openvpn_client_rows(
         # VPN
         ({}, False, False, False, False, False, False, False, False, True, None),
         (
-            {"openvpn": {}, "wireguard": {}},
+            {"openvpn": {}, "wireguard": {}, "ipsec": {}},
             False,
             False,
             False,
@@ -6649,6 +6651,46 @@ def test_ipsec_connection_status_sensor_exposes_attributes(
         assert attrs[key] == value
     # byte counters are separate sensors, not status attributes
     assert "total_bytes_recv" not in attrs
+
+
+@pytest.mark.parametrize(
+    ("connected", "status", "expected_icon"),
+    [
+        (True, "connected", "mdi:check-network"),
+        (False, "disconnected", "mdi:close-network-outline"),
+    ],
+)
+def test_ipsec_connection_status_sensor_icon_follows_state(
+    connected: bool,
+    status: str,
+    expected_icon: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """IPsec status sensors show the connected icon only for connected tunnels.
+
+    Args:
+        connected (bool): Connection flag reported by aiopnsense.
+        status (str): Connection status string reported by aiopnsense.
+        expected_icon (str): Icon the sensor must expose for this state.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    row = dict(_IPSEC_CONNECTION_ROW, connected=connected, status=status)
+    coord.data = {"ipsec": {"connections": {"ike-1": row}}}
+    desc = MagicMock()
+    desc.key = "ipsec.connections.ike-1.status"
+    desc.name = "IPsec Connection Site A status"
+    desc.icon = "mdi:check-network"
+
+    sensor = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.ipsec_site_a_status"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.native_value == status
+    assert sensor.icon == expected_icon
 
 
 def test_ipsec_traffic_sensor_reads_counter(
