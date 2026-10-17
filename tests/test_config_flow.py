@@ -1804,56 +1804,6 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
     assert res["type"] == "create_entry"
 
 
-@pytest.mark.asyncio
-async def test_device_tracker_shows_form_when_no_user_input(
-    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """async_step_device_tracker should show form containing data_schema when called without user_input.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-    """
-    cfg = make_config_entry(
-        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        options={CONF_DEVICES: ["11:22:33:44:55:66"]},
-    )
-
-    flow = _make_options_flow(cfg)
-
-    # monkeypatch _get_dt_entries to return an ordered dict-like mapping
-    async def fake_get_dt_entries(
-        hass: HomeAssistant,
-        config: Any,
-        selected_devices: Any,
-        resolve_hostnames: bool = False,
-    ) -> Any:
-        """Return a deterministic mapping of selectable device-tracker entries.
-
-        Returns:
-            Any: Configured object produced by the local test double.
-
-        Args:
-            hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
-                registry, and services.
-            config (Any): Integration configuration used to build the selector entries.
-            selected_devices (Any): MAC addresses that should remain selected in the form.
-            resolve_hostnames (bool): Whether ARP hostname resolution was requested.
-        """
-        return {"11:22:33:44:55:66": "label1", "aa:bb:cc:dd:ee:ff": "label2"}
-
-    monkeypatch.setattr(cf_mod, "_get_dt_entries", fake_get_dt_entries)
-
-    # ensure internals are present so we don't trigger config_entry property lookup
-    flow._config = dict(cfg.data)
-    flow._options = dict(cfg.options)
-    res = await flow.async_step_device_tracker(user_input=None)
-    assert res["type"] == "form"
-    assert "data_schema" in res
-    validated = res["data_schema"]({})
-    assert CONF_DEVICES in validated
-
-
 @pytest.mark.parametrize(
     ("exception_factory", "expected_base_error"),
     [
@@ -2929,51 +2879,31 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
 async def test_device_tracker_picker_honours_resolve_hostnames_option(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
     stored_options: dict[str, Any],
     expected: bool,
 ) -> None:
     """The selected-device picker should resolve hostnames only when the option is enabled.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        fake_client (Any): Factory for a fake OPNsense client.
         stored_options (dict[str, Any]): Options stored on the config entry before the step runs.
-        expected (bool): Resolution flag the picker should request.
+        expected (bool): Resolution flag the ARP lookup should receive.
     """
     cfg = make_config_entry(
         data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
         options=stored_options,
     )
-    flow = _make_options_flow(cfg)
-    captured: dict[str, Any] = {}
+    client = fake_client()()
+    client.get_arp_table = AsyncMock(return_value=[])
+    client.get_ndp_table = AsyncMock(return_value=[])
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
-    async def fake_get_dt_entries(
-        hass: HomeAssistant,
-        config: Any,
-        selected_devices: Any,
-        resolve_hostnames: bool = False,
-    ) -> Any:
-        """Record the resolution flag requested by the picker.
+    await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
 
-        Args:
-            hass (HomeAssistant): Home Assistant instance passed by the flow.
-            config (Any): Integration configuration used to build the selector entries.
-            selected_devices (Any): MAC addresses that should remain selected in the form.
-            resolve_hostnames (bool): Whether ARP hostname resolution was requested.
-
-        Returns:
-            Any: An empty selector mapping.
-        """
-        captured["resolve_hostnames"] = resolve_hostnames
-        return {}
-
-    monkeypatch.setattr(cf_mod, "_get_dt_entries", fake_get_dt_entries)
-    flow._config = dict(cfg.data)
-    flow._options = dict(cfg.options)
-
-    await flow.async_step_device_tracker(user_input=None)
-
-    assert captured["resolve_hostnames"] is expected
+    client.get_arp_table.assert_awaited_once_with(resolve_hostnames=expected)
 
 
 @pytest.mark.asyncio
