@@ -2121,7 +2121,7 @@ async def test_dt_refresh_requests_arp_resolution_from_options(
     )
     coordinator = _arp_coordinator(client, entry)
 
-    await coordinator._async_update_data()
+    await coordinator._async_update_dt_data()
 
     client.get_arp_table.assert_awaited_once_with(resolve_hostnames=expected)
 
@@ -2284,12 +2284,18 @@ def _dt_observation_coordinator(
             True,
             id="track-all-new-mac",
         ),
+        pytest.param(
+            True,
+            ["not-a-row", {"mac": "11:22:33:44:55:66", "ip": "2001:db8::9"}],
+            True,
+            id="track-all-skips-non-mapping-rows",
+        ),
     ],
 )
 async def test_dt_refresh_fetches_observations_only_when_ndp_rows_need_them(
     make_config_entry: Callable[..., MockConfigEntry],
     track_all: bool,
-    ndp_rows: list[dict[str, str]],
+    ndp_rows: list[Any],
     expect_call: bool,
 ) -> None:
     """Host observations are requested only for NDP rows that can affect tracker presence.
@@ -2297,12 +2303,14 @@ async def test_dt_refresh_fetches_observations_only_when_ndp_rows_need_them(
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
         track_all (bool): Whether no devices are configured, so every NDP MAC is tracked.
-        ndp_rows (list[dict[str, str]]): Rows returned by the NDP lookup.
+        ndp_rows (list[Any]): Rows returned by the NDP lookup.
         expect_call (bool): Whether the observation lookup should run.
     """
     mac = "aa:bb:cc:dd:ee:ff"
     seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
-    observed_mac = ndp_rows[0]["mac"].lower().replace("-", ":") if ndp_rows else mac
+    observed_mac = next(
+        (row["mac"].lower().replace("-", ":") for row in ndp_rows if isinstance(row, dict)), mac
+    )
     observations = AsyncMock(
         return_value={"source": "discovery", "rows": [{"mac": observed_mac, "last_seen": seen}]}
     )
@@ -2319,6 +2327,67 @@ async def test_dt_refresh_fetches_observations_only_when_ndp_rows_need_them(
 
     assert observations.await_count == (1 if expect_call else 0)
     assert coordinator.host_observation_times == ({observed_mac: seen} if expect_call else None)
+
+
+@pytest.mark.asyncio
+async def test_dt_refresh_indexes_only_usable_observation_rows(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Malformed, timezone-naive and unidentifiable observation rows never reach the index.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
+    mac = "aa:bb:cc:dd:ee:ff"
+    seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
+    observations = AsyncMock(
+        return_value={
+            "source": "discovery",
+            "rows": [
+                "not-a-row",
+                {"mac": 1, "last_seen": seen},
+                {"mac": mac, "last_seen": "2026-10-15T13:00:00+00:00"},
+                {"mac": mac, "last_seen": datetime(2026, 10, 15, 13)},  # noqa: DTZ001
+                {"mac": "not-a-mac", "last_seen": seen},
+                {"mac": mac, "last_seen": seen},
+            ],
+        }
+    )
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
+    coordinator = _dt_observation_coordinator(
+        entry, [{"mac": mac, "ip": "2001:db8::1"}], observations
+    )
+
+    await coordinator._async_update_data()
+
+    assert coordinator.host_observation_times == {mac: seen}
+
+
+@pytest.mark.asyncio
+async def test_dt_refresh_without_config_entry_treats_every_valid_ndp_mac_as_tracked(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """If the config entry is gone, any valid NDP MAC still gets timestamped evidence.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
+    mac = "aa:bb:cc:dd:ee:ff"
+    seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
+    observations = AsyncMock(
+        return_value={"source": "discovery", "rows": [{"mac": mac, "last_seen": seen}]}
+    )
+    coordinator = _dt_observation_coordinator(
+        make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"}),
+        [{"mac": mac, "ip": "2001:db8::1"}],
+        observations,
+    )
+    object.__setattr__(coordinator, "config_entry", None)
+
+    await coordinator._async_update_data()
+
+    observations.assert_awaited_once()
+    assert coordinator.host_observation_times == {mac: seen}
 
 
 @pytest.mark.asyncio

@@ -37,6 +37,7 @@ from custom_components.opnsense.helpers import (
     is_carp_entry,
     is_usable_carp_vip,
     normalize_arp_mac,
+    normalize_mac_address,
 )
 
 
@@ -378,6 +379,24 @@ def test_normalize_arp_mac(value: object, expected: str) -> None:
         expected (str): Outcome asserted by the parameterized scenario.
     """
     assert normalize_arp_mac(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param(" AA-BB-CC-DD-EE-FF ", "aa:bb:cc:dd:ee:ff", id="hyphenated"),
+        pytest.param("aa:bb:cc", None, id="too-short"),
+        pytest.param(None, None, id="non-string"),
+    ],
+)
+def test_normalize_mac_address(value: Any, expected: str | None) -> None:
+    """Accept only full MAC addresses and normalize their separators and case.
+
+    Args:
+        value (Any): Input value exercised by the helper.
+        expected (str | None): Normalized MAC, or ``None`` when the input is not a valid MAC.
+    """
+    assert normalize_mac_address(value) == expected
 
 
 @pytest.mark.parametrize(

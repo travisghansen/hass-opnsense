@@ -3393,10 +3393,13 @@ async def test_restored_home_needs_current_ndp_evidence(
         (150, 21 * 60, False),
         (900, 29 * 60, True),
         (900, 31 * 60, False),
+        ("invalid", 19 * 60, True),
+        ("invalid", 21 * 60, False),
+        (True, 19 * 60, True),
     ],
 )
 def test_ndp_freshness_window_scales_with_scan_interval(
-    scan_interval: int,
+    scan_interval: object,
     age_secs: int,
     expected_connected: bool,
     coordinator: MagicMock,
@@ -3405,7 +3408,8 @@ def test_ndp_freshness_window_scales_with_scan_interval(
     """The NDP window is the larger of the 20 minute floor and twice the scan interval.
 
     Args:
-        scan_interval (int): Configured device-tracker scan interval in seconds.
+        scan_interval (object): Configured scan interval in seconds; non-numeric values fall back to
+            the default.
         age_secs (int): Age of the discovery observation in seconds.
         expected_connected (bool): Whether the observation is still fresh.
         coordinator (MagicMock): Coordinator supplying API boundary state.
