@@ -2167,12 +2167,7 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
         id="router-device-id",
         identifiers={(DOMAIN, entry.data[CONF_DEVICE_UNIQUE_ID])},
     )
-    surviving_entry_a = MagicMock(
-        entry_id="survive-entry-b",
-        domain=DOMAIN,
-        data={CONF_DEVICE_UNIQUE_ID: "survive-b"},
-    )
-    surviving_entry_b = MagicMock(
+    surviving_entry = MagicMock(
         entry_id="survive-entry-a",
         domain=DOMAIN,
         data={CONF_DEVICE_UNIQUE_ID: "survive-a"},
@@ -2184,17 +2179,14 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
     )
     async_get_entry_map = {
         entry.entry_id: entry,
-        surviving_entry_a.entry_id: surviving_entry_a,
-        surviving_entry_b.entry_id: surviving_entry_b,
+        surviving_entry.entry_id: surviving_entry,
         non_opnsense_entry.entry_id: non_opnsense_entry,
     }
     ph_hass.config_entries.async_get_entry = MagicMock(side_effect=async_get_entry_map.get)
-    surviving_router_a = MagicMock(id="survivor-a-router")
-    surviving_router_b = MagicMock(id="survivor-b-router")
+    surviving_router = MagicMock(id="survivor-a-router")
     identifier_router_map = {
         (DOMAIN, entry.data[CONF_DEVICE_UNIQUE_ID]): router_device,
-        (DOMAIN, "survive-b"): surviving_router_b,
-        (DOMAIN, "survive-a"): surviving_router_a,
+        (DOMAIN, "survive-a"): surviving_router,
     }
     devices = {
         stale_router_mac: MagicMock(
@@ -2202,8 +2194,7 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
             via_device_id="router-device-id",
             config_entries={
                 entry.entry_id,
-                surviving_entry_a.entry_id,
-                surviving_entry_b.entry_id,
+                surviving_entry.entry_id,
                 non_opnsense_entry.entry_id,
             },
         ),

@@ -3747,12 +3747,7 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
         identifiers={(DOMAIN, "router-mac")},
         via_device_id=None,
     )
-    surviving_opnsense_a = MagicMock(
-        entry_id="survive-entry-b",
-        domain=DOMAIN,
-        data={CONF_DEVICE_UNIQUE_ID: "survive-b"},
-    )
-    surviving_opnsense_b = MagicMock(
+    surviving_opnsense = MagicMock(
         entry_id="survive-entry-a",
         domain=DOMAIN,
         data={CONF_DEVICE_UNIQUE_ID: "survive-a"},
@@ -3762,15 +3757,13 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
         domain="other",
         data={CONF_DEVICE_UNIQUE_ID: "non-opnsense"},
     )
-    shared_router_b = MagicMock(id="survivor-b-router")
-    shared_router_a = MagicMock(id="survivor-a-router")
+    surviving_router = MagicMock(id="survivor-a-router")
     linked_to_router = MagicMock(
         id="shared-device",
         via_device_id=router_device.id,
         config_entries={
             entry.entry_id,
-            surviving_opnsense_a.entry_id,
-            surviving_opnsense_b.entry_id,
+            surviving_opnsense.entry_id,
             non_opnsense_entry.entry_id,
         },
     )
@@ -3783,15 +3776,13 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
     no_parent = MagicMock(id="noparent-device", via_device_id=None)
     async_get_entry_map = {
         entry.entry_id: entry,
-        surviving_opnsense_a.entry_id: surviving_opnsense_a,
-        surviving_opnsense_b.entry_id: surviving_opnsense_b,
+        surviving_opnsense.entry_id: surviving_opnsense,
         non_opnsense_entry.entry_id: non_opnsense_entry,
     }
     ph_hass.config_entries.async_get_entry = MagicMock(side_effect=async_get_entry_map.get)
     identifier_router_map = {
         (DOMAIN, "router-mac"): router_device,
-        (DOMAIN, "survive-b"): shared_router_b,
-        (DOMAIN, "survive-a"): shared_router_a,
+        (DOMAIN, "survive-a"): surviving_router,
     }
     dr_reg = MagicMock()
 

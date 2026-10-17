@@ -14,6 +14,7 @@ from custom_components.opnsense.const import (
     CONF_DEVICE_UNIQUE_ID,
     CONF_ENTRY_TYPE,
     DEFAULT_VERIFY_SSL,
+    DOMAIN,
     ENTRY_TYPE_CARP,
 )
 from custom_components.opnsense.helpers import (
@@ -198,6 +199,86 @@ def test_detach_tracker_uses_modern_device_removal(
     else:
         registry.async_remove_device.assert_not_called()
     registry.async_update_device.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("via_device_id", "owner_entries", "expected_result", "expected_update"),
+    [
+        pytest.param(
+            "router-id",
+            {
+                "z-entry": ("opnsense", "z-router"),
+                "a-other": ("other_domain", "ignored"),
+                "b-no-id": ("opnsense", None),
+                "c-no-router": ("opnsense", "missing-router"),
+                "d-entry": ("opnsense", "d-router"),
+            },
+            (True, "d-router-device"),
+            {"remove_config_entry_id": "entry-id", "via_device_id": "d-router-device"},
+            id="from-router-reparents-to-first-resolvable-opnsense-owner",
+        ),
+        pytest.param(
+            "router-id",
+            {"a-other": ("other_domain", "ignored")},
+            (True, None),
+            {"remove_config_entry_id": "entry-id", "via_device_id": None},
+            id="from-router-without-replacement-clears-parent",
+        ),
+        pytest.param(
+            "other-router-id",
+            {"d-entry": ("opnsense", "d-router")},
+            (False, None),
+            {"remove_config_entry_id": "entry-id"},
+            id="not-from-router-only-detaches-config-entry",
+        ),
+    ],
+)
+def test_detach_shared_router_parent_legacy_reparenting(
+    via_device_id: str,
+    owner_entries: dict[str, tuple[str, str | None]],
+    expected_result: tuple[bool, str | None],
+    expected_update: dict[str, str | None],
+) -> None:
+    """Shared tracker devices keep or replace their router parent when this entry detaches.
+
+    Args:
+        via_device_id (str): Router device currently parenting the shared tracker device.
+        owner_entries (dict[str, tuple[str, str | None]]): Other owners as
+            ``entry_id: (domain, device_unique_id)``.
+        expected_result (tuple[bool, str | None]): Expected helper return value.
+        expected_update (dict[str, str | None]): Expected device-registry update arguments.
+    """
+    device: Any = SimpleNamespace(
+        id="tracker-id",
+        via_device_id=via_device_id,
+        config_entries={"entry-id", *owner_entries},
+    )
+    config_entries = MagicMock()
+    config_entries.async_get_entry.side_effect = lambda entry_id: SimpleNamespace(
+        domain=DOMAIN if owner_entries[entry_id][0] == "opnsense" else "other",
+        data=(
+            {CONF_DEVICE_UNIQUE_ID: owner_entries[entry_id][1]}
+            if owner_entries[entry_id][1] is not None
+            else {}
+        ),
+    )
+    registry = MagicMock()
+    registry.async_get_device_by_identifier.side_effect = lambda identifier, _entry_id: (
+        SimpleNamespace(id=f"{identifier[1][0]}-router-device")
+        if identifier[1] != "missing-router"
+        else None
+    )
+
+    result = detach_shared_router_parent(
+        shared_config_entry_id="entry-id",
+        shared_device_entry=device,
+        router_device_id="router-id",
+        config_entries=config_entries,
+        device_registry=registry,
+    )
+
+    assert result == expected_result
+    registry.async_update_device.assert_called_once_with("tracker-id", **expected_update)
 
 
 @pytest.mark.parametrize(
