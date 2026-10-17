@@ -67,6 +67,7 @@ from .helpers import (
     get_arp_mac,
     is_carp_entry,
     is_usable_carp_vip,
+    normalize_mac_address,
 )
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -96,7 +97,6 @@ CONF_DEVICE_TRACKING_MODE = "device_tracking_mode"
 DEVICE_TRACKING_MODE_DISABLED = "disabled"
 DEVICE_TRACKING_MODE_ALL = "all_detected"
 DEVICE_TRACKING_MODE_SELECTED = "selected_only"
-MAC_ADDRESS_PATTERN = re.compile(r"^([0-9a-f]{2}:){5}([0-9a-f]{2})$")
 CONNECTION_ERROR_KEYS: tuple[tuple[type[OPNsenseError], str], ...] = (
     (OPNsenseSSLError, "cannot_connect_ssl"),
     (OPNsenseInvalidAuth, "invalid_auth"),
@@ -109,23 +109,6 @@ OPTIONS_INIT_NUMBER_BOUNDS: dict[str, tuple[int, int]] = {
     CONF_DEVICE_TRACKER_SCAN_INTERVAL: (30, 300),
     CONF_DEVICE_TRACKER_CONSIDER_HOME: (0, 3600),
 }
-
-
-def normalize_mac_address(mac: str) -> str | None:
-    """Normalize MAC addresses to lowercase colon-separated format.
-
-    Args:
-        mac (str): Raw MAC address input.
-
-    Returns:
-        str | None: Normalized MAC (`aa:bb:cc:dd:ee:ff`) when valid, otherwise ``None``.
-    """
-    if not isinstance(mac, str):
-        return None
-    normalized = mac.strip().lower().replace("-", ":")
-    if not MAC_ADDRESS_PATTERN.match(normalized):
-        return None
-    return normalized
 
 
 def _get_device_tracking_mode(

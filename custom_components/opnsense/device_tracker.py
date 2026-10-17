@@ -22,15 +22,17 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import slugify
 
-from .config_flow import normalize_mac_address
 from .const import (
     CONF_DEVICE_TRACKER_CONSIDER_HOME,
     CONF_DEVICE_TRACKER_ENABLED,
+    CONF_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_DEVICE_UNIQUE_ID,
     CONF_DEVICES,
     DEFAULT_DEVICE_TRACKER_CONSIDER_HOME,
     DEFAULT_DEVICE_TRACKER_ENABLED,
+    DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     DEVICE_TRACKER_COORDINATOR,
+    DEVICE_TRACKER_NDP_MAX_SECS,
     DOMAIN,
     SHOULD_RELOAD,
     TRACKED_ARP_MACS,
@@ -47,7 +49,9 @@ from .helpers import (
     dict_get,
     get_arp_ip,
     get_arp_mac,
+    has_configured_tracker_macs,
     normalize_arp_mac,
+    normalize_mac_address,
 )
 from .repair_reconciliation import is_reconciliation_active, record_desired_entities
 
@@ -239,24 +243,6 @@ def _track_all_table_entries_are_complete(entries: list[Any], *, ndp: bool) -> b
         if _normalized_ip_address(get_arp_ip(entry), version=6) is None:
             return False
     return True
-
-
-def _has_configured_macs(config_entry: ConfigEntry) -> bool:
-    """Return whether the options pin at least one non-blank tracker MAC.
-
-    Args:
-        config_entry (ConfigEntry): Config entry whose options hold the configured MACs.
-
-    Returns:
-        bool: ``True`` when at least one configured MAC is a non-blank string.
-    """
-    configured_macs = config_entry.options.get(CONF_DEVICES, [])
-    return bool(
-        isinstance(configured_macs, list)
-        and any(
-            isinstance(mac_address, str) and mac_address.strip() for mac_address in configured_macs
-        )
-    )
 
 
 def _unavailable_device_tracker_tables(state: Mapping[str, Any]) -> list[str]:
@@ -492,7 +478,7 @@ def _update_track_all_source_inventory(
     if not isinstance(state, MutableMapping):
         return
     options = config_entry.options
-    has_configured_macs = _has_configured_macs(config_entry)
+    has_configured_macs = has_configured_tracker_macs(config_entry)
     if not options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED) or (
         has_configured_macs
     ):
@@ -611,7 +597,7 @@ async def async_setup_entry(
 
     arp_entries = dict_get(state, "arp_table")
     ndp_entries = dict_get(state, "ndp_table", [])
-    has_configured_macs = _has_configured_macs(config_entry)
+    has_configured_macs = has_configured_tracker_macs(config_entry)
     table_response_available = isinstance(state.get("arp_table"), list) or isinstance(
         state.get("ndp_table"), list
     )
@@ -916,6 +902,59 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             return False
         return self._has_matching_enabled_mac_device()
 
+    def _ndp_freshness_window_secs(self) -> int:
+        """Return how old a discovery timestamp may be while still confirming NDP presence.
+
+        The window is the larger of ``DEVICE_TRACKER_NDP_MAX_SECS`` and twice the configured
+        device-tracker scan interval, so long intervals do not outlive the evidence between scans.
+
+        Returns:
+            int: Freshness window in seconds.
+        """
+        scan_interval = self.config_entry.options.get(
+            CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
+        )
+        if not isinstance(scan_interval, (int, float)) or isinstance(scan_interval, bool):
+            scan_interval = DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
+        return max(DEVICE_TRACKER_NDP_MAX_SECS, int(2 * scan_interval))
+
+    def _ndp_presence_from_observations(
+        self,
+        ndp_present: bool,
+    ) -> tuple[bool, bool]:
+        """Qualify a matching NDP row using current timestamped observations.
+
+        Args:
+            ndp_present (bool): Whether a successful NDP scan contains this MAC.
+
+        Returns:
+            tuple[bool, bool]: Whether NDP confirms presence and whether its observation
+                source failed. A matching neighbor row without a usable timestamp for this MAC
+                cannot confirm presence.
+        """
+        tracker_mac = (
+            normalize_mac_address(self.mac_address) if isinstance(self.mac_address, str) else None
+        )
+        last_seen: datetime | None = None
+        observation_times = getattr(self.coordinator, "host_observation_times", None)
+        if tracker_mac is not None and isinstance(observation_times, Mapping):
+            indexed_time = observation_times.get(tracker_mac)
+            if (
+                isinstance(indexed_time, datetime)
+                and indexed_time.tzinfo is not None
+                and indexed_time.utcoffset() is not None
+            ):
+                last_seen = indexed_time
+        self._attr_extra_state_attributes["ndp_presence_source"] = (
+            "host_discovery" if last_seen is not None else "no_evidence"
+        )
+        if not ndp_present:
+            return False, False
+        if last_seen is None:
+            return False, True
+        age = datetime.now().astimezone() - last_seen
+        return age.total_seconds() < self._ndp_freshness_window_secs(), False
+
     @callback
     def _handle_coordinator_update(self) -> None:
         """Refresh tracker state from the latest ARP and NDP tables."""
@@ -925,6 +964,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         if not isinstance(state, MutableMapping) or not any(
             isinstance(table, list) for table in (arp_table, ndp_table)
         ):
+            self._attr_extra_state_attributes["ndp_presence_source"] = "no_evidence"
             self._mark_unavailable()
             return
         arp_table_lookup_failed = not isinstance(arp_table, list)
@@ -944,8 +984,11 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             if isinstance(tracker_mac, str)
             else []
         )
+        ndp_presence_entries = (
+            _entries_for_mac(ndp_table, tracker_mac) if isinstance(tracker_mac, str) else []
+        )
         fresh_arp_entries = [] if arp_failed else arp_entries
-        fresh_ndp_entries = [] if ndp_failed else ndp_entries
+        fresh_ndp_presence_entries = [] if ndp_failed else ndp_presence_entries
         ipv4_addresses = _addresses_from_entries(arp_entries, version=4)
         ipv6_addresses = _addresses_from_entries(ndp_entries, version=6)
         last_ipv4_addresses = self._attr_extra_state_attributes.get("ipv4_addresses", [])
@@ -970,20 +1013,24 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             self._last_known_hostname = self._attr_hostname
 
         fresh_arp_present = any(not entry.get("expired", False) for entry in fresh_arp_entries)
-        fresh_ndp_present = bool(fresh_ndp_entries)
+        fresh_ndp_present, observations_failed = self._ndp_presence_from_observations(
+            bool(fresh_ndp_presence_entries)
+        )
+        ndp_failed = ndp_failed or observations_failed
         if (
             not fresh_arp_present
             and not fresh_ndp_present
             and (
-                (arp_failed and ndp_failed)
+                observations_failed
+                or (arp_failed and ndp_failed)
                 or (arp_failed and bool(ipv4_addresses))
                 or (ndp_failed and bool(ipv6_addresses))
             )
         ):
-            # Either both lookups failed (no successful refresh at all, regardless of cached
-            # addresses) or the family that previously confirmed this device is unavailable.
-            # Preserve last-known address attributes and report the tracker as unavailable
-            # instead of treating a missing row as an away observation.
+            # A matching NDP row without a usable per-MAC timestamp, both lookups failing, or a
+            # previously confirming family becoming unavailable means presence is unknown.
+            # Preserve last-known address attributes and report unavailable instead of treating
+            # that uncertainty as an away observation.
             _update_arp_extra_state_attributes(
                 self._attr_extra_state_attributes,
                 arp_entry or ndp_entry,

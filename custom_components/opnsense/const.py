@@ -40,6 +40,9 @@ DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL = 150
 
 CONF_DEVICE_TRACKER_CONSIDER_HOME = "device_tracker_consider_home"
 DEFAULT_DEVICE_TRACKER_CONSIDER_HOME = 0
+# Minimum freshness window for timestamped IPv6 observations. It matches the default IPv4 ARP
+# lifetime and is raised to twice the device-tracker scan interval for long intervals.
+DEVICE_TRACKER_NDP_MAX_SECS = 20 * 60
 
 CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES = "device_tracker_resolve_hostnames"
 DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES = False

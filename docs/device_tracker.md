@@ -29,15 +29,18 @@ address become one tracker, so a dual-stack device does not get separate IPv4 an
 IPv6 neighbors include SLAAC, DHCPv6, and temporary addresses when OPNsense reports them. That
 means:
 
-- only devices seen recently by OPNsense appear automatically
-- a device may be missing if it has been idle for too long
+- devices with ARP or NDP entries appear automatically
+- neighbor entries may remain after a device disconnects; presence is evaluated separately from
+  the address inventory
+- a device may be missing after its neighbor entry expires
 - a device may not appear until it talks on the network again
 - an IPv6-only device needs the `Diagnostics: NDP Table` permission
 - ARP and NDP permissions are independent; a missing permission for one table does not disable
   tracking from the other table
 
 Each tracker exposes `ipv4_addresses` and `ipv6_addresses` state attributes. The entity's primary
-IP address uses IPv4 when available and otherwise uses IPv6.
+IP address uses IPv4 when available and otherwise uses IPv6. MAC addresses remain the tracker
+identity: a device can move between IPv4 and IPv6 without creating a new tracker.
 
 ### When to use manual MAC addresses
 
@@ -65,7 +68,38 @@ Successful scans with no matching entry continue to use `consider_home` for depa
 By default, OPNsense/FreeBSD uses a max age of 20 minutes for ARP entries (sysctl
 `net.link.ether.inet.max_age`). This can be lowered in <ins>OPNsense</ins> from
 `System -> Settings -> Tunables` if desired. NDP entry lifetime is managed by OPNsense and can vary
-with the address and neighbor state.
+with the address and neighbor state. Its API does not expose reachability, and stale NDP rows can
+remain long after a device leaves.
+
+Timestamped host-discovery evidence for IPv6 presence is available starting with OPNsense
+Community 25.7.11. Enable automatic host discovery, select the interfaces it should monitor, and
+grant the API user `Interfaces: Neighbors: Automatic discovery` access. The newest timestamped
+observation for the same MAC from either IPv4 or IPv6 confirms a matching NDP row only while it is
+fresh. The freshness window is 20 minutes or twice the configured device tracker scan interval,
+whichever is longer, so long scan intervals do not outlive their evidence. `consider_home` then
+adds its configured grace period.
+
+The host-observation request is made when the NDP table contains a row for a tracked MAC. When
+you track all devices (no manually selected devices), any NDP row with a valid MAC qualifies, so
+newly discovered devices get timestamp evidence on their first scan. Scans without any relevant NDP
+row do not add an extra API call. If the request fails, the
+integration logs one warning when the failure starts, then only debug messages until it recovers.
+
+The `ipv6_addresses` attribute describes addresses in the NDP neighbor inventory; it does not
+verify that each address is currently active. IPv6 addresses remain visible as metadata on older
+firmware and when observations are unavailable. A matching NDP row by itself cannot confirm that
+an IPv6-only device is home: without a usable timestamp for that MAC, the tracker is unavailable.
+This also applies when host discovery is disabled, its API permission is missing, no monitored
+interface observes the device, the client does not support the endpoint, or a lookup fails. A
+fresh ARP entry can still confirm presence. A successful NDP scan with no matching row can still
+confirm absence and use `consider_home` for departure aging.
+
+The `ndp_presence_source` attribute describes only the NDP freshness evidence for that tracker, not
+whether the tracker is available or home. It is `host_discovery` when a timestamped discovery
+observation exists for the tracker MAC, and `no_evidence` when no usable timestamp exists. A
+tracker confirmed by a fresh ARP entry can therefore be home while this attribute is
+`no_evidence`. NDP-only devices on firmware older than 25.7.11 retain IPv6 metadata but remain
+unavailable until another usable presence source confirms them.
 
 ## Troubleshooting
 
@@ -85,3 +119,8 @@ Check both:
 
 - OPNsense ARP aging behavior
 - the configured `Device Tracker Consider Home (seconds)` value
+
+For devices visible only in NDP, check whether `ndp_presence_source` is `no_evidence`. On OPNsense Community 25.7.11 or
+newer, enable automatic host discovery, select the monitored interfaces, and grant its API
+permission. An NDP address remains visible as inventory even when no timestamped observation can
+confirm presence.

@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Mapping, MutableMapping
 import copy
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 import time
 from typing import TYPE_CHECKING, Any
@@ -36,7 +36,15 @@ from .const import (
     DEFAULT_SYNC_OPTION_VALUE,
     DOMAIN,
 )
-from .helpers import dict_get, get_smart_device_name, is_carp_entry
+from .helpers import (
+    dict_get,
+    get_arp_mac,
+    get_smart_device_name,
+    has_configured_tracker_macs,
+    is_carp_entry,
+    normalize_mac_address,
+    tracked_ndp_macs,
+)
 from .repair_reconciliation import has_repair_marker
 from .repairs import (
     async_create_device_id_mismatch_issue,
@@ -63,8 +71,51 @@ _VPN_COUNTER_GROUPS: dict[str, tuple[str, ...]] = {
     "wireguard": ("clients", "servers"),
     "ipsec": ("connections",),
 }
-# Device-tracker neighbor lookups that may fail without failing the whole poll.
-_OPTIONAL_TRACKER_METHODS: frozenset[str] = frozenset({"get_arp_table", "get_ndp_table"})
+# Device-tracker lookups that may fail without failing the whole poll.
+_OPTIONAL_TRACKER_METHODS: dict[str, str] = {
+    "get_arp_table": "ARP",
+    "get_ndp_table": "NDP",
+    "get_host_observations": "Host observation",
+}
+
+
+def _index_host_observation_times(observations: object) -> dict[str, datetime] | None:
+    """Index the newest timestamped discovery observation for each normalized MAC.
+
+    Args:
+        observations (object): Raw host-observation payload returned by the client.
+
+    Returns:
+        dict[str, datetime] | None: Latest aware timestamp per normalized MAC for an
+            available discovery source, or ``None`` when that source is unavailable.
+    """
+    if (
+        not isinstance(observations, Mapping)
+        or observations.get("source") != "discovery"
+        or not isinstance(observations.get("rows"), list)
+    ):
+        return None
+
+    latest_by_mac: dict[str, datetime] = {}
+    for row in observations["rows"]:
+        if not isinstance(row, Mapping):
+            continue
+        mac = row.get("mac")
+        last_seen = row.get("last_seen")
+        if (
+            not isinstance(mac, str)
+            or not isinstance(last_seen, datetime)
+            or last_seen.tzinfo is None
+            or last_seen.utcoffset() is None
+        ):
+            continue
+        normalized_mac = normalize_mac_address(mac)
+        if normalized_mac is None:
+            continue
+        previous = latest_by_mac.get(normalized_mac)
+        if previous is None or last_seen > previous:
+            latest_by_mac[normalized_mac] = last_seen
+    return latest_by_mac
 
 
 class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
@@ -102,10 +153,13 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             raise ValueError("config_entry is required for OPNsenseDataUpdateCoordinator")
         self._client: OPNsenseClient = client
         self._state: dict[str, Any] = {}
+        self.host_observation_times: dict[str, datetime] | None = None
         self._device_tracker_coordinator: bool = device_tracker_coordinator
         self._mismatched_count = 0
         self._device_unique_id: str | None = device_unique_id
         self._updating: bool = False
+        # Optional tracker lookups currently failing, used to log each outage only once.
+        self._failing_optional_methods: set[str] = set()
         super().__init__(
             hass=hass,
             logger=_LOGGER,
@@ -182,15 +236,21 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                         )
                     else:
                         state[cat.get("state_key")] = await method()
-                except OPNsenseError:
+                except OPNsenseError as err:
                     if method_name not in _OPTIONAL_TRACKER_METHODS:
                         raise
                     state[cat.get("state_key")] = None
-                    _LOGGER.warning(
-                        "%s lookup failed; retaining its last successful device-tracker data",
-                        "ARP" if method_name == "get_arp_table" else "NDP",
-                        exc_info=True,
-                    )
+                    self._log_optional_lookup_failure(method_name, err)
+                else:
+                    if (
+                        method_name in _OPTIONAL_TRACKER_METHODS
+                        and state[cat.get("state_key")] is None
+                    ):
+                        # Runtime clients suppress request errors into None. Only an actual
+                        # payload confirms recovery; a returned None is still an outage.
+                        self._log_optional_lookup_failure(method_name)
+                    else:
+                        self._log_optional_lookup_recovery(method_name)
                 end_time: float = time.perf_counter()
                 elapsed_time: float = end_time - start_time
                 total_time += elapsed_time
@@ -207,6 +267,64 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Method %s not found", cat.get("function", ""))
 
         return state
+
+    def _log_optional_lookup_failure(
+        self, method_name: str, error: OPNsenseError | None = None
+    ) -> None:
+        """Log an optional device-tracker lookup failure without repeating the stack trace.
+
+        The first failure after a success is logged as a warning, with the stack trace when
+        available. While the lookup keeps failing, later failures are logged at debug level only.
+
+        Args:
+            method_name (str): Optional client method that failed.
+            error (OPNsenseError | None): Raised failure, or ``None`` for a suppressed failure.
+        """
+        label = _OPTIONAL_TRACKER_METHODS[method_name]
+        if method_name in self._failing_optional_methods:
+            _LOGGER.debug("%s lookup is still failing; no fresh presence evidence", label)
+            return
+        self._failing_optional_methods.add(method_name)
+        _LOGGER.warning(
+            "%s lookup failed; this scan cannot provide fresh presence evidence. Further "
+            "failures are logged at debug level until it recovers",
+            label,
+            exc_info=error,
+        )
+
+    def _log_optional_lookup_recovery(self, method_name: str) -> None:
+        """Log recovery of an optional device-tracker lookup after a reported failure.
+
+        Args:
+            method_name (str): Client method that just succeeded.
+        """
+        if method_name in self._failing_optional_methods:
+            self._failing_optional_methods.discard(method_name)
+            _LOGGER.info("%s lookup recovered", _OPTIONAL_TRACKER_METHODS[method_name])
+
+    def _ndp_table_needs_observations(self, ndp_table: object) -> bool:
+        """Return whether the NDP table has a row that needs timestamped evidence.
+
+        Args:
+            ndp_table (object): NDP rows from the current scan, or ``None`` when unavailable.
+
+        Returns:
+            bool: ``True`` when a row belongs to a tracked MAC. In track-all mode (no manually
+                selected devices) or while no MACs are tracked yet, any row with a valid MAC
+                qualifies so newly seen devices get timestamp evidence on first sight.
+        """
+        if not isinstance(ndp_table, list):
+            return False
+        tracked_macs: set[str] = set()
+        if self.config_entry is not None and has_configured_tracker_macs(self.config_entry):
+            tracked_macs = tracked_ndp_macs(self.config_entry)
+        for row in ndp_table:
+            if not isinstance(row, Mapping):
+                continue
+            row_mac = normalize_mac_address(get_arp_mac(row))
+            if row_mac is not None and (not tracked_macs or row_mac in tracked_macs):
+                return True
+        return False
 
     def _build_categories(self) -> list[dict[str, str]]:
         """Build API call categories based on integration sync options.
@@ -396,7 +514,15 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         prior_state = self._state.get("previous_state")
         if not isinstance(prior_state, Mapping):
             prior_state = self._state.copy()
+        self.host_observation_times = None
         fetched_state = await self._get_states(categories)
+        if self._ndp_table_needs_observations(fetched_state.get("ndp_table")):
+            observation_state = await self._get_states(
+                [{"function": "get_host_observations", "state_key": "host_observations"}]
+            )
+            self.host_observation_times = _index_host_observation_times(
+                observation_state.get("host_observations")
+            )
         self._state.update(fetched_state)
         unavailable_tables: list[str] = []
         for table_key in ("arp_table", "ndp_table"):
@@ -529,6 +655,8 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         self._updating = True
 
         try:
+            if self._device_tracker_coordinator:
+                self.host_observation_times = None
             _LOGGER.info(
                 "%sUpdating Data",
                 "DT " if self._device_tracker_coordinator else "",

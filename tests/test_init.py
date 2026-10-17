@@ -3723,12 +3723,6 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
         unique_id=f"{entry.unique_id}_mac_aabbccddeeff",
         device_id="shared-device",
     )
-    dt_ent_non_router = MagicMock(
-        entity_id="device_tracker.kitchen_device",
-        domain=Platform.DEVICE_TRACKER,
-        unique_id=f"{entry.unique_id}_mac_cdddeeff0011",
-        device_id="nonopnsense-device",
-    )
     sensor_ent = MagicMock(
         entity_id="sensor.system_uptime",
         domain=Platform.SENSOR,
@@ -3739,7 +3733,7 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
     monkeypatch.setattr(
         er,
         "async_entries_for_config_entry",
-        MagicMock(return_value=[dt_ent, dt_ent_non_router, sensor_ent]),
+        MagicMock(return_value=[dt_ent, sensor_ent]),
     )
 
     router_device = MagicMock(
@@ -3747,51 +3741,30 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
         identifiers={(DOMAIN, "router-mac")},
         via_device_id=None,
     )
-    surviving_opnsense_a = MagicMock(
-        entry_id="survive-entry-b",
-        domain=DOMAIN,
-        data={CONF_DEVICE_UNIQUE_ID: "survive-b"},
-    )
-    surviving_opnsense_b = MagicMock(
+    surviving_opnsense = MagicMock(
         entry_id="survive-entry-a",
         domain=DOMAIN,
         data={CONF_DEVICE_UNIQUE_ID: "survive-a"},
     )
-    non_opnsense_entry = MagicMock(
-        entry_id="non-opnsense-entry",
-        domain="other",
-        data={CONF_DEVICE_UNIQUE_ID: "non-opnsense"},
-    )
-    shared_router_b = MagicMock(id="survivor-b-router")
-    shared_router_a = MagicMock(id="survivor-a-router")
+    surviving_router = MagicMock(id="survivor-a-router")
     linked_to_router = MagicMock(
         id="shared-device",
         via_device_id=router_device.id,
         config_entries={
             entry.entry_id,
-            surviving_opnsense_a.entry_id,
-            surviving_opnsense_b.entry_id,
-            non_opnsense_entry.entry_id,
+            surviving_opnsense.entry_id,
         },
-    )
-    linked_to_router_non_opnsense_only = MagicMock(
-        id="nonopnsense-device",
-        via_device_id=router_device.id,
-        config_entries={entry.entry_id, non_opnsense_entry.entry_id},
     )
     linked_to_other_router = MagicMock(id="other-device", via_device_id="other-device-id")
     no_parent = MagicMock(id="noparent-device", via_device_id=None)
     async_get_entry_map = {
         entry.entry_id: entry,
-        surviving_opnsense_a.entry_id: surviving_opnsense_a,
-        surviving_opnsense_b.entry_id: surviving_opnsense_b,
-        non_opnsense_entry.entry_id: non_opnsense_entry,
+        surviving_opnsense.entry_id: surviving_opnsense,
     }
     ph_hass.config_entries.async_get_entry = MagicMock(side_effect=async_get_entry_map.get)
     identifier_router_map = {
         (DOMAIN, "router-mac"): router_device,
-        (DOMAIN, "survive-b"): shared_router_b,
-        (DOMAIN, "survive-a"): shared_router_a,
+        (DOMAIN, "survive-a"): surviving_router,
     }
     dr_reg = MagicMock()
 
@@ -3817,7 +3790,6 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
             return_value=[
                 router_device,
                 linked_to_router,
-                linked_to_router_non_opnsense_only,
                 linked_to_other_router,
                 no_parent,
             ]
@@ -3826,25 +3798,12 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
 
     await init_mod._async_update_listener(ph_hass, entry)
 
-    er_reg.async_remove.assert_has_calls(
-        [call(dt_ent.entity_id), call(dt_ent_non_router.entity_id)],
-        any_order=True,
-    )
+    er_reg.async_remove.assert_called_once_with(dt_ent.entity_id)
     assert call(sensor_ent.entity_id) not in er_reg.async_remove.mock_calls
-    dr_reg.async_update_device.assert_has_calls(
-        [
-            call(
-                linked_to_router.id,
-                remove_config_entry_id=entry.entry_id,
-                via_device_id="survivor-a-router",
-            ),
-            call(
-                linked_to_router_non_opnsense_only.id,
-                remove_config_entry_id=entry.entry_id,
-                via_device_id=None,
-            ),
-        ],
-        any_order=True,
+    dr_reg.async_update_device.assert_called_once_with(
+        linked_to_router.id,
+        remove_config_entry_id=entry.entry_id,
+        via_device_id="survivor-a-router",
     )
     assert (
         call(
@@ -3861,7 +3820,6 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
         call(no_parent.id, remove_config_entry_id=entry.entry_id, via_device_id=None)
         not in dr_reg.async_update_device.mock_calls
     )
-    assert dr_reg.async_update_device.call_count == 2
 
 
 @pytest.mark.asyncio

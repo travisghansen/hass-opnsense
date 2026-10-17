@@ -17,12 +17,79 @@ from homeassistant.util import slugify
 
 from .const import (
     CONF_DEVICE_UNIQUE_ID,
+    CONF_DEVICES,
     CONF_ENTRY_TYPE,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     ENTRY_TYPE_CARP,
     ENTRY_TYPE_DEVICE,
+    TRACKED_MACS,
+    TRACKED_NDP_MACS,
 )
+
+MAC_ADDRESS_PATTERN = re.compile(r"^([0-9a-f]{2}:){5}([0-9a-f]{2})$")
+
+
+def normalize_mac_address(mac: str) -> str | None:
+    """Normalize MAC addresses to lowercase colon-separated format.
+
+    Args:
+        mac (str): Raw MAC address input.
+
+    Returns:
+        str | None: Normalized MAC (`aa:bb:cc:dd:ee:ff`) when valid, otherwise ``None``.
+    """
+    if not isinstance(mac, str):
+        return None
+    normalized = mac.strip().lower().replace("-", ":")
+    if not MAC_ADDRESS_PATTERN.match(normalized):
+        return None
+    return normalized
+
+
+def has_configured_tracker_macs(config_entry: ConfigEntry) -> bool:
+    """Return whether the options pin at least one non-blank tracker MAC.
+
+    This is the single rule separating manual device-tracker mode from track-all mode.
+
+    Args:
+        config_entry (ConfigEntry): Config entry whose options hold the configured MACs.
+
+    Returns:
+        bool: ``True`` when at least one configured MAC is a non-blank string.
+    """
+    configured_macs = config_entry.options.get(CONF_DEVICES, [])
+    return bool(
+        isinstance(configured_macs, list)
+        and any(isinstance(mac, str) and mac.strip() for mac in configured_macs)
+    )
+
+
+def tracked_ndp_macs(config_entry: ConfigEntry) -> set[str]:
+    """Return normalized MACs that device-tracker entities may confirm through NDP.
+
+    Combines the persisted tracked-MAC inventories with manually configured devices. An
+    empty result means entities have not been determined yet.
+
+    Args:
+        config_entry (ConfigEntry): Config entry holding the tracked and configured MACs.
+
+    Returns:
+        set[str]: Normalized tracked MAC addresses.
+    """
+    raw_macs: list[Any] = []
+    for source in (
+        config_entry.data.get(TRACKED_MACS),
+        config_entry.data.get(TRACKED_NDP_MACS),
+        config_entry.options.get(CONF_DEVICES),
+    ):
+        if isinstance(source, list):
+            raw_macs.extend(source)
+    return {
+        normalized
+        for raw_mac in raw_macs
+        if isinstance(raw_mac, str) and (normalized := normalize_mac_address(raw_mac))
+    }
 
 
 def async_get_device_by_identifier(

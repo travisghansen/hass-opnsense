@@ -12,9 +12,13 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.opnsense import helpers as helpers_mod
 from custom_components.opnsense.const import (
     CONF_DEVICE_UNIQUE_ID,
+    CONF_DEVICES,
     CONF_ENTRY_TYPE,
     DEFAULT_VERIFY_SSL,
+    DOMAIN,
     ENTRY_TYPE_CARP,
+    TRACKED_MACS,
+    TRACKED_NDP_MACS,
 )
 from custom_components.opnsense.helpers import (
     async_get_device_by_connection,
@@ -33,9 +37,12 @@ from custom_components.opnsense.helpers import (
     get_arp_ip,
     get_arp_mac,
     get_smart_device_name,
+    has_configured_tracker_macs,
     is_carp_entry,
     is_usable_carp_vip,
     normalize_arp_mac,
+    normalize_mac_address,
+    tracked_ndp_macs,
 )
 
 
@@ -201,6 +208,100 @@ def test_detach_tracker_uses_modern_device_removal(
 
 
 @pytest.mark.parametrize(
+    ("via_device_id", "owner_entries", "expected_result", "expected_update"),
+    [
+        pytest.param(
+            "router-id",
+            {
+                "z-entry": ("opnsense", "z-router"),
+                "a-other": ("other_domain", "ignored"),
+                "b-no-id": ("opnsense", None),
+                "c-no-router": ("opnsense", "missing-router"),
+                "d-entry": ("opnsense", "d-router"),
+            },
+            (True, "d-router-device"),
+            {"remove_config_entry_id": "entry-id", "via_device_id": "d-router-device"},
+            id="from-router-reparents-to-first-resolvable-opnsense-owner",
+        ),
+        pytest.param(
+            "router-id",
+            {"a-other": ("other_domain", "ignored")},
+            (True, None),
+            {"remove_config_entry_id": "entry-id", "via_device_id": None},
+            id="from-router-without-replacement-clears-parent",
+        ),
+        pytest.param(
+            "other-router-id",
+            {"d-entry": ("opnsense", "d-router")},
+            (False, None),
+            {"remove_config_entry_id": "entry-id"},
+            id="not-from-router-only-detaches-config-entry",
+        ),
+    ],
+)
+def test_detach_shared_router_parent_legacy_reparenting(
+    via_device_id: str,
+    owner_entries: dict[str, tuple[str, str | None]],
+    expected_result: tuple[bool, str | None],
+    expected_update: dict[str, str | None],
+) -> None:
+    """Shared tracker devices keep or replace their router parent when this entry detaches.
+
+    Args:
+        via_device_id (str): Router device currently parenting the shared tracker device.
+        owner_entries (dict[str, tuple[str, str | None]]): Other owners as
+            ``entry_id: (domain, device_unique_id)``.
+        expected_result (tuple[bool, str | None]): Expected helper return value.
+        expected_update (dict[str, str | None]): Expected device-registry update arguments.
+    """
+    device: Any = SimpleNamespace(
+        id="tracker-id",
+        via_device_id=via_device_id,
+        config_entries={"entry-id", *owner_entries},
+    )
+    config_entries = MagicMock()
+    config_entries.async_get_entry.side_effect = lambda entry_id: SimpleNamespace(
+        domain=DOMAIN if owner_entries[entry_id][0] == "opnsense" else "other",
+        data=(
+            {CONF_DEVICE_UNIQUE_ID: owner_entries[entry_id][1]}
+            if owner_entries[entry_id][1] is not None
+            else {}
+        ),
+    )
+
+    def get_router(identifier: tuple[str, str], entry_id: str) -> Any:
+        """Return the router device only for the identifier owned by the queried entry.
+
+        Args:
+            identifier (tuple[str, str]): Device identifier requested by the helper.
+            entry_id (str): Config entry whose router is being resolved.
+
+        Returns:
+            Any: Router device for a matching owner, or ``None`` for no match.
+        """
+        _domain, unique_id = owner_entries.get(entry_id, (None, None))
+        if unique_id is None or unique_id == "missing-router":
+            return None
+        if identifier != (DOMAIN, unique_id):
+            return None
+        return SimpleNamespace(id=f"{unique_id}-device")
+
+    registry = MagicMock()
+    registry.async_get_device_by_identifier.side_effect = get_router
+
+    result = detach_shared_router_parent(
+        shared_config_entry_id="entry-id",
+        shared_device_entry=device,
+        router_device_id="router-id",
+        config_entries=config_entries,
+        device_registry=registry,
+    )
+
+    assert result == expected_result
+    registry.async_update_device.assert_called_once_with("tracker-id", **expected_update)
+
+
+@pytest.mark.parametrize(
     ("path", "expected"),
     [
         pytest.param("items.1.name", "second", id="valid-index"),
@@ -283,6 +384,77 @@ def test_normalize_arp_mac(value: object, expected: str) -> None:
         expected (str): Outcome asserted by the parameterized scenario.
     """
     assert normalize_arp_mac(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param(" AA-BB-CC-DD-EE-FF ", "aa:bb:cc:dd:ee:ff", id="hyphenated"),
+        pytest.param("aa:bb:cc", None, id="too-short"),
+        pytest.param(None, None, id="non-string"),
+    ],
+)
+def test_normalize_mac_address(value: Any, expected: str | None) -> None:
+    """Accept only full MAC addresses and normalize their separators and case.
+
+    Args:
+        value (Any): Input value exercised by the helper.
+        expected (str | None): Normalized MAC, or ``None`` when the input is not a valid MAC.
+    """
+    assert normalize_mac_address(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("devices", "expected"),
+    [
+        pytest.param(None, False, id="unset"),
+        pytest.param([], False, id="empty"),
+        pytest.param(["", "  ", 5], False, id="blank-or-non-string"),
+        pytest.param("aa:bb:cc:dd:ee:ff", False, id="not-a-list"),
+        pytest.param(["", "aa:bb:cc:dd:ee:ff"], True, id="one-usable"),
+    ],
+)
+def test_has_configured_tracker_macs(
+    make_config_entry: Callable[..., MockConfigEntry],
+    devices: object,
+    expected: bool,
+) -> None:
+    """Manual tracker mode applies only when a non-blank MAC is pinned in the options.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        devices (object): Stored ``CONF_DEVICES`` option, or ``None`` when unset.
+        expected (bool): Whether manual mode applies.
+    """
+    options = {} if devices is None else {CONF_DEVICES: devices}
+    entry = make_config_entry(options=options)
+
+    assert has_configured_tracker_macs(entry) is expected
+
+
+def test_tracked_ndp_macs_merges_normalized_inventories_and_configured_devices(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Persisted inventories and configured devices combine into one normalized MAC set.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
+    entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            TRACKED_MACS: ["AA-BB-CC-DD-EE-01", "not-a-mac", 5],
+            TRACKED_NDP_MACS: ["aa:bb:cc:dd:ee:02"],
+        },
+        options={CONF_DEVICES: ["aa:bb:cc:dd:ee:03"]},
+    )
+
+    assert tracked_ndp_macs(entry) == {
+        "aa:bb:cc:dd:ee:01",
+        "aa:bb:cc:dd:ee:02",
+        "aa:bb:cc:dd:ee:03",
+    }
+    assert tracked_ndp_macs(make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})) == set()
 
 
 @pytest.mark.parametrize(

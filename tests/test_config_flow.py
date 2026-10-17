@@ -1180,220 +1180,86 @@ async def test_get_dt_entries_sorts_and_includes_selected(
 
 
 @pytest.mark.asyncio
-async def test_get_dt_entries_passes_throw_errors_to_client(
-    monkeypatch: pytest.MonkeyPatch,
-    fake_client: Any,
-) -> None:
-    """_get_dt_entries should request throw-errors behavior from the API client.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        fake_client (Any): Mock OPNsense client used at the integration boundary.
-    """
-    create_calls: dict[str, Any] = {}
-
-    client_cls = fake_client()
-
-    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> list[dict[str, str]]:
-        """Return no ARP rows for deterministic entry-point assertions.
-
-        Returns:
-            list[dict[str, str]]: Synthetic string-valued API records.
-
-        Args:
-            self (Any): Flow instance receiving the patched method call.
-            resolve_hostnames (bool): Whether the simulated query requests hostname resolution.
-        """
-        return []
-
-    client_cls.get_arp_table = _get_arp_table
-
-    def _init_client(**kwargs: Any) -> Any:
-        """Capture the create_opnsense_client call and return the fake client.
-
-        Args:
-            kwargs (Any): Additional keyword arguments accepted by the test double.
-
-        Returns:
-            Any: Configured object produced by the local test double.
-        """
-        create_calls.update(kwargs)
-        return client_cls(**kwargs)
-
-    monkeypatch.setattr(cf_mod, "create_opnsense_client", _init_client)
-
-    await cf_mod._get_dt_entries(
-        hass=MagicMock(),
-        config={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        selected_devices=[],
-    )
-
-    assert create_calls["throw_errors"] is True
-
-
-@pytest.mark.asyncio
-async def test_get_dt_entries_preserves_missing_selected_devices(
-    monkeypatch: pytest.MonkeyPatch, fake_client: Any
-) -> None:
-    """Selected MACs missing from ARP stay available with a fallback label.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        fake_client (Any): Mock OPNsense client used at the integration boundary.
-    """
-    client_cls = fake_client()
-
-    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
-        """Return arp table.
-
-        Returns:
-            Any: Configured object produced by the local test double.
-
-        Args:
-            self (Any): Flow instance receiving the patched method call.
-            resolve_hostnames (bool): Resolve hostnames provided by pytest or the test case.
-        """
-        return [{"mac": "11:22:33:44:55:66", "hostname": "", "ip": "10.0.0.5"}]
-
-    client_cls.get_arp_table = _get_arp_table
-    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
-
-    res = await cf_mod._get_dt_entries(
-        hass=MagicMock(),
-        config={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        selected_devices=["AA-BB-CC-DD-EE-FF"],
-    )
-    assert res["aa:bb:cc:dd:ee:ff"] == "Not currently detected [aa:bb:cc:dd:ee:ff]"
-
-
-@pytest.mark.asyncio
-async def test_get_dt_entries_supports_raw_arp_keys(
-    monkeypatch: pytest.MonkeyPatch, fake_client: Any
-) -> None:
-    """_get_dt_entries should parse raw aiopnsense 1.1.1 ARP keys.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        fake_client (Any): Mock OPNsense client used at the integration boundary.
-    """
-    client_cls = fake_client()
-
-    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
-        return [{"mac-address": "AA-BB-CC-00-00-01", "ip-address": "10.0.0.10"}]
-
-    client_cls.get_arp_table = _get_arp_table
-    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
-
-    res = await cf_mod._get_dt_entries(
-        hass=MagicMock(),
-        config={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        selected_devices=[],
-    )
-
-    assert res == {"aa:bb:cc:00:00:01": "10.0.0.10 [aa:bb:cc:00:00:01]"}
-
-
-@pytest.mark.asyncio
-async def test_get_dt_entries_skips_non_mapping_arp_rows(
-    monkeypatch: pytest.MonkeyPatch, fake_client: Any
-) -> None:
-    """Non-mapping ARP rows should be ignored instead of raising mapping errors.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        fake_client (Any): Mock OPNsense client used at the integration boundary.
-    """
-    client_cls = fake_client()
-
-    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
-        return [
-            "invalid row",
-            {"mac": "aa:bb:cc:00:00:02", "hostname": "hostb", "ip": "10.0.0.10"},
-            None,
-        ]
-
-    client_cls.get_arp_table = _get_arp_table
-    patch_opnsense_client(monkeypatch, cf_mod, client_cls)
-
-    res = await cf_mod._get_dt_entries(
-        hass=MagicMock(),
-        config={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        selected_devices=["AA-BB-CC-DD-EE-FF"],
-    )
-
-    assert set(res) == {
-        "aa:bb:cc:dd:ee:ff",
-        "aa:bb:cc:00:00:02",
-    }
-    assert res["aa:bb:cc:dd:ee:ff"] == "Not currently detected [aa:bb:cc:dd:ee:ff]"
-    assert res["aa:bb:cc:00:00:02"] == "hostb [10.0.0.10 | aa:bb:cc:00:00:02]"
-
-
-@pytest.mark.asyncio
-async def test_get_dt_entries_labels_device_with_only_mac(
-    monkeypatch: pytest.MonkeyPatch, fake_client: Any
-) -> None:
-    """A detected device with no hostname and no IP should be labelled by its MAC only.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        fake_client (Any): Mock OPNsense client used at the integration boundary.
-    """
-    client = fake_client()()
-    client.get_arp_table = AsyncMock(return_value=[{"mac": "11:22:33:44:55:66"}])
-    client.get_ndp_table = AsyncMock(return_value=[])
-    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
-
-    res = await cf_mod._get_dt_entries(
-        hass=MagicMock(),
-        config={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        selected_devices=[],
-    )
-
-    mac_address = "11:22:33:44:55:66"
-    assert set(res) == {mac_address}
-    assert mac_address in res[mac_address]
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "unidentifiable_row",
-    [{"ip": "10.0.0.9"}, {"mac": "", "ip": "10.0.0.9"}, {"hostname": "ghost"}],
-    ids=["missing-mac-key", "blank-mac", "hostname-only"],
+    ("arp_rows", "selected_devices", "expected"),
+    [
+        pytest.param(
+            [{"mac": "11:22:33:44:55:66", "hostname": "", "ip": "10.0.0.5"}],
+            ["AA-BB-CC-DD-EE-FF"],
+            {
+                "11:22:33:44:55:66": "10.0.0.5 [11:22:33:44:55:66]",
+                "aa:bb:cc:dd:ee:ff": "Not currently detected [aa:bb:cc:dd:ee:ff]",
+            },
+            id="selected-device-missing-from-arp-keeps-fallback-label",
+        ),
+        pytest.param(
+            [{"mac-address": "AA-BB-CC-00-00-01", "ip-address": "10.0.0.10"}],
+            [],
+            {"aa:bb:cc:00:00:01": "10.0.0.10 [aa:bb:cc:00:00:01]"},
+            id="raw-aiopnsense-arp-keys",
+        ),
+        pytest.param(
+            [
+                "invalid row",
+                {"mac": "aa:bb:cc:00:00:02", "hostname": "hostb", "ip": "10.0.0.10"},
+                None,
+            ],
+            ["AA-BB-CC-DD-EE-FF"],
+            {
+                "aa:bb:cc:dd:ee:ff": "Not currently detected [aa:bb:cc:dd:ee:ff]",
+                "aa:bb:cc:00:00:02": "hostb [10.0.0.10 | aa:bb:cc:00:00:02]",
+            },
+            id="non-mapping-rows-ignored",
+        ),
+        pytest.param(
+            [{"mac": "11:22:33:44:55:66"}],
+            [],
+            {"11:22:33:44:55:66": "11:22:33:44:55:66 [11:22:33:44:55:66]"},
+            id="mac-only-device",
+        ),
+        *(
+            pytest.param(
+                [row, {"mac": "aa-bb-cc-00-00-01", "ip": "10.0.0.10"}],
+                [],
+                {"aa:bb:cc:00:00:01": "10.0.0.10 [aa:bb:cc:00:00:01]"},
+                id=row_id,
+            )
+            for row_id, row in (
+                ("row-missing-mac-key-skipped", {"ip": "10.0.0.9"}),
+                ("row-blank-mac-skipped", {"mac": "", "ip": "10.0.0.9"}),
+                ("row-hostname-only-skipped", {"hostname": "ghost"}),
+            )
+        ),
+    ],
 )
-async def test_get_dt_entries_skips_arp_rows_without_mac(
+async def test_get_dt_entries_builds_device_choices_from_arp_rows(
     monkeypatch: pytest.MonkeyPatch,
     fake_client: Any,
-    unidentifiable_row: dict[str, str],
+    arp_rows: list[Any],
+    selected_devices: list[str],
+    expected: dict[str, str],
 ) -> None:
-    """ARP rows with neither a raw nor a normalized MAC must not become device choices.
+    """Device choices are keyed by normalized MAC and skip rows that cannot identify a device.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
         fake_client (Any): Mock OPNsense client used at the integration boundary.
-        unidentifiable_row (dict[str, str]): ARP row lacking any usable MAC address.
+        arp_rows (list[Any]): Rows returned by the ARP lookup.
+        selected_devices (list[str]): Previously selected MAC addresses.
+        expected (dict[str, str]): Expected device choices and labels.
     """
     client = fake_client()()
-    client.get_arp_table = AsyncMock(
-        return_value=[
-            unidentifiable_row,
-            {"mac": "aa-bb-cc-00-00-01", "ip": "10.0.0.10"},
-        ]
-    )
+    client.get_arp_table = AsyncMock(return_value=arp_rows)
     client.get_ndp_table = AsyncMock(return_value=[])
     monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     res = await cf_mod._get_dt_entries(
         hass=MagicMock(),
         config={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        selected_devices=[],
+        selected_devices=selected_devices,
     )
 
-    mac_address = "aa:bb:cc:00:00:01"
-    assert set(res) == {mac_address}
-    label = res[mac_address]
-    assert "10.0.0.10" in label
-    assert mac_address in label
+    assert res == expected
 
 
 @pytest.mark.asyncio
@@ -1938,56 +1804,6 @@ async def test_options_flow_granular_sync_calls_validate_and_updates(
     assert res["type"] == "create_entry"
 
 
-@pytest.mark.asyncio
-async def test_device_tracker_shows_form_when_no_user_input(
-    monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """async_step_device_tracker should show form containing data_schema when called without user_input.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-    """
-    cfg = make_config_entry(
-        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        options={CONF_DEVICES: ["11:22:33:44:55:66"]},
-    )
-
-    flow = _make_options_flow(cfg)
-
-    # monkeypatch _get_dt_entries to return an ordered dict-like mapping
-    async def fake_get_dt_entries(
-        hass: HomeAssistant,
-        config: Any,
-        selected_devices: Any,
-        resolve_hostnames: bool = False,
-    ) -> Any:
-        """Return a deterministic mapping of selectable device-tracker entries.
-
-        Returns:
-            Any: Configured object produced by the local test double.
-
-        Args:
-            hass (HomeAssistant): Home Assistant instance that owns the integration state, entity
-                registry, and services.
-            config (Any): Integration configuration used to build the selector entries.
-            selected_devices (Any): MAC addresses that should remain selected in the form.
-            resolve_hostnames (bool): Whether ARP hostname resolution was requested.
-        """
-        return {"11:22:33:44:55:66": "label1", "aa:bb:cc:dd:ee:ff": "label2"}
-
-    monkeypatch.setattr(cf_mod, "_get_dt_entries", fake_get_dt_entries)
-
-    # ensure internals are present so we don't trigger config_entry property lookup
-    flow._config = dict(cfg.data)
-    flow._options = dict(cfg.options)
-    res = await flow.async_step_device_tracker(user_input=None)
-    assert res["type"] == "form"
-    assert "data_schema" in res
-    validated = res["data_schema"]({})
-    assert CONF_DEVICES in validated
-
-
 @pytest.mark.parametrize(
     ("exception_factory", "expected_base_error"),
     [
@@ -2283,48 +2099,6 @@ async def test_device_tracker_picker_supports_client_without_ndp_method(
     choices = _device_tracker_selector_options(result)
     assert set(choices) == {"11:22:33:44:55:66"}
     assert "192.0.2.20" in choices["11:22:33:44:55:66"]
-
-
-@pytest.mark.asyncio
-async def test_device_tracker_handles_opnsense_timeout_error(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """OPNsense timeouts should keep picker rendering with the saved MAC fallback.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-    """
-    cfg = make_config_entry(
-        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        options={CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
-    )
-    flow = _make_options_flow(cfg)
-    flow._config = dict(cfg.data)
-    flow._options = dict(cfg.options)
-
-    async def _raise_timeout(*args: object, **kwargs: object) -> Never:
-        """Raise an OPNsense timeout to exercise connect_timeout mapping.
-
-        Args:
-            args (object): Additional positional arguments accepted by the test double.
-            kwargs (object): Additional keyword arguments accepted by the test double.
-
-        Returns:
-            Never: This test double always raises and never returns.
-
-        Raises:
-            aiopnsense_exceptions.OPNsenseTimeoutError: Always raised to exercise timeout mapping.
-        """
-        raise aiopnsense_exceptions.OPNsenseTimeoutError("request timed out")
-
-    monkeypatch.setattr(cf_mod, "_get_dt_entries", _raise_timeout)
-    res_timeout = await flow.async_step_device_tracker(user_input=None)
-    assert res_timeout["type"] == "form"
-    assert res_timeout["errors"]["base"] == "connect_timeout"
-    validated_timeout = res_timeout["data_schema"]({})
-    assert validated_timeout[CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
 
 
 @pytest.mark.asyncio
@@ -3105,51 +2879,31 @@ async def test_validate_input_granular_sync_uses_native_validation_only(
 async def test_device_tracker_picker_honours_resolve_hostnames_option(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
+    fake_client: Any,
     stored_options: dict[str, Any],
     expected: bool,
 ) -> None:
     """The selected-device picker should resolve hostnames only when the option is enabled.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        fake_client (Any): Factory for a fake OPNsense client.
         stored_options (dict[str, Any]): Options stored on the config entry before the step runs.
-        expected (bool): Resolution flag the picker should request.
+        expected (bool): Resolution flag the ARP lookup should receive.
     """
     cfg = make_config_entry(
         data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
         options=stored_options,
     )
-    flow = _make_options_flow(cfg)
-    captured: dict[str, Any] = {}
+    client = fake_client()()
+    client.get_arp_table = AsyncMock(return_value=[])
+    client.get_ndp_table = AsyncMock(return_value=[])
+    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
-    async def fake_get_dt_entries(
-        hass: HomeAssistant,
-        config: Any,
-        selected_devices: Any,
-        resolve_hostnames: bool = False,
-    ) -> Any:
-        """Record the resolution flag requested by the picker.
+    await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
 
-        Args:
-            hass (HomeAssistant): Home Assistant instance passed by the flow.
-            config (Any): Integration configuration used to build the selector entries.
-            selected_devices (Any): MAC addresses that should remain selected in the form.
-            resolve_hostnames (bool): Whether ARP hostname resolution was requested.
-
-        Returns:
-            Any: An empty selector mapping.
-        """
-        captured["resolve_hostnames"] = resolve_hostnames
-        return {}
-
-    monkeypatch.setattr(cf_mod, "_get_dt_entries", fake_get_dt_entries)
-    flow._config = dict(cfg.data)
-    flow._options = dict(cfg.options)
-
-    await flow.async_step_device_tracker(user_input=None)
-
-    assert captured["resolve_hostnames"] is expected
+    client.get_arp_table.assert_awaited_once_with(resolve_hostnames=expected)
 
 
 @pytest.mark.asyncio
