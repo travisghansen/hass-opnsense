@@ -744,12 +744,14 @@ async def test_calculate_entity_speeds_treats_counter_decrease_as_reset(
         "update_time": now,
         "interfaces": {"eth0": {"inbytes": 100, "outbytes": 50, "inpkts": 10, "outpkts": 5}},
         "openvpn": {"servers": {"s1": {"total_bytes_recv": 100, "total_bytes_sent": 200}}},
+        "ipsec": {"children": {"c1": {"total_bytes_recv": 10, "total_bytes_sent": 20}}},
         "previous_state": {
             "update_time": now - 2,
             "interfaces": {
                 "eth0": {"inbytes": 1000, "outbytes": 500, "inpkts": 1000, "outpkts": 500}
             },
             "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000, "total_bytes_sent": 2000}}},
+            "ipsec": {"children": {"c1": {"total_bytes_recv": 5000, "total_bytes_sent": 6000}}},
         },
     }
 
@@ -764,6 +766,10 @@ async def test_calculate_entity_speeds_treats_counter_decrease_as_reset(
     s1 = coord._state["openvpn"]["servers"]["s1"]
     assert s1["total_bytes_recv_kilobytes_per_second"] == 0
     assert s1["total_bytes_sent_kilobytes_per_second"] == 0
+
+    c1 = coord._state["ipsec"]["children"]["c1"]
+    assert c1["total_bytes_recv_kilobytes_per_second"] == 0
+    assert c1["total_bytes_sent_kilobytes_per_second"] == 0
 
 
 @pytest.mark.asyncio
