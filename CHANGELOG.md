@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.3.0](https://github.com/travisghansen/hass-opnsense/compare/v1.2.1...v1.3.0) (2026-10-17)
+
+
+### Features
+
+* add IPsec connection sensors from aiopnsense get_ipsec ([#769](https://github.com/travisghansen/hass-opnsense/issues/769)) ([1c3a445](https://github.com/travisghansen/hass-opnsense/commit/1c3a445d4c917ff3964989f0a9a55d066998815b))
+
+
+### Bug Fixes
+
+* age IPv6 presence using timestamped host observations ([#774](https://github.com/travisghansen/hass-opnsense/issues/774)) ([920514f](https://github.com/travisghansen/hass-opnsense/commit/920514f9030fc3f8ad2abd5aca72e18138d7e3b1))
+
+
+### Dependencies
+
+* **aiopnsense:** bump to 1.3.0 ([#771](https://github.com/travisghansen/hass-opnsense/issues/771)) ([16b9295](https://github.com/travisghansen/hass-opnsense/commit/16b9295f0f77f611eb899a39d2a342558ce53aef))
+* **aiopnsense:** bump to 1.3.1 ([#778](https://github.com/travisghansen/hass-opnsense/issues/778)) ([7a7e8bb](https://github.com/travisghansen/hass-opnsense/commit/7a7e8bb64872e4fa21077249a4f807762f78bf44))
+* update prek hooks ([#767](https://github.com/travisghansen/hass-opnsense/issues/767)) ([72a926f](https://github.com/travisghansen/hass-opnsense/commit/72a926f13f588bea81289aa214fc7ac863d9bad9))
+
+
+### Miscellaneous Chores
+
+* assign Snuffy2 as code owner for all files ([#777](https://github.com/travisghansen/hass-opnsense/issues/777)) ([dd621b7](https://github.com/travisghansen/hass-opnsense/commit/dd621b75aef61a9ed2f2b0a79660d4c2937491b4))
+
+
+### Build System
+
+* **deps-dev:** bump the python-dependencies group with 4 updates ([#773](https://github.com/travisghansen/hass-opnsense/issues/773)) ([7ba58e7](https://github.com/travisghansen/hass-opnsense/commit/7ba58e79fe0f0ae19fbf2392bd23cdf6b2bd9ad0))
+* **deps:** bump the github-actions group with 2 updates ([#772](https://github.com/travisghansen/hass-opnsense/issues/772)) ([f231ac5](https://github.com/travisghansen/hass-opnsense/commit/f231ac58e73b9d9c40b1bc3f659ff3beaa5e2d5d))
+
 ## [1.2.1](https://github.com/travisghansen/hass-opnsense/compare/v1.2.0...v1.2.1) (2026-10-12)
 
 
