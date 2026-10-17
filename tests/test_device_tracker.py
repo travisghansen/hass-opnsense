@@ -464,35 +464,6 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
     assert "aa:bb:cc" in updated_data.get(TRACKED_MACS, [])
 
 
-def test_handle_coordinator_update_unavailable(
-    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """Coordinator with invalid data should mark entity unavailable.
-
-    Args:
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-    """
-    coordinator.data = None
-    entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
-
-    ent = OPNsenseScannerEntity(
-        config_entry=entry,
-        coordinator=coordinator,
-        enabled_default=False,
-        mac="aa:bb:cc",
-        mac_vendor=None,
-        hostname=None,
-    )
-    async_write_ha_state = MagicMock()
-    object.__setattr__(ent, "async_write_ha_state", async_write_ha_state)
-
-    ent._handle_coordinator_update()
-    assert ent.available is False
-    assert async_write_ha_state.called
-
-
 def test_handle_coordinator_update_entry_present(
     coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
@@ -544,13 +515,16 @@ def test_handle_coordinator_update_entry_present(
     assert ent.source_type == SourceType.ROUTER
 
 
-def test_handle_coordinator_update_empty_data_keeps_connected_tracker_unavailable(
+@pytest.mark.parametrize("unusable_data", [{}, None], ids=["empty", "none"])
+def test_handle_coordinator_update_unusable_data_keeps_connected_tracker_unavailable(
+    unusable_data: dict[str, Any] | None,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Empty coordinator data must not turn a connected tracker into an away observation.
+    """Unusable coordinator data must not turn a connected tracker into an away observation.
 
     Args:
+        unusable_data (dict[str, Any] | None): Coordinator payload without any neighbor table.
         coordinator (MagicMock): Mock coordinator supplying entity data.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake config entry.
     """
@@ -575,7 +549,7 @@ def test_handle_coordinator_update_empty_data_keeps_connected_tracker_unavailabl
     assert ent.available is True
     assert ent.is_connected is True
 
-    coordinator.data = {}
+    coordinator.data = unusable_data
     ent._handle_coordinator_update()
 
     assert ent.available is False
@@ -1274,84 +1248,48 @@ async def test_restore_last_state_and_device_info(
     assert attributes.get("last_known_ip") == "9.9.9.9"
 
 
-@pytest.mark.asyncio
-async def test_restored_ipv6_tracker_stays_unavailable_when_ndp_lookup_is_denied(
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """A denied NDP lookup must not turn restored IPv6 presence into an away observation.
-
-    Args:
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-    """
-    coordinator.data = {
-        "arp_table": [],
-        "ndp_table": None,
-        "unavailable_device_tracker_tables": ["ndp_table"],
-    }
-    entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
-    entity = OPNsenseScannerEntity(
-        config_entry=entry,
-        coordinator=coordinator,
-        enabled_default=False,
-        mac="aa:bb:cc:dd:ee:01",
-        mac_vendor=None,
-        hostname=None,
-    )
-    last_state = MagicMock()
-    last_state.attributes = {
-        "ipv6_addresses": ["2001:db8::1"],
-        "last_known_ip": "2001:db8::1",
-        "last_known_connected_time": datetime.now(UTC).isoformat(),
-    }
-    object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=last_state))
-    object.__setattr__(entity, "async_write_ha_state", MagicMock())
-
-    await _restore_state(entity)
-    entity._handle_coordinator_update()
-
-    assert entity.available is False
-    attributes = entity.extra_state_attributes
-    assert attributes is not None
-    assert attributes["ipv6_addresses"] == ["2001:db8::1"]
-
-
 @pytest.mark.parametrize(
-    (
-        "snapshot_ip_key",
-        "legacy_ip",
-        "failed_table",
-        "ipv4_addresses",
-        "ipv6_addresses",
-    ),
+    ("snapshot_attributes", "failed_table", "ipv4_addresses", "ipv6_addresses"),
     [
-        ("last_known_ip", "192.0.2.8", "arp_table", ["192.0.2.8"], []),
-        ("last_known_ip", "2001:db8::8", "ndp_table", [], ["2001:db8::8"]),
-        ("ip", "192.0.2.10", "arp_table", ["192.0.2.10"], []),
-    ],
-    ids=[
-        "legacy-ipv4-arp-failure",
-        "legacy-ipv6-ndp-failure",
-        "home-ip-arp-failure",
+        pytest.param(
+            {"last_known_ip": "192.0.2.8"},
+            "arp_table",
+            ["192.0.2.8"],
+            [],
+            id="legacy-ipv4-arp-failure",
+        ),
+        pytest.param(
+            {"last_known_ip": "2001:db8::8"},
+            "ndp_table",
+            [],
+            ["2001:db8::8"],
+            id="legacy-ipv6-ndp-failure",
+        ),
+        pytest.param(
+            {"ip": "192.0.2.10"}, "arp_table", ["192.0.2.10"], [], id="home-ip-arp-failure"
+        ),
+        pytest.param(
+            {"ipv6_addresses": ["2001:db8::1"], "last_known_ip": "2001:db8::1"},
+            "ndp_table",
+            [],
+            ["2001:db8::1"],
+            id="address-list-ndp-failure",
+        ),
     ],
 )
 @pytest.mark.asyncio
-async def test_restored_legacy_ip_preserves_family_during_table_failure(
-    snapshot_ip_key: str,
-    legacy_ip: str,
+async def test_restored_address_family_is_preserved_during_table_failure(
+    snapshot_attributes: dict[str, Any],
     failed_table: str,
     ipv4_addresses: list[str],
     ipv6_addresses: list[str],
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Legacy scalar IP state should preserve family presence during a lookup failure.
+    """A failed lookup keeps the restored family's addresses and never reports the tracker away.
 
     Args:
-        snapshot_ip_key (str): Snapshot attribute containing the saved IP address.
-        legacy_ip (str): Scalar IP address in the legacy saved-state format.
+        snapshot_attributes (dict[str, Any]): Saved address attributes in legacy or list format.
         failed_table (str): Neighbor table whose lookup failed.
         ipv4_addresses (list[str]): Expected restored IPv4 address list.
         ipv6_addresses (list[str]): Expected restored IPv6 address list.
@@ -1376,7 +1314,7 @@ async def test_restored_legacy_ip_preserves_family_during_table_failure(
     last_known_connected_time = datetime.now(UTC) - timedelta(minutes=5)
     last_state = MagicMock()
     last_state.attributes = {
-        snapshot_ip_key: legacy_ip,
+        **snapshot_attributes,
         "last_known_connected_time": last_known_connected_time.isoformat(),
     }
     object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=last_state))
@@ -1905,14 +1843,22 @@ async def test_async_setup_entry_reconciles_desired_trackers_from_arp_table(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "options",
+    [
+        pytest.param(None, id="default-options"),
+        pytest.param({CONF_DEVICE_TRACKER_ENABLED: True}, id="track-all-with-empty-arp-table"),
+    ],
+)
 async def test_async_setup_entry_removes_previous_mac(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
+    options: dict[str, Any] | None,
 ) -> None:
-    """Setup removes previously tracked MAC addresses when reconfiguring.
+    """Setup removes stale tracked MACs, including when an empty ARP table is authoritative.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
@@ -1920,10 +1866,12 @@ async def test_async_setup_entry_removes_previous_mac(
         coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
         fake_reg_factory (Any): Factory for the in-memory entity registry test double.
+        options (dict[str, Any] | None): Config entry options selecting the tracking mode.
     """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(
         data={TRACKED_MACS: ["old:mac:1"], CONF_DEVICE_UNIQUE_ID: "dev1"},
+        options=options,
         entry_id="e_rm",
     )
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
@@ -1969,8 +1917,6 @@ async def test_async_setup_entry_preserves_previous_device_during_reconciliation
     fake = fake_reg_factory(device_exists=True, device_id="dev_to_preserve")
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
     monkeypatch.setattr(dt_mod, "is_reconciliation_active", lambda _entry: True)
-    cleanup = MagicMock()
-    monkeypatch.setattr(dt_mod, "_cleanup_stale_tracked_devices", cleanup)
     record = MagicMock()
     monkeypatch.setattr(dt_mod, "record_desired_entities", record)
     ph_hass.config_entries.async_update_entry = MagicMock()
@@ -1979,7 +1925,8 @@ async def test_async_setup_entry_preserves_previous_device_during_reconciliation
         ph_hass, entry, cast("AddEntitiesCallback", lambda _entities: None)
     )
 
-    cleanup.assert_not_called()
+    fake.async_remove_device.assert_not_called()
+    fake.async_update_device.assert_not_called()
     record.assert_called_once_with(entry, "device_tracker", [])
 
 
@@ -2379,8 +2326,6 @@ async def test_async_setup_entry_keeps_trackers_when_first_refresh_fails(
     fake = fake_reg_factory(device_exists=True, device_id="router-device")
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
     monkeypatch.setattr(dt_mod, "is_reconciliation_active", lambda _entry: False)
-    cleanup = MagicMock()
-    monkeypatch.setattr(dt_mod, "_cleanup_stale_tracked_devices", cleanup)
     record = MagicMock()
     monkeypatch.setattr(dt_mod, "record_desired_entities", record)
     ph_hass.config_entries.async_update_entry = MagicMock()
@@ -2392,49 +2337,10 @@ async def test_async_setup_entry_keeps_trackers_when_first_refresh_fails(
         "aa:bb:cc:dd:ee:01",
         "aa:bb:cc:dd:ee:02",
     ]
-    cleanup.assert_not_called()
+    fake.async_remove_device.assert_not_called()
+    fake.async_update_device.assert_not_called()
     ph_hass.config_entries.async_update_entry.assert_not_called()
     record.assert_called_once_with(entry, "device_tracker", None)
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_empty_arp_table_still_removes_stale_trackers(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-    fake_reg_factory: Any,
-) -> None:
-    """An empty ARP table stays authoritative, unlike a missing one, so stale trackers are removed.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
-        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-        fake_reg_factory (Any): Factory for the in-memory entity registry test double.
-    """
-    coordinator.data = {"arp_table": []}
-    entry = make_config_entry(
-        data={TRACKED_MACS: ["aa:bb:cc:dd:ee:01"], CONF_DEVICE_UNIQUE_ID: "dev1"},
-        options={CONF_DEVICE_TRACKER_ENABLED: True},
-        entry_id="e_empty_arp",
-    )
-    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
-    fake = fake_reg_factory(device_exists=True, device_id="router-device")
-    monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
-    monkeypatch.setattr(dt_mod, "is_reconciliation_active", lambda _entry: False)
-    cleanup = MagicMock()
-    monkeypatch.setattr(dt_mod, "_cleanup_stale_tracked_devices", cleanup)
-    monkeypatch.setattr(dt_mod, "record_desired_entities", MagicMock())
-    ph_hass.config_entries.async_update_entry = MagicMock()
-
-    await dt_mod.async_setup_entry(
-        ph_hass, entry, cast("AddEntitiesCallback", lambda _entities: None)
-    )
-
-    cleanup.assert_called_once()
-    assert cleanup.call_args.kwargs["current_mac_addresses"] == []
 
 
 @pytest.mark.asyncio
