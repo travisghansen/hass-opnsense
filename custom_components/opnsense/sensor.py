@@ -100,16 +100,33 @@ _VPN_TRAFFIC_PROPERTIES: tuple[str, ...] = (
 )
 _VPN_SERVER_PROPERTIES: tuple[str, ...] = ("status", "connected_clients")
 _VPN_WIREGUARD_CLIENT_PROPERTIES: tuple[str, ...] = ("connected_servers",)
-_VPN_IPSEC_CONNECTION_PROPERTIES: tuple[str, ...] = ("status",)
+_VPN_IPSEC_STATUS_PROPERTIES: tuple[str, ...] = ("status",)
 _VPN_SENSOR_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("openvpn", ("servers",)),
     ("wireguard", ("clients", "servers")),
-    ("ipsec", ("connections",)),
+    ("ipsec", ("connections", "children")),
 )
 _VPN_TYPE_DISPLAY_NAMES: Mapping[str, str] = {
     "openvpn": "OpenVPN",
     "ipsec": "IPsec",
 }
+_VPN_GROUP_DISPLAY_NAMES: Mapping[str, str] = {
+    "children": "Child",
+}
+_VPN_IPSEC_CHILD_STATUS_ATTRIBUTES: tuple[str, ...] = (
+    "uuid",
+    "name",
+    "connection",
+    "connected",
+    "installed_sas",
+    "local_ts",
+    "remote_ts",
+    "active_local_ts",
+    "active_remote_ts",
+    "install_time",
+    "total_packets_recv",
+    "total_packets_sent",
+)
 _VPN_IPSEC_STATUS_ATTRIBUTES: tuple[str, ...] = (
     "uuid",
     "name",
@@ -1016,7 +1033,8 @@ def _build_vpn_sensor_description(
         key=f"{vpn_type}.{clients_servers}.{uuid}.{prop_name}",
         name=(
             f"{_VPN_TYPE_DISPLAY_NAMES.get(vpn_type, vpn_type.title())} "
-            f"{clients_servers.title().rstrip('s')} {instance_name} {prop_name}"
+            f"{_VPN_GROUP_DISPLAY_NAMES.get(clients_servers, clients_servers.title().rstrip('s'))} "
+            f"{instance_name} {prop_name}"
         ),
         native_unit_of_measurement=native_unit_of_measurement,
         device_class=device_class,
@@ -1817,8 +1835,8 @@ async def _compile_vpn_sensors(
                     properties.extend(_VPN_SERVER_PROPERTIES)
                 if vpn_type == "wireguard" and clients_servers == "clients":
                     properties.extend(_VPN_WIREGUARD_CLIENT_PROPERTIES)
-                if vpn_type == "ipsec" and clients_servers == "connections":
-                    properties.extend(_VPN_IPSEC_CONNECTION_PROPERTIES)
+                if vpn_type == "ipsec":
+                    properties.extend(_VPN_IPSEC_STATUS_PROPERTIES)
                 entities.extend(
                     _create_sensor(
                         OPNsenseVPNSensor,
@@ -1930,7 +1948,11 @@ async def async_setup_entry(
         has_wireguard_inventory = "wireguard" in state and isinstance(
             state.get("wireguard"), MutableMapping
         )
-        has_ipsec_inventory = "ipsec" in state and isinstance(state.get("ipsec"), MutableMapping)
+        has_ipsec_inventory = (
+            "ipsec" in state
+            and isinstance(state.get("ipsec"), MutableMapping)
+            and isinstance(dict_get(state, "ipsec.children"), MutableMapping)
+        )
         entities.extend(await _compile_vpn_sensors(config_entry, coordinator, state))
         if not (
             has_openvpn_inventory
@@ -2826,6 +2848,8 @@ class OPNsenseVPNSensor(OPNsenseSensor):
         self._attr_extra_state_attributes = {}
         if clients_servers == "connections" and prop_name == "status":
             properties: list = list(_VPN_IPSEC_STATUS_ATTRIBUTES)
+        elif clients_servers == "children" and prop_name == "status":
+            properties = list(_VPN_IPSEC_CHILD_STATUS_ATTRIBUTES)
         elif clients_servers == "servers" and prop_name == "status":
             properties = [
                 "uuid",

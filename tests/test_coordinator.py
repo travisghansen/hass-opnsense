@@ -747,12 +747,14 @@ async def test_calculate_entity_speeds_treats_counter_decrease_as_reset(
         "update_time": now,
         "interfaces": {"eth0": {"inbytes": 100, "outbytes": 50, "inpkts": 10, "outpkts": 5}},
         "openvpn": {"servers": {"s1": {"total_bytes_recv": 100, "total_bytes_sent": 200}}},
+        "ipsec": {"children": {"c1": {"total_bytes_recv": 10, "total_bytes_sent": 20}}},
         "previous_state": {
             "update_time": now - 2,
             "interfaces": {
                 "eth0": {"inbytes": 1000, "outbytes": 500, "inpkts": 1000, "outpkts": 500}
             },
             "openvpn": {"servers": {"s1": {"total_bytes_recv": 1000, "total_bytes_sent": 2000}}},
+            "ipsec": {"children": {"c1": {"total_bytes_recv": 5000, "total_bytes_sent": 6000}}},
         },
     }
 
@@ -767,6 +769,10 @@ async def test_calculate_entity_speeds_treats_counter_decrease_as_reset(
     s1 = coord._state["openvpn"]["servers"]["s1"]
     assert s1["total_bytes_recv_kilobytes_per_second"] == 0
     assert s1["total_bytes_sent_kilobytes_per_second"] == 0
+
+    c1 = coord._state["ipsec"]["children"]["c1"]
+    assert c1["total_bytes_recv_kilobytes_per_second"] == 0
+    assert c1["total_bytes_sent_kilobytes_per_second"] == 0
 
 
 @pytest.mark.asyncio
@@ -2170,7 +2176,7 @@ async def test_build_categories_includes_ipsec_with_vpn_sync(
 async def test_calculate_vpn_speeds_covers_ipsec_connections(
     make_config_entry: Callable[..., MockConfigEntry], fake_client: Any
 ) -> None:
-    """IPsec connection byte counters produce the same rate fields as other VPN rows.
+    """IPsec connection and child byte counters produce the same rate fields as other VPN rows.
 
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
@@ -2200,14 +2206,20 @@ async def test_calculate_vpn_speeds_covers_ipsec_connections(
                 "ike-1": {"total_bytes_recv": 40_000, "total_bytes_sent": 10_000},
                 "ike-new": {"total_bytes_recv": 5, "total_bytes_sent": 5},
                 "broken": "not-a-mapping",
-            }
+            },
+            "children": {
+                "child-1": {"total_bytes_recv": 6_000, "total_bytes_sent": 4_000},
+            },
         },
         "previous_state": {
             "update_time": now - 2,
             "ipsec": {
                 "connections": {
                     "ike-1": {"total_bytes_recv": 20_000, "total_bytes_sent": 8_000},
-                }
+                },
+                "children": {
+                    "child-1": {"total_bytes_recv": 2_000, "total_bytes_sent": 2_000},
+                },
             },
         },
     }
@@ -2218,6 +2230,10 @@ async def test_calculate_vpn_speeds_covers_ipsec_connections(
     # (40000-20000)/2 = 10000 B/s -> 10 KB/s ; (10000-8000)/2 = 1000 B/s -> 1 KB/s
     assert ike_1["total_bytes_recv_kilobytes_per_second"] == 10
     assert ike_1["total_bytes_sent_kilobytes_per_second"] == 1
+    child_1 = coord._state["ipsec"]["children"]["child-1"]
+    # (6000-2000)/2 = 2000 B/s -> 2 KB/s ; (4000-2000)/2 = 1000 B/s -> 1 KB/s
+    assert child_1["total_bytes_recv_kilobytes_per_second"] == 2
+    assert child_1["total_bytes_sent_kilobytes_per_second"] == 1
     # rows without a previous sample or malformed rows are left untouched
     assert (
         "total_bytes_recv_kilobytes_per_second"

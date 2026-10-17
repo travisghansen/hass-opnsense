@@ -202,7 +202,7 @@ def setup_switch_reconciliation_entry(
             None,
         ),
         ({}, False, False, True, False, None),
-        ({"openvpn": {}, "wireguard": {}}, False, False, True, False, []),
+        ({"openvpn": {}, "wireguard": {}, "ipsec": {}}, False, False, True, False, []),
         ({}, False, False, False, True, None),
         ({"unbound_blocklist": {}}, False, False, False, True, []),
         ({"unbound_blocklist": {"legacy": {}}}, False, False, False, True, []),
@@ -275,6 +275,21 @@ async def test_async_setup_entry_records_none_or_authoritative_empty_for_invento
                 "wireguard": "bad-wireguard",
             },
             "Malformed wireguard inventory",
+        ),
+        (
+            {
+                "openvpn": {"clients": {"client-uuid": {"enabled": True}}},
+                "wireguard": {},
+            },
+            "Missing ipsec inventory",
+        ),
+        (
+            {
+                "openvpn": {"clients": {"client-uuid": {"enabled": True}}},
+                "wireguard": {},
+                "ipsec": {"connections": {"ike-1": {"name": "Site A", "status": "connected"}}},
+            },
+            "IPsec connection without enabled state",
         ),
     ],
 )
@@ -3909,6 +3924,99 @@ async def test_compile_vpn_wireguard_variations(
         vpn._handle_coordinator_update()
         # available should be a boolean; ensures handler ran without raising
         assert isinstance(vpn.available, bool)
+
+
+@pytest.mark.asyncio
+async def test_compile_vpn_switches_builds_ipsec_connection_switches(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Configured IPsec connections compile into switches; legacy sessions do not.
+
+    Args:
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    state = {
+        "ipsec": {
+            "connections": {
+                "ike-on": {"uuid": "ike-on", "name": "Site A", "enabled": True},
+                "ike-off": {"uuid": "ike-off", "name": "Site B", "enabled": False},
+                "con1": {"uuid": "con1", "name": "Legacy", "enabled": None},
+            }
+        }
+    }
+
+    ents = await _compile_vpn_switches(config_entry, coordinator, state)
+
+    names = {e.entity_description.key: e.entity_description.name for e in ents}
+    assert names == {
+        "ipsec.connections.ike-on": "IPsec Connection Site A",
+        "ipsec.connections.ike-off": "IPsec Connection Site B",
+    }
+    assert switch_mod._vpn_switch_rows_are_complete(state) is True
+
+
+@pytest.mark.parametrize(
+    ("connection", "expected_available", "expected_is_on"),
+    [
+        (
+            {
+                "uuid": "ike-1",
+                "name": "Site A",
+                "enabled": True,
+                "status": "connected",
+                "remote_addrs": "203.0.113.5",
+            },
+            True,
+            True,
+        ),
+        ({"uuid": "ike-1", "name": "Site A", "enabled": False}, True, False),
+        ({"uuid": "ike-1", "name": "Site A", "enabled": None}, False, None),
+        ({"uuid": "ike-1", "name": "Site A"}, False, None),
+    ],
+)
+def test_ipsec_connection_switch_follows_enabled_state(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    connection: dict[str, Any],
+    expected_available: bool,
+    expected_is_on: bool | None,
+) -> None:
+    """IPsec connection switches mirror ``enabled`` and go unavailable when it is unknown.
+
+    Args:
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        connection (dict[str, Any]): IPsec connection row from aiopnsense.
+        expected_available (bool): Whether the switch should be available.
+        expected_is_on (bool | None): Expected switch state when available.
+    """
+    config_entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev1", "url": "http://example"})
+    coordinator.data = {"ipsec": {"connections": {"ike-1": connection}}}
+    switch = OPNsenseVPNSwitch(
+        config_entry=config_entry,
+        coordinator=coordinator,
+        entity_description=SwitchEntityDescription(
+            key="ipsec.connections.ike-1", name="IPsec Connection Site A"
+        ),
+    )
+    switch.hass = MagicMock()
+    switch.entity_id = "switch.ipsec_connection_site_a"
+    stub_async_write_ha_state(switch)
+
+    switch._handle_coordinator_update()
+
+    assert switch.available is expected_available
+    if expected_available:
+        assert switch.is_on is expected_is_on
+        attrs = switch.extra_state_attributes
+        assert attrs is not None
+        assert attrs["uuid"] == "ike-1"
+        if connection.get("status"):
+            assert attrs["status"] == "connected"
+            assert attrs["remote_addrs"] == "203.0.113.5"
 
 
 def test_vpn_instance_non_mapping_sets_unavailable(
