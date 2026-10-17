@@ -49,6 +49,7 @@ from .helpers import (
     dict_get,
     get_arp_ip,
     get_arp_mac,
+    has_configured_tracker_macs,
     normalize_arp_mac,
     normalize_mac_address,
 )
@@ -242,24 +243,6 @@ def _track_all_table_entries_are_complete(entries: list[Any], *, ndp: bool) -> b
         if _normalized_ip_address(get_arp_ip(entry), version=6) is None:
             return False
     return True
-
-
-def _has_configured_macs(config_entry: ConfigEntry) -> bool:
-    """Return whether the options pin at least one non-blank tracker MAC.
-
-    Args:
-        config_entry (ConfigEntry): Config entry whose options hold the configured MACs.
-
-    Returns:
-        bool: ``True`` when at least one configured MAC is a non-blank string.
-    """
-    configured_macs = config_entry.options.get(CONF_DEVICES, [])
-    return bool(
-        isinstance(configured_macs, list)
-        and any(
-            isinstance(mac_address, str) and mac_address.strip() for mac_address in configured_macs
-        )
-    )
 
 
 def _unavailable_device_tracker_tables(state: Mapping[str, Any]) -> list[str]:
@@ -495,7 +478,7 @@ def _update_track_all_source_inventory(
     if not isinstance(state, MutableMapping):
         return
     options = config_entry.options
-    has_configured_macs = _has_configured_macs(config_entry)
+    has_configured_macs = has_configured_tracker_macs(config_entry)
     if not options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED) or (
         has_configured_macs
     ):
@@ -614,7 +597,7 @@ async def async_setup_entry(
 
     arp_entries = dict_get(state, "arp_table")
     ndp_entries = dict_get(state, "ndp_table", [])
-    has_configured_macs = _has_configured_macs(config_entry)
+    has_configured_macs = has_configured_tracker_macs(config_entry)
     table_response_available = isinstance(state.get("arp_table"), list) or isinstance(
         state.get("ndp_table"), list
     )

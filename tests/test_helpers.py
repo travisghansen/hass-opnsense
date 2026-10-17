@@ -12,10 +12,13 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.opnsense import helpers as helpers_mod
 from custom_components.opnsense.const import (
     CONF_DEVICE_UNIQUE_ID,
+    CONF_DEVICES,
     CONF_ENTRY_TYPE,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     ENTRY_TYPE_CARP,
+    TRACKED_MACS,
+    TRACKED_NDP_MACS,
 )
 from custom_components.opnsense.helpers import (
     async_get_device_by_connection,
@@ -34,10 +37,12 @@ from custom_components.opnsense.helpers import (
     get_arp_ip,
     get_arp_mac,
     get_smart_device_name,
+    has_configured_tracker_macs,
     is_carp_entry,
     is_usable_carp_vip,
     normalize_arp_mac,
     normalize_mac_address,
+    tracked_ndp_macs,
 )
 
 
@@ -397,6 +402,59 @@ def test_normalize_mac_address(value: Any, expected: str | None) -> None:
         expected (str | None): Normalized MAC, or ``None`` when the input is not a valid MAC.
     """
     assert normalize_mac_address(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("devices", "expected"),
+    [
+        pytest.param(None, False, id="unset"),
+        pytest.param([], False, id="empty"),
+        pytest.param(["", "  ", 5], False, id="blank-or-non-string"),
+        pytest.param("aa:bb:cc:dd:ee:ff", False, id="not-a-list"),
+        pytest.param(["", "aa:bb:cc:dd:ee:ff"], True, id="one-usable"),
+    ],
+)
+def test_has_configured_tracker_macs(
+    make_config_entry: Callable[..., MockConfigEntry],
+    devices: object,
+    expected: bool,
+) -> None:
+    """Manual tracker mode applies only when a non-blank MAC is pinned in the options.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        devices (object): Stored ``CONF_DEVICES`` option, or ``None`` when unset.
+        expected (bool): Whether manual mode applies.
+    """
+    options = {} if devices is None else {CONF_DEVICES: devices}
+    entry = make_config_entry(options=options)
+
+    assert has_configured_tracker_macs(entry) is expected
+
+
+def test_tracked_ndp_macs_merges_normalized_inventories_and_configured_devices(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Persisted inventories and configured devices combine into one normalized MAC set.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
+    entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            TRACKED_MACS: ["AA-BB-CC-DD-EE-01", "not-a-mac", 5],
+            TRACKED_NDP_MACS: ["aa:bb:cc:dd:ee:02"],
+        },
+        options={CONF_DEVICES: ["aa:bb:cc:dd:ee:03"]},
+    )
+
+    assert tracked_ndp_macs(entry) == {
+        "aa:bb:cc:dd:ee:01",
+        "aa:bb:cc:dd:ee:02",
+        "aa:bb:cc:dd:ee:03",
+    }
+    assert tracked_ndp_macs(make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})) == set()
 
 
 @pytest.mark.parametrize(

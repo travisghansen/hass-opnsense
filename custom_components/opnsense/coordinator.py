@@ -16,7 +16,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .const import (
     ATTR_UNBOUND_BLOCKLIST,
     CONF_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
-    CONF_DEVICES,
     CONF_SYNC_CARP,
     CONF_SYNC_CERTIFICATES,
     CONF_SYNC_DHCP_LEASES,
@@ -36,15 +35,15 @@ from .const import (
     DEFAULT_DEVICE_TRACKER_RESOLVE_HOSTNAMES,
     DEFAULT_SYNC_OPTION_VALUE,
     DOMAIN,
-    TRACKED_MACS,
-    TRACKED_NDP_MACS,
 )
 from .helpers import (
     dict_get,
     get_arp_mac,
     get_smart_device_name,
+    has_configured_tracker_macs,
     is_carp_entry,
     normalize_mac_address,
+    tracked_ndp_macs,
 )
 from .repair_reconciliation import has_repair_marker
 from .repairs import (
@@ -293,48 +292,6 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             self._failing_optional_methods.discard(method_name)
             _LOGGER.info("%s lookup recovered", _OPTIONAL_TRACKER_METHODS[method_name])
 
-    def _tracked_ndp_macs(self) -> set[str]:
-        """Return normalized MACs that device-tracker entities may confirm through NDP.
-
-        Combines the persisted tracked-MAC inventories with manually configured devices. An
-        empty result means entities have not been determined yet.
-
-        Returns:
-            set[str]: Normalized tracked MAC addresses.
-        """
-        raw_macs: list[Any] = []
-        if self.config_entry is None:
-            return set()
-        for source in (
-            self.config_entry.data.get(TRACKED_MACS),
-            self.config_entry.data.get(TRACKED_NDP_MACS),
-            self.config_entry.options.get(CONF_DEVICES),
-        ):
-            if isinstance(source, list):
-                raw_macs.extend(source)
-        return {
-            normalized
-            for raw_mac in raw_macs
-            if isinstance(raw_mac, str) and (normalized := normalize_mac_address(raw_mac))
-        }
-
-    def _track_all_devices(self) -> bool:
-        """Return whether the device tracker runs in track-all mode.
-
-        Mirrors the device tracker platform: manual mode applies only when the options pin at
-        least one non-blank MAC in ``CONF_DEVICES``.
-
-        Returns:
-            bool: ``True`` when no manually selected devices are configured.
-        """
-        if self.config_entry is None:
-            return True
-        configured = self.config_entry.options.get(CONF_DEVICES)
-        return not (
-            isinstance(configured, list)
-            and any(isinstance(mac, str) and mac.strip() for mac in configured)
-        )
-
     def _ndp_table_needs_observations(self, ndp_table: object) -> bool:
         """Return whether the NDP table has a row that needs timestamped evidence.
 
@@ -348,9 +305,9 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         """
         if not isinstance(ndp_table, list):
             return False
-        tracked_macs = self._tracked_ndp_macs()
-        if self._track_all_devices():
-            tracked_macs = set()
+        tracked_macs: set[str] = set()
+        if self.config_entry is not None and has_configured_tracker_macs(self.config_entry):
+            tracked_macs = tracked_ndp_macs(self.config_entry)
         for row in ndp_table:
             if not isinstance(row, Mapping):
                 continue
