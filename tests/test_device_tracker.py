@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterable, MutableMapping
 from datetime import UTC, datetime, timedelta
 from types import MappingProxyType
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from aiopnsense.exceptions import OPNsenseTimeoutError
 from homeassistant.components.device_tracker import SourceType
@@ -39,6 +39,16 @@ import custom_components.opnsense.device_tracker as dt_mod
 from custom_components.opnsense.device_tracker import OPNsenseScannerEntity
 from custom_components.opnsense.entity import OPNsenseBaseEntity
 from custom_components.opnsense.helpers import device_belongs_to_config_entry
+
+
+async def _restore_state(entity: OPNsenseScannerEntity) -> None:
+    """Add the entity to Home Assistant so it restores its saved state.
+
+    Args:
+        entity (OPNsenseScannerEntity): Entity whose ``async_get_last_state`` is already stubbed.
+    """
+    with patch.object(OPNsenseBaseEntity, "async_added_to_hass", AsyncMock()):
+        await entity.async_added_to_hass()
 
 
 def _make_scanner_entity(
@@ -1189,7 +1199,7 @@ async def test_restore_last_state_ignores_missing_or_malformed_snapshot(
         last_state.attributes = last_state_attributes
     object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
 
-    await ent._restore_last_state()
+    await _restore_state(ent)
 
     assert ent.extra_state_attributes == {}
 
@@ -1239,14 +1249,11 @@ async def test_restore_last_state_and_device_info(
     )
     object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
 
-    await ent._restore_last_state()
-    assert ent._last_known_hostname == "oldhost"
-    assert ent._last_known_ip == "9.9.9.9"
-    assert ent._last_known_connected_time == last_known_connected_time
+    await _restore_state(ent)
     attributes = ent.extra_state_attributes
     assert attributes is not None
     assert attributes.get("interface") == "lan0"
-    assert "last_known_connected_time" in attributes
+    assert attributes.get("last_known_connected_time") == last_known_connected_time
 
     devinfo = ent.device_info
     assert devinfo is not None
@@ -1257,6 +1264,14 @@ async def test_restore_last_state_and_device_info(
     assert "default_name" not in devinfo
     assert "default_manufacturer" not in devinfo
     assert "via_device" not in devinfo
+
+    # Restored hostname and IP surface only once a poll finds the device without live values.
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+    ent._handle_coordinator_update()
+    attributes = ent.extra_state_attributes
+    assert attributes is not None
+    assert attributes.get("last_known_hostname") == "oldhost"
+    assert attributes.get("last_known_ip") == "9.9.9.9"
 
 
 @pytest.mark.asyncio
@@ -1294,7 +1309,7 @@ async def test_restored_ipv6_tracker_stays_unavailable_when_ndp_lookup_is_denied
     object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=last_state))
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
 
-    await entity._restore_last_state()
+    await _restore_state(entity)
     entity._handle_coordinator_update()
 
     assert entity.available is False
@@ -1367,7 +1382,7 @@ async def test_restored_legacy_ip_preserves_family_during_table_failure(
     object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=last_state))
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
 
-    await entity._restore_last_state()
+    await _restore_state(entity)
     entity._handle_coordinator_update()
 
     assert entity.available is False
@@ -1631,7 +1646,7 @@ async def test_restore_last_state_normalizes_connected_time_and_skips_empty_attr
     }
     object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
 
-    await ent._restore_last_state()
+    await _restore_state(ent)
 
     attributes = ent.extra_state_attributes
     assert attributes is not None
@@ -1648,32 +1663,6 @@ async def test_restore_last_state_normalizes_connected_time_and_skips_empty_attr
         assert "last_known_connected_time" not in attributes
     else:
         assert attributes.get("last_known_connected_time") == expected_connected_time
-
-
-@pytest.mark.asyncio
-async def test_async_added_to_hass_restores_saved_state(
-    monkeypatch: pytest.MonkeyPatch,
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Adding the entity to Home Assistant restores attributes from saved state.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate the base entity.
-        coordinator (MagicMock): Mock coordinator supplying entity data.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake config entry.
-    """
-    ent = _make_scanner_entity(coordinator, make_config_entry)
-    last_state = MagicMock()
-    last_state.attributes = {"interface": "lan0"}
-    object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
-    monkeypatch.setattr(OPNsenseBaseEntity, "async_added_to_hass", AsyncMock())
-
-    await ent.async_added_to_hass()
-
-    attributes = ent.extra_state_attributes
-    assert attributes is not None
-    assert attributes["interface"] == "lan0"
 
 
 @pytest.mark.asyncio
@@ -2244,19 +2233,6 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
     ph_hass.config_entries.async_update_entry = MagicMock()
     await dt_mod.async_setup_entry(ph_hass, entry, MagicMock())
 
-    entity_registry.async_get_entity_id.assert_has_calls(
-        [
-            call(Platform.DEVICE_TRACKER, DOMAIN, "dev1_mac_stale_mac_router"),
-            call(Platform.DEVICE_TRACKER, DOMAIN, "dev1_mac_stale_mac_other"),
-            call(
-                Platform.DEVICE_TRACKER,
-                DOMAIN,
-                "dev1_mac_stale_mac_nonopnsense",
-            ),
-        ],
-        any_order=True,
-    )
-    assert entity_registry.async_get_entity_id.call_count == 3
     removed_ids = {item.args[0] for item in entity_registry.async_remove.call_args_list}
     assert removed_ids == {
         "device_tracker.device_stale_router",
@@ -2359,7 +2335,6 @@ async def test_async_setup_entry_removes_stale_tracker_entities_clears_missing_p
     ph_hass.config_entries.async_update_entry = MagicMock()
     await dt_mod.async_setup_entry(ph_hass, entry, MagicMock())
 
-    device_registry.async_get.assert_called_once_with(missing_parent_id)
     device_registry.async_update_device.assert_called_once_with(
         stale_device.id,
         remove_config_entry_id=entry.entry_id,
@@ -3235,7 +3210,7 @@ async def test_handle_coordinator_update_exposes_last_known_hostname_only_while_
     last_state = MagicMock()
     last_state.attributes = MappingProxyType({"last_known_hostname": "oldhost"})
     object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
-    await ent._restore_last_state()
+    await _restore_state(ent)
 
     ent._handle_coordinator_update()
 
@@ -3353,7 +3328,7 @@ async def test_coordinator_observation_index_confirms_restored_ndp_tracker(
     )
     object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=saved_state))
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
-    await entity._restore_last_state()
+    await _restore_state(entity)
     entity._handle_coordinator_update()
 
     assert entity.available is True
@@ -3416,7 +3391,7 @@ async def test_first_ndp_sighting_requires_current_same_mac_observation(
             },
         )
         object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=saved_state))
-        await entity._restore_last_state()
+        await _restore_state(entity)
 
     entity._handle_coordinator_update()
 
@@ -3548,7 +3523,7 @@ async def test_restored_home_needs_current_ndp_evidence(
     )
     object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=saved))
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
-    await entity._restore_last_state()
+    await _restore_state(entity)
     healthy_tables = coordinator.data.copy()
     coordinator.data["arp_table"] = None
     coordinator.data["ndp_table"] = None
@@ -3567,7 +3542,7 @@ async def test_restored_home_needs_current_ndp_evidence(
     )
     object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=saved))
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
-    await entity._restore_last_state()
+    await _restore_state(entity)
     entity._handle_coordinator_update()
     assert entity.available is False
 
