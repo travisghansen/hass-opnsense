@@ -178,6 +178,7 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 * NAT Rules - enable/disable rules *(requires OPNsense Firmware 26.1.1+)*
 * Services - start/stop services
 * VPN Servers and Clients - enable/disable instances
+* IPsec Connections - enable/disable connections
 * Unbound blocklists - enable/disable blocklists
 
 ### Device Tracker
