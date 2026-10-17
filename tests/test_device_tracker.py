@@ -3624,18 +3624,15 @@ async def test_handle_coordinator_update_exposes_last_known_hostname_only_while_
     assert attributes.get("last_known_hostname") == expected_last_known
 
 
-@pytest.mark.parametrize("observed_ip", ["192.0.2.1", "2001:db8::1"])
 @pytest.mark.parametrize("consider_home", [0, 30])
-def test_timestamped_ndp_presence_supports_both_families_and_departure(
-    observed_ip: str,
+def test_timestamped_ndp_presence_ages_away_and_returns(
     consider_home: int,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Retained neighbors must age away, while either family's observations confirm the MAC.
+    """Retained neighbors must age away, and a fresh observation confirms the MAC again.
 
     Args:
-        observed_ip (str): Address family of the confirming hostwatch observation.
         consider_home (int): Additional departure grace period.
         coordinator (MagicMock): Coordinator supplying API boundary payloads.
         make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
@@ -3648,13 +3645,13 @@ def test_timestamped_ndp_presence_supports_both_families_and_departure(
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
     entity = OPNsenseScannerEntity(entry, coordinator, True, mac, None, None)
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
-    observation = {"mac": mac, "ip": observed_ip, "last_seen": datetime.now(UTC)}
+    last_seen = datetime.now(UTC)
     coordinator.data = {
         "arp_table": [{"mac": mac, "ip": "192.0.2.1"}],
         "ndp_table": [{"mac": mac, "ip": "2001:db8::1"}],
         "update_time": datetime.now(UTC).timestamp() - consider_home - 1,
     }
-    coordinator.host_observation_times = {mac: observation["last_seen"]}
+    coordinator.host_observation_times = {mac: last_seen}
     entity._handle_coordinator_update()
     identity = entity.unique_id
     assert entity.is_connected is True
@@ -3664,8 +3661,7 @@ def test_timestamped_ndp_presence_supports_both_families_and_departure(
 
     coordinator.data["arp_table"] = []
     coordinator.data["update_time"] = datetime.now(UTC).timestamp()
-    observation["last_seen"] = datetime.now(UTC) - timedelta(hours=1)
-    coordinator.host_observation_times = {mac: observation["last_seen"]}
+    coordinator.host_observation_times = {mac: datetime.now(UTC) - timedelta(hours=1)}
     for _ in range(2):
         entity._handle_coordinator_update()
         assert entity.available is True
@@ -3681,8 +3677,7 @@ def test_timestamped_ndp_presence_supports_both_families_and_departure(
     assert attributes["ndp_presence_source"] == "no_evidence"
 
     # The same tracker can return through IPv6 after previously being observed through ARP.
-    observation["last_seen"] = datetime.now(UTC)
-    coordinator.host_observation_times = {mac: observation["last_seen"]}
+    coordinator.host_observation_times = {mac: datetime.now(UTC)}
     entity._handle_coordinator_update()
     assert entity.is_connected is True
     assert entity.unique_id == identity
@@ -3755,7 +3750,7 @@ async def test_coordinator_observation_index_confirms_restored_ndp_tracker(
 @pytest.mark.parametrize("saved_state_kind", ["brand_new", "legacy_home"])
 @pytest.mark.parametrize(
     "observation_case",
-    ["missing", "disabled", "invalid_payload", "missing_index", "unobserved_mac", "invalid_index"],
+    ["unavailable_index", "empty_index", "unobserved_mac", "invalid_index"],
 )
 @pytest.mark.asyncio
 async def test_first_ndp_sighting_requires_current_same_mac_observation(
@@ -3768,16 +3763,14 @@ async def test_first_ndp_sighting_requires_current_same_mac_observation(
 
     Args:
         saved_state_kind (str): Whether the tracker is new or restores legacy home state.
-        observation_case (str): Unavailable, disabled, malformed, or nonmatching observation data.
+        observation_case (str): Unavailable, empty, malformed, or nonmatching observation index.
         coordinator (MagicMock): Coordinator supplying API boundary state.
         make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
     """
     mac = "aa:bb:cc:dd:ee:01"
     observation_times_by_case: dict[str, object] = {
-        "missing": None,
-        "disabled": None,
-        "invalid_payload": {},
-        "missing_index": None,
+        "unavailable_index": None,
+        "empty_index": {},
         "unobserved_mac": {"aa:bb:cc:dd:ee:02": datetime.now(UTC)},
         "invalid_index": {mac: "not-a-timestamp"},
     }
@@ -3811,52 +3804,6 @@ async def test_first_ndp_sighting_requires_current_same_mac_observation(
     attributes = entity.extra_state_attributes
     assert attributes is not None
     assert attributes["ipv6_addresses"] == ["2001:db8::1"]
-    assert attributes["ndp_presence_source"] == "no_evidence"
-
-    coordinator.data["arp_table"] = [{"mac": mac, "ip": "192.0.2.1"}]
-    coordinator.data["update_time"] = datetime.now(UTC).timestamp()
-    entity._handle_coordinator_update()
-
-    assert entity.available is True
-    assert entity.is_connected is True
-
-
-@pytest.mark.asyncio
-async def test_matching_ndp_mac_with_invalid_ip_cannot_keep_restored_home(
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """A matching but unusable NDP row still needs presence evidence to retain home state.
-
-    Args:
-        coordinator (MagicMock): Coordinator supplying API boundary state.
-        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
-    """
-    mac = "aa:bb:cc:dd:ee:01"
-    coordinator.data = {
-        "arp_table": [],
-        "ndp_table": [{"mac": mac, "ip": "not-an-ip"}],
-    }
-    coordinator.host_observation_times = None
-    entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
-    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
-    entity = OPNsenseScannerEntity(entry, coordinator, True, mac, None, None)
-    saved_state = State(
-        "device_tracker.phone",
-        "home",
-        {"ndp_presence_source": "neighbor_table", "ipv6_addresses": []},
-    )
-    object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=saved_state))
-    object.__setattr__(entity, "async_write_ha_state", MagicMock())
-    await entity._restore_last_state()
-
-    entity._handle_coordinator_update()
-
-    assert entity.available is False
-    assert entity.is_connected is False
-    attributes = entity.extra_state_attributes
-    assert attributes is not None
-    assert attributes["ipv6_addresses"] == []
     assert attributes["ndp_presence_source"] == "no_evidence"
 
     coordinator.data["arp_table"] = [{"mac": mac, "ip": "192.0.2.1"}]

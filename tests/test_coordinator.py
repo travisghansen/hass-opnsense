@@ -2465,64 +2465,62 @@ def _dt_observation_coordinator(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("ndp_rows", "expect_call"),
+    ("track_all", "ndp_rows", "expect_call"),
     [
-        ([], False),
-        ([{"mac": "11:22:33:44:55:66", "ip": "2001:db8::9"}], False),
-        ([{"mac": "AA-BB-CC-DD-EE-FF", "ip": "2001:db8::1"}], True),
+        pytest.param(False, [], False, id="manual-no-ndp-rows"),
+        pytest.param(
+            False,
+            [{"mac": "11:22:33:44:55:66", "ip": "2001:db8::9"}],
+            False,
+            id="manual-untracked-mac",
+        ),
+        pytest.param(
+            False,
+            [{"mac": "AA-BB-CC-DD-EE-FF", "ip": "2001:db8::1"}],
+            True,
+            id="manual-tracked-mac",
+        ),
+        pytest.param(
+            True,
+            [{"mac": "11:22:33:44:55:66", "ip": "2001:db8::9"}],
+            True,
+            id="track-all-new-mac",
+        ),
     ],
 )
-async def test_dt_refresh_fetches_observations_only_for_tracked_ndp_rows(
+async def test_dt_refresh_fetches_observations_only_when_ndp_rows_need_them(
     make_config_entry: Callable[..., MockConfigEntry],
+    track_all: bool,
     ndp_rows: list[dict[str, str]],
     expect_call: bool,
 ) -> None:
-    """Host observations are requested only when a tracked MAC appears in the NDP table.
+    """Host observations are requested only for NDP rows that can affect tracker presence.
 
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        track_all (bool): Whether no devices are configured, so every NDP MAC is tracked.
         ndp_rows (list[dict[str, str]]): Rows returned by the NDP lookup.
         expect_call (bool): Whether the observation lookup should run.
     """
     mac = "aa:bb:cc:dd:ee:ff"
     seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
+    observed_mac = ndp_rows[0]["mac"].lower().replace("-", ":") if ndp_rows else mac
     observations = AsyncMock(
-        return_value={"source": "discovery", "rows": [{"mac": mac, "last_seen": seen}]}
+        return_value={"source": "discovery", "rows": [{"mac": observed_mac, "last_seen": seen}]}
     )
-    entry = make_config_entry(
-        {CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]}, options={CONF_DEVICES: [mac]}
+    entry = (
+        make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
+        if track_all
+        else make_config_entry(
+            {CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]}, options={CONF_DEVICES: [mac]}
+        )
     )
     coordinator = _dt_observation_coordinator(entry, ndp_rows, observations)
 
     await coordinator._async_update_data()
 
     assert observations.await_count == (1 if expect_call else 0)
-    assert coordinator.host_observation_times == ({mac: seen} if expect_call else None)
-
-
-@pytest.mark.asyncio
-async def test_dt_refresh_track_all_fetches_observations_for_new_untracked_ndp_mac(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Track-all mode fetches observations for a new NDP-only MAC despite persisted MACs.
-
-    Args:
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-    """
-    new_mac = "11:22:33:44:55:66"
-    seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
-    observations = AsyncMock(
-        return_value={"source": "discovery", "rows": [{"mac": new_mac, "last_seen": seen}]}
-    )
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: ["aa:bb:cc:dd:ee:ff"]})
-    coordinator = _dt_observation_coordinator(
-        entry, [{"mac": new_mac, "ip": "2001:db8::9"}], observations
-    )
-
-    await coordinator._async_update_data()
-
-    assert observations.await_count == 1
-    assert coordinator.host_observation_times == {new_mac: seen}
+    assert coordinator.host_observation_times == ({observed_mac: seen} if expect_call else None)
 
 
 @pytest.mark.asyncio
