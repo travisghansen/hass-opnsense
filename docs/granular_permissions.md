@@ -119,6 +119,7 @@ Firewall and NAT rule switches are unavailable on older firmware; the deprecated
 | VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | GET | `/api/wireguard/service/show`<br>`/api/wireguard/client/get`<br>`/api/wireguard/server/get` |
 | VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | POST | `/api/wireguard/client/toggle_client/{uuid}` (or `/api/wireguard/client/toggleClient/{uuid}`)<br>`/api/wireguard/server/toggle_server/{uuid}` (or `/api/wireguard/server/toggleServer/{uuid}`)<br>`/api/wireguard/service/reconfigure` |
 | VPN: WireGuard: Status (25.7+, alternative for status-only access) | GET / POST | `/api/wireguard/service/show`<br>`/api/wireguard/service/reconfigure` |
+| Status: IPsec | GET | `/api/ipsec/sessions/search_phase1` (or `/api/ipsec/sessions/searchPhase1`) |
 
 ## Security Certificate Information
 

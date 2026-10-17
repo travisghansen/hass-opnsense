@@ -495,6 +495,14 @@ def fake_client() -> Any:
                 """
                 return {"servers": {}}
 
+            async def get_ipsec(self) -> Any:
+                """Return an empty IPsec payload for coordinator tests.
+
+                Returns:
+                    Any: Configured object produced by the local test double.
+                """
+                return {"connections": {}}
+
             async def get_carp(self) -> dict[str, Any]:
                 """Return one fake CARP payload with interfaces and aggregate summary.
 

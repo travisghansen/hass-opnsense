@@ -3705,6 +3705,12 @@ async def test_async_setup_entry_handles_partial_or_malformed_dynamic_sensor_pay
     [
         ({"openvpn": {}}, "Missing wireguard inventory"),
         ({"wireguard": {}, "openvpn": "bad"}, "Malformed wireguard inventory"),
+        ({"wireguard": {}, "openvpn": {}}, "Missing ipsec inventory"),
+        ({"wireguard": {}, "openvpn": {}, "ipsec": "bad"}, "Malformed ipsec inventory"),
+        (
+            {"wireguard": {}, "openvpn": {}, "ipsec": {"connections": {"ike-1": "bad"}}},
+            "Malformed ipsec connection row",
+        ),
     ],
 )
 @pytest.mark.asyncio
@@ -3866,6 +3872,7 @@ async def test_async_setup_entry_ignores_unconsumed_openvpn_client_rows(
         coordinator_data={
             "openvpn": {"clients": {"bad": None}, "servers": {}},
             "wireguard": {"clients": {}, "servers": {}},
+            "ipsec": {"connections": {}},
         },
         sync_vpn=True,
     )
@@ -3899,7 +3906,7 @@ async def test_async_setup_entry_ignores_unconsumed_openvpn_client_rows(
         # VPN
         ({}, False, False, False, False, False, False, False, False, True, None),
         (
-            {"openvpn": {}, "wireguard": {}},
+            {"openvpn": {}, "wireguard": {}, "ipsec": {}},
             False,
             False,
             False,
@@ -6513,3 +6520,237 @@ async def test_interface_rate_sensor_falls_back_when_live_traffic_is_unavailable
 
     assert rate_sensor.available is True
     assert rate_sensor.native_value == 30
+
+
+_IPSEC_CONNECTION_ROW: dict[str, Any] = {
+    "uuid": "ike-1",
+    "name": "Site A",
+    "connected": True,
+    "status": "connected",
+    "version": "IKEv2",
+    "local_addrs": "198.51.100.1",
+    "remote_addrs": "203.0.113.5",
+    "local_id": "",
+    "remote_id": "",
+    "routed": True,
+    "install_time": 120,
+    "total_bytes_recv": 1000,
+    "total_bytes_sent": 2000,
+    "total_packets_recv": 10,
+    "total_packets_sent": 20,
+}
+
+
+@pytest.mark.asyncio
+async def test_compile_vpn_sensors_builds_ipsec_connection_entities(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """IPsec connections compile into a status sensor plus the shared traffic sensors.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    state: dict[str, Any] = {
+        "openvpn": {"servers": {}},
+        "wireguard": {"clients": {}, "servers": {}},
+        "ipsec": {"connections": {"ike-1": dict(_IPSEC_CONNECTION_ROW)}},
+    }
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    entities = await sensor_module._compile_vpn_sensors(entry, coordinator, state)
+
+    keys = sorted(entity.entity_description.key for entity in entities)
+    assert keys == [
+        "ipsec.connections.ike-1.status",
+        "ipsec.connections.ike-1.total_bytes_recv",
+        "ipsec.connections.ike-1.total_bytes_recv_kilobytes_per_second",
+        "ipsec.connections.ike-1.total_bytes_sent",
+        "ipsec.connections.ike-1.total_bytes_sent_kilobytes_per_second",
+    ]
+    assert all(isinstance(entity, OPNsenseVPNSensor) for entity in entities)
+    status_sensor = next(
+        entity
+        for entity in entities
+        if entity.entity_description.key == "ipsec.connections.ike-1.status"
+    )
+    assert status_sensor.entity_description.name == "IPsec Connection Site A status"
+    assert status_sensor.entity_description.entity_registry_enabled_default is True
+
+
+@pytest.mark.parametrize(
+    ("row", "expected_value", "expected_attributes"),
+    [
+        (
+            dict(_IPSEC_CONNECTION_ROW),
+            "connected",
+            {
+                "uuid": "ike-1",
+                "name": "Site A",
+                "connected": True,
+                "version": "IKEv2",
+                "local_addrs": "198.51.100.1",
+                "remote_addrs": "203.0.113.5",
+                "local_id": "",
+                "remote_id": "",
+                "routed": True,
+                "install_time": 120,
+                "total_packets_recv": 10,
+                "total_packets_sent": 20,
+            },
+        ),
+        (
+            {
+                "uuid": "ike-1",
+                "name": "Site A",
+                "connected": False,
+                "status": "disconnected",
+                "install_time": None,
+                "total_bytes_recv": 0,
+                "total_bytes_sent": 0,
+            },
+            "disconnected",
+            {"uuid": "ike-1", "name": "Site A", "connected": False},
+        ),
+    ],
+)
+def test_ipsec_connection_status_sensor_exposes_attributes(
+    row: dict[str, Any],
+    expected_value: str,
+    expected_attributes: dict[str, Any],
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """IPsec status sensors expose the connection details without client rows.
+
+    Args:
+        row (dict[str, Any]): Normalized IPsec connection row from aiopnsense.
+        expected_value (str): Expected sensor state.
+        expected_attributes (dict[str, Any]): Attributes that must be present with these values.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"ipsec": {"connections": {"ike-1": row}}}
+    desc = MagicMock()
+    desc.key = "ipsec.connections.ike-1.status"
+    desc.name = "IPsec Connection Site A status"
+
+    sensor = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.ipsec_site_a_status"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == expected_value
+    attrs = sensor.extra_state_attributes
+    assert attrs is not None
+    assert "clients" not in attrs
+    for key, value in expected_attributes.items():
+        assert attrs[key] == value
+    # byte counters are separate sensors, not status attributes
+    assert "total_bytes_recv" not in attrs
+
+
+@pytest.mark.parametrize(
+    ("connected", "status", "expected_icon"),
+    [
+        (True, "connected", "mdi:check-network"),
+        (False, "disconnected", "mdi:close-network-outline"),
+    ],
+)
+def test_ipsec_connection_status_sensor_icon_follows_state(
+    connected: bool,
+    status: str,
+    expected_icon: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """IPsec status sensors show the connected icon only for connected tunnels.
+
+    Args:
+        connected (bool): Connection flag reported by aiopnsense.
+        status (str): Connection status string reported by aiopnsense.
+        expected_icon (str): Icon the sensor must expose for this state.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    row = dict(_IPSEC_CONNECTION_ROW, connected=connected, status=status)
+    coord.data = {"ipsec": {"connections": {"ike-1": row}}}
+    desc = MagicMock()
+    desc.key = "ipsec.connections.ike-1.status"
+    desc.name = "IPsec Connection Site A status"
+    desc.icon = "mdi:check-network"
+
+    sensor = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.ipsec_site_a_status"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.native_value == status
+    assert sensor.icon == expected_icon
+
+
+def test_ipsec_traffic_sensor_reads_counter(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """IPsec traffic sensors read the shared byte counter fields.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coord.data = {"ipsec": {"connections": {"ike-1": dict(_IPSEC_CONNECTION_ROW)}}}
+    desc = MagicMock()
+    desc.key = "ipsec.connections.ike-1.total_bytes_sent"
+    desc.name = "IPsec Connection Site A total_bytes_sent"
+
+    sensor = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.ipsec_site_a_total_bytes_sent"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == 2000
+    assert sensor.extra_state_attributes == {"uuid": "ike-1", "name": "Site A"}
+
+
+def test_build_vpn_sensor_description_names_ipsec_connections() -> None:
+    """IPsec descriptions use the ``IPsec`` display name instead of ``Ipsec``."""
+    description = sensor_module._build_vpn_sensor_description(
+        "ipsec",
+        "connections",
+        "ike-1",
+        "Site A",
+        "status",
+    )
+
+    assert description.key == "ipsec.connections.ike-1.status"
+    assert description.name == "IPsec Connection Site A status"
+    assert description.icon == "mdi:check-network"
+
+
+def test_vpn_sensor_rows_are_complete_rejects_malformed_ipsec_rows() -> None:
+    """Malformed IPsec rows must block sensor reconciliation like other VPN rows."""
+    complete_state: dict[str, Any] = {
+        "openvpn": {"servers": {}},
+        "wireguard": {"clients": {}, "servers": {}},
+        "ipsec": {"connections": {"ike-1": dict(_IPSEC_CONNECTION_ROW)}},
+    }
+    assert sensor_module._vpn_sensor_rows_are_complete(complete_state) is True
+
+    malformed_state: dict[str, Any] = {
+        **complete_state,
+        "ipsec": {"connections": {"ike-1": {}}},
+    }
+    assert sensor_module._vpn_sensor_rows_are_complete(malformed_state) is False
+
+    missing_state: dict[str, Any] = {
+        "openvpn": {"servers": {}},
+        "wireguard": {"clients": {}, "servers": {}},
+    }
+    assert sensor_module._vpn_sensor_rows_are_complete(missing_state) is True

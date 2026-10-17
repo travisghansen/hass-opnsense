@@ -54,9 +54,15 @@ _PREVIOUS_STATE_KEYS: tuple[str, ...] = (
     "interfaces",
     "openvpn",
     "wireguard",
+    "ipsec",
     "arp_table",
     "ndp_table",
 )
+_VPN_COUNTER_GROUPS: dict[str, tuple[str, ...]] = {
+    "openvpn": ("servers",),
+    "wireguard": ("clients", "servers"),
+    "ipsec": ("connections",),
+}
 # Device-tracker neighbor lookups that may fail without failing the whole poll.
 _OPTIONAL_TRACKER_METHODS: frozenset[str] = frozenset({"get_arp_table", "get_ndp_table"})
 
@@ -249,6 +255,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                 [
                     {"function": "get_openvpn", "state_key": "openvpn"},
                     {"function": "get_wireguard", "state_key": "wireguard"},
+                    {"function": "get_ipsec", "state_key": "ipsec"},
                 ]
             )
 
@@ -409,15 +416,12 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         return self._state
 
     async def _calculate_vpn_speeds(self, elapsed_time: float) -> None:
-        """Calculate VPN byte-rate metrics for OpenVPN and WireGuard instances.
+        """Calculate VPN byte-rate metrics for OpenVPN, WireGuard, and IPsec instances.
 
         Args:
             elapsed_time (float): Seconds between current and previous coordinator updates.
         """
-        for vpn_type in ("openvpn", "wireguard"):
-            cs = ["servers"]
-            if vpn_type == "wireguard":
-                cs = ["clients", "servers"]
+        for vpn_type, cs in _VPN_COUNTER_GROUPS.items():
             for clients_servers in cs:
                 instances = dict_get(self._state, f"{vpn_type}.{clients_servers}", {}) or {}
                 if not isinstance(instances, Mapping):
