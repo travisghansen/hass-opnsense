@@ -2029,13 +2029,17 @@ def test_handle_coordinator_update_expired_preserve_last_known_ip(
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_shared_router(
+async def test_async_setup_entry_removes_stale_tracker_entities_and_detaches_their_devices(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Stale MAC cleanup reassigns shared parents to surviving OPNsense routers.
+    """Stale MAC cleanup removes tracker entities and detaches their devices from this router.
+
+    Reparenting of shared devices is covered directly by the ``detach_shared_router_parent``
+    helper tests, so this test only checks the stale-MAC wiring: a router-linked device is
+    handed to a surviving OPNsense router while an unrelated device is simply detached.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
@@ -2046,15 +2050,9 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
     coordinator.data = {"arp_table": [{"mac": "keep:mac"}]}
     stale_router_mac = "stale:mac:router"
     stale_other_mac = "stale:mac:other"
-    stale_non_opnsense_mac = "stale:mac:nonopnsense"
     entry = make_config_entry(
         data={
-            TRACKED_MACS: [
-                stale_router_mac,
-                stale_other_mac,
-                stale_non_opnsense_mac,
-                "keep:mac",
-            ],
+            TRACKED_MACS: [stale_router_mac, stale_other_mac, "keep:mac"],
             CONF_DEVICE_UNIQUE_ID: "dev1",
         },
         options={CONF_DEVICE_TRACKER_ENABLED: True},
@@ -2066,23 +2064,10 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
     entity_ids = {
         "dev1_mac_stale_mac_router": "device_tracker.device_stale_router",
         "dev1_mac_stale_mac_other": "device_tracker.device_stale_other",
-        "dev1_mac_stale_mac_nonopnsense": "device_tracker.device_stale_nonopnsense_router",
     }
-
-    def get_entity_id(domain: str, platform: str, unique_id: str) -> str | None:
-        """Return the registered tracker entity for a stale unique ID.
-
-        Returns:
-            str | None: Registered entity ID for the stale unique ID, if present.
-
-        Args:
-            domain (str): Entity domain used for the fake registry lookup.
-            platform (str): Integration platform used for the fake registry lookup.
-            unique_id (str): Stale tracker unique ID resolved by the fake registry.
-        """
-        return entity_ids.get(unique_id)
-
-    entity_registry.async_get_entity_id.side_effect = get_entity_id
+    entity_registry.async_get_entity_id.side_effect = lambda _domain, _platform, unique_id: (
+        entity_ids.get(unique_id)
+    )
     monkeypatch.setattr(er, "async_get", MagicMock(return_value=entity_registry))
 
     router_device = MagicMock(
@@ -2094,72 +2079,31 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
         domain=DOMAIN,
         data={CONF_DEVICE_UNIQUE_ID: "survive-a"},
     )
-    non_opnsense_entry = MagicMock(
-        entry_id="non-opnsense-entry",
-        domain="other",
-        data={CONF_DEVICE_UNIQUE_ID: "non-opnsense"},
+    ph_hass.config_entries.async_get_entry = MagicMock(
+        side_effect={entry.entry_id: entry, surviving_entry.entry_id: surviving_entry}.get
     )
-    async_get_entry_map = {
-        entry.entry_id: entry,
-        surviving_entry.entry_id: surviving_entry,
-        non_opnsense_entry.entry_id: non_opnsense_entry,
-    }
-    ph_hass.config_entries.async_get_entry = MagicMock(side_effect=async_get_entry_map.get)
-    surviving_router = MagicMock(id="survivor-a-router")
     identifier_router_map = {
         (DOMAIN, entry.data[CONF_DEVICE_UNIQUE_ID]): router_device,
-        (DOMAIN, "survive-a"): surviving_router,
+        (DOMAIN, "survive-a"): MagicMock(id="survivor-a-router"),
     }
     devices = {
         stale_router_mac: MagicMock(
             id="stale-router-device",
             via_device_id="router-device-id",
-            config_entries={
-                entry.entry_id,
-                surviving_entry.entry_id,
-                non_opnsense_entry.entry_id,
-            },
+            config_entries={entry.entry_id, surviving_entry.entry_id},
         ),
         stale_other_mac: MagicMock(
             id="stale-other-device",
             via_device_id="other-device-id",
-            config_entries={entry.entry_id, non_opnsense_entry.entry_id},
-        ),
-        stale_non_opnsense_mac: MagicMock(
-            id="stale-nonopnsense-device",
-            via_device_id="router-device-id",
-            config_entries={entry.entry_id, non_opnsense_entry.entry_id},
+            config_entries={entry.entry_id},
         ),
     }
-
-    def get_device(
-        *,
-        identifiers: set[tuple[str, str]] | None = None,
-        connections: set[tuple[str, str]] | None = None,
-    ) -> Any:
-        """Return the fake router or stale device for the requested lookup.
-
-        Returns:
-            Any: Matching fake registry object, or ``None`` when absent.
-
-        Args:
-            identifiers (set[tuple[str, str]] | None): Device identifiers used for the fake registry lookup.
-            connections (set[tuple[str, str]] | None): Device connections used for the fake registry lookup.
-        """
-        if identifiers is not None:
-            key = next(iter(identifiers))
-            return identifier_router_map.get(key)
-        if connections is not None:
-            return devices[next(iter(connections))[1]]
-        return None
-
     device_registry = MagicMock()
-    device_registry.async_get_device.side_effect = get_device
     device_registry.async_get_device_by_identifier.side_effect = (
-        lambda identifier, _config_entry_id: get_device(identifiers={identifier})
+        lambda identifier, _config_entry_id: identifier_router_map.get(identifier)
     )
     device_registry.async_get_device_by_connection.side_effect = (
-        lambda connection, _config_entry_id: get_device(connections={connection})
+        lambda connection, _config_entry_id: devices[connection[1]]
     )
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", MagicMock(return_value=device_registry))
 
@@ -2170,27 +2114,18 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_reparents_sh
     assert removed_ids == {
         "device_tracker.device_stale_router",
         "device_tracker.device_stale_other",
-        "device_tracker.device_stale_nonopnsense_router",
     }
-    device_registry.async_update_device.assert_has_calls(
+    assert sorted(device_registry.async_update_device.call_args_list, key=str) == sorted(
         [
             call(
                 "stale-router-device",
                 remove_config_entry_id=entry.entry_id,
                 via_device_id="survivor-a-router",
             ),
-            call(
-                "stale-nonopnsense-device",
-                remove_config_entry_id=entry.entry_id,
-                via_device_id=None,
-            ),
             call("stale-other-device", remove_config_entry_id=entry.entry_id),
         ],
-        any_order=True,
+        key=str,
     )
-    assert call(
-        "stale-other-device", remove_config_entry_id=entry.entry_id, via_device_id=None
-    ) not in (device_registry.async_update_device.call_args_list)
 
 
 @pytest.mark.asyncio
