@@ -61,7 +61,7 @@ _PREVIOUS_STATE_KEYS: tuple[str, ...] = (
 _VPN_COUNTER_GROUPS: dict[str, tuple[str, ...]] = {
     "openvpn": ("servers",),
     "wireguard": ("clients", "servers"),
-    "ipsec": ("connections",),
+    "ipsec": ("connections", "children"),
 }
 # Device-tracker neighbor lookups that may fail without failing the whole poll.
 _OPTIONAL_TRACKER_METHODS: frozenset[str] = frozenset({"get_arp_table", "get_ndp_table"})
