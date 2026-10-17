@@ -1708,155 +1708,76 @@ async def test_calculate_entity_speeds_returns_early_when_missing(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("returned_device_id", "should_call_counts"),
+    ("returned_device_id", "expect_state"),
     [
-        (None, False),
-        ("other", False),
-        (" ", False),
-        ("id", True),
+        pytest.param(None, False, id="missing-id"),
+        pytest.param("other", False, id="mismatched-id"),
+        pytest.param(" ", False, id="blank-id"),
+        pytest.param("id", True, id="matching-id"),
     ],
 )
-async def test_async_update_dt_data_device_id_branches(
-    returned_device_id: Any,
-    should_call_counts: Any,
+async def test_device_tracker_refresh_requires_matching_device_id(
+    returned_device_id: str | None,
+    expect_state: bool,
     make_config_entry: Callable[..., MockConfigEntry],
-    fake_client: Any,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify _async_update_dt_data returns early for missing/mismatched IDs and calls query counts when OK.
+    """A device-tracker poll publishes data only when the probed Device ID matches.
 
     Args:
-        returned_device_id (Any): Device identifier returned by the simulated OPNsense probe.
-        should_call_counts (Any): Whether endpoint call counts should be asserted.
+        returned_device_id (str | None): Device identifier returned by the simulated OPNsense probe.
+        expect_state (bool): Whether the poll should publish tracker data.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-        fake_client (Any): Mocked OPNsense API client used by the coordinator.
-        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
     """
-    entry = make_config_entry({"device_unique_id": "id"})
-    client = fake_client()()
-    coord = OPNsenseDataUpdateCoordinator(
-        hass=MagicMock(),
-        client=client,
-        name="n",
-        update_interval=timedelta(seconds=1),
-        device_unique_id="id",
-        config_entry=entry,
-    )
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
+    coordinator = _dt_observation_coordinator(entry, [], AsyncMock(return_value=None))
+    client = cast("MagicMock", coordinator._client)
+    client.get_device_unique_id = AsyncMock(return_value=returned_device_id)
 
-    # stub _get_states to return controlled values
-    fake_state = {
-        "device_unique_id": returned_device_id,
-        "host_firmware_version": "fv",
-        "system_info": {"name": "opn"},
-        "arp_table": {"a": 1},
-    }
+    data = await coordinator._async_update_data()
 
-    async def fake_get_states(categories: list[dict[str, str]]) -> dict[str, Any]:
-        """Return the canned state payload used by the device-tracker branch test.
-
-        Returns:
-            dict[str, Any]: Simulated collection used by the fake get states scenario.
-
-        Args:
-            categories (list[dict[str, str]]): Categories requested by the coordinator and ignored
-                by this fake.
-        """
-        return fake_state
-
-    monkeypatch.setattr(coord, "_get_states", fake_get_states)
-
-    # spy on client's get_query_counts
-    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=3))
-
-    res = await coord._async_update_dt_data()
-
-    if should_call_counts:
-        # Should return the state and call get_query_counts
-        assert isinstance(res, MutableMapping)
-        assert res.get("device_unique_id") == "id"
+    if expect_state:
+        assert data["device_unique_id"] == "id"
+        assert data["arp_table"] == []
         client.get_query_counts.assert_awaited_once()
     else:
-        # Should return empty dict and not call get_query_counts
-        assert res == {}
-        assert client.get_query_counts.await_count == 0
+        assert data == {}
+        client.get_query_counts.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_async_update_dt_data_uses_shared_device_id_mismatch_policy(
+async def test_device_tracker_refresh_uses_shared_device_id_mismatch_policy(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
-    fake_client: Any,
 ) -> None:
-    """Device-tracker refreshes should use the shared Device ID mismatch policy.
+    """Repeated Device ID mismatches raise one repair issue and shut the tracker poll down.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-        fake_client (Any): Mocked OPNsense API client used by the coordinator.
     """
-    entry = make_config_entry({"device_unique_id": "id"})
-    client = fake_client()()
-    coord = OPNsenseDataUpdateCoordinator(
-        hass=MagicMock(),
-        client=client,
-        name="n",
-        update_interval=timedelta(seconds=1),
-        device_unique_id="id",
-        config_entry=entry,
-        device_tracker_coordinator=True,
-    )
+    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
+    coordinator = _dt_observation_coordinator(entry, [], AsyncMock(return_value=None))
+    client = cast("MagicMock", coordinator._client)
+    client.get_device_unique_id = AsyncMock(return_value="other")
+    shutdown = AsyncMock()
+    object.__setattr__(coordinator, "async_shutdown", shutdown)
+    create_issue = MagicMock()
+    monkeypatch.setattr(ir, "async_create_issue", create_issue)
 
-    async def fake_get_states(categories: list[dict[str, str]]) -> dict[str, Any]:
-        """Return a mismatched device ID for the device-tracker refresh.
+    for _ in range(3):
+        assert await coordinator._async_update_data() == {}
 
-        Returns:
-            dict[str, Any]: Simulated collection used by the fake get states scenario.
-
-        Args:
-            categories (list[dict[str, str]]): Parameterized categories used by the fake get states scenario.
-        """
-        return {
-            "device_unique_id": "other",
-            "host_firmware_version": "fv",
-            "system_info": {"name": "opn"},
-            "arp_table": [],
-        }
-
-    called: dict[str, Any] = {"issue": 0, "shutdown": 0, "issue_kwargs": None}
-
-    async def fake_shutdown() -> None:
-        """Record coordinator shutdown requests."""
-        called["shutdown"] += 1
-
-    def fake_async_create_issue(**kwargs: Any) -> None:
-        """Record repair issue creation requests.
-
-        Args:
-            kwargs (Any): Additional keyword arguments accepted by the test double.
-        """
-        called["issue"] += 1
-        called["issue_kwargs"] = kwargs
-
-    monkeypatch.setattr(coord, "_get_states", fake_get_states)
-    monkeypatch.setattr(ir, "async_create_issue", fake_async_create_issue)
-    object.__setattr__(coord, "async_shutdown", fake_shutdown)
-    object.__setattr__(client, "get_query_counts", AsyncMock(return_value=3))
-
-    assert await coord._async_update_dt_data() == {}
-    assert await coord._async_update_dt_data() == {}
-    assert await coord._async_update_dt_data() == {}
-
-    assert coord._mismatched_count == 3
-    assert called["issue"] == 1
-    assert called["shutdown"] == 1
-    assert called["issue_kwargs"]["is_fixable"] is True
-    assert called["issue_kwargs"]["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
-    assert called["issue_kwargs"]["data"] == {
+    shutdown.assert_awaited_once()
+    create_issue.assert_called_once()
+    issue_kwargs = create_issue.call_args.kwargs
+    assert issue_kwargs["is_fixable"] is True
+    assert issue_kwargs["issue_id"] == f"{entry.entry_id}_device_id_mismatched"
+    assert issue_kwargs["data"] == {
         "entry_id": entry.entry_id,
         "old_device_id": "id",
         "new_device_id": "other",
     }
-    assert called["issue_kwargs"]["translation_placeholders"] == {
+    assert issue_kwargs["translation_placeholders"] == {
         "entry_title": entry.title,
         "old_device_id": "id",
         "new_device_id": "other",
@@ -1994,6 +1915,7 @@ def _arp_coordinator(client: MagicMock, entry: MockConfigEntry) -> OPNsenseDataU
         update_interval=timedelta(seconds=1),
         device_unique_id="id",
         config_entry=entry,
+        device_tracker_coordinator=True,
     )
 
 
@@ -2192,13 +2114,14 @@ async def test_dt_refresh_requests_arp_resolution_from_options(
     client.get_host_observations = AsyncMock(return_value=None)
     client.get_ndp_table = AsyncMock(return_value=[])
     client.get_query_counts = AsyncMock(return_value=0)
+    client.reset_query_counts = AsyncMock()
     entry = make_config_entry(
         {CONF_DEVICE_UNIQUE_ID: "id"},
         options=options,
     )
     coordinator = _arp_coordinator(client, entry)
 
-    await coordinator._async_update_dt_data()
+    await coordinator._async_update_data()
 
     client.get_arp_table.assert_awaited_once_with(resolve_hostnames=expected)
 
