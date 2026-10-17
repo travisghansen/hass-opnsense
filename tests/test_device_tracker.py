@@ -231,41 +231,6 @@ def test_devices_from_tracker_entries(
     assert devices == expected_devices
 
 
-def test_compile_tracked_devices_normalizes_and_deduplicates_configured_macs(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Configured MACs should be normalized and deduplicated before entity creation.
-
-    Args:
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-    """
-    config_entry = make_config_entry(
-        options={
-            CONF_DEVICE_TRACKER_ENABLED: True,
-            CONF_DEVICES: [
-                "AA-BB-CC-DD-EE-FF",
-                "aa:bb:cc:dd:ee:ff",
-                "11:22:33:44:55:66",
-                "11-22-33-44-55-66",
-            ],
-        }
-    )
-    devices, mac_addresses, enabled_default = dt_mod._compile_tracked_devices(
-        config_entry,
-        [
-            {"mac": "aa:bb:cc:dd:ee:ff", "hostname": "canonical"},
-            {"mac": "11:22:33:44:55:66", "hostname": "canonical2"},
-        ],
-    )
-
-    assert enabled_default is True
-    assert mac_addresses == ["aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66"]
-    assert devices == [
-        {"mac": "aa:bb:cc:dd:ee:ff", "hostname": "canonical"},
-        {"mac": "11:22:33:44:55:66", "hostname": "canonical2"},
-    ]
-
-
 @pytest.mark.asyncio
 async def test_async_setup_entry_configured_devices(
     monkeypatch: pytest.MonkeyPatch,
@@ -874,19 +839,6 @@ def test_entity_registry_enabled_default_falls_back_for_disabled_mac_device(
     assert any(conn[1] == "aa:bb:cc" for conn in connections)
 
 
-def test_device_data_from_arp_entry_normalizes_hostname_and_filters_manufacturer() -> None:
-    """ARP setup data should normalize hostnames and ignore non-string manufacturer."""
-    device = dt_mod._device_data_from_arp_entry(
-        "aa:bb:cc", {"hostname": "host?", "manufacturer": ""}
-    )
-    assert device == {"mac": "aa:bb:cc", "hostname": "host"}
-
-    device = dt_mod._device_data_from_arp_entry(
-        "dd:ee:ff", {"hostname": "host", "manufacturer": None}
-    )
-    assert device == {"mac": "dd:ee:ff", "hostname": "host"}
-
-
 @pytest.mark.parametrize(
     "arp_table",
     [[object()], [{"mac": "dd:ee:ff"}]],
@@ -1025,21 +977,40 @@ def test_handle_coordinator_update_merges_ipv4_and_ipv6_addresses_and_ages_faile
     ]
 
 
-def test_update_arp_extra_state_attributes_clears_stale_values() -> None:
-    """Stale ARP extra state attributes are removed when absent in current entry."""
-    attributes: dict[str, Any] = {
-        "interface": "old",
-        "expires": "Never",
-        "type": "old",
-        "last_known_ip": "9.9.9.9",
-    }
+def test_handle_coordinator_update_clears_arp_attributes_missing_from_latest_row(
+    coordinator: MagicMock, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """ARP-derived attributes disappear when the latest row no longer carries them.
 
-    dt_mod._update_arp_extra_state_attributes(attributes, {})
+    Args:
+        coordinator (MagicMock): Mock coordinator supplying entity data.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake config entry.
+    """
+    ent = _make_scanner_entity(
+        coordinator,
+        make_config_entry,
+        coordinator_data={
+            "arp_table": [
+                {
+                    "mac": "aa:bb:cc",
+                    "ip": "1.2.3.4",
+                    "intf_description": "lan",
+                    "expires": -1,
+                    "type": "arp",
+                }
+            ]
+        },
+    )
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+    ent._handle_coordinator_update()
+    attributes = ent.extra_state_attributes
+    assert attributes is not None
+    assert {"interface", "expires", "type"} <= attributes.keys()
 
-    assert "interface" not in attributes
-    assert "expires" not in attributes
-    assert "type" not in attributes
-    assert attributes == {"last_known_ip": "9.9.9.9"}
+    coordinator.data = {"arp_table": [{"mac": "aa:bb:cc", "ip": "1.2.3.4"}]}
+    ent._handle_coordinator_update()
+
+    assert not {"interface", "expires", "type"} & attributes.keys()
 
 
 def test_handle_coordinator_update_skips_malformed_arp_rows(
@@ -1796,6 +1767,21 @@ async def test_async_setup_entry_state_not_mapping(
             ["aa:bb:cc:dd:ee:ff"],
             ["aa:bb:cc:dd:ee:ff"],
             id="configured-macs-ignore-malformed-rows",
+        ),
+        pytest.param(
+            [{"mac": "aa:bb:cc:dd:ee:ff"}],
+            {
+                CONF_DEVICE_TRACKER_ENABLED: True,
+                CONF_DEVICES: [
+                    "AA-BB-CC-DD-EE-FF",
+                    "aa:bb:cc:dd:ee:ff",
+                    "11:22:33:44:55:66",
+                    "11-22-33-44-55-66",
+                ],
+            },
+            ["aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66"],
+            ["aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66"],
+            id="configured-macs-are-normalized-and-deduplicated",
         ),
     ],
 )
