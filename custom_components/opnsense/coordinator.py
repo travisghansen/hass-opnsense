@@ -242,7 +242,15 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                     state[cat.get("state_key")] = None
                     self._log_optional_lookup_failure(method_name, err)
                 else:
-                    self._log_optional_lookup_recovery(method_name)
+                    if (
+                        method_name in _OPTIONAL_TRACKER_METHODS
+                        and state[cat.get("state_key")] is None
+                    ):
+                        # Runtime clients suppress request errors into None. Only an actual
+                        # payload confirms recovery; a returned None is still an outage.
+                        self._log_optional_lookup_failure(method_name)
+                    else:
+                        self._log_optional_lookup_recovery(method_name)
                 end_time: float = time.perf_counter()
                 elapsed_time: float = end_time - start_time
                 total_time += elapsed_time
@@ -260,15 +268,17 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
         return state
 
-    def _log_optional_lookup_failure(self, method_name: str, error: OPNsenseError) -> None:
+    def _log_optional_lookup_failure(
+        self, method_name: str, error: OPNsenseError | None = None
+    ) -> None:
         """Log an optional device-tracker lookup failure without repeating the stack trace.
 
-        The first failure after a success is logged as a warning with the stack trace. While
-        the lookup keeps failing, later failures are logged at debug level only.
+        The first failure after a success is logged as a warning, with the stack trace when
+        available. While the lookup keeps failing, later failures are logged at debug level only.
 
         Args:
             method_name (str): Optional client method that failed.
-            error (OPNsenseError): Failure raised by the lookup.
+            error (OPNsenseError | None): Raised failure, or ``None`` for a suppressed failure.
         """
         label = _OPTIONAL_TRACKER_METHODS[method_name]
         if method_name in self._failing_optional_methods:

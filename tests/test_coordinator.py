@@ -12,7 +12,7 @@ import time
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call
 
-from aiopnsense.exceptions import OPNsensePrivilegeMissing, OPNsenseTimeoutError
+from aiopnsense.exceptions import OPNsenseError, OPNsensePrivilegeMissing, OPNsenseTimeoutError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
@@ -2419,33 +2419,53 @@ async def test_dt_refresh_resets_observation_index_when_next_poll_needs_none(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [None, OPNsensePrivilegeMissing("denied")])
+@pytest.mark.parametrize(
+    ("method_name", "label", "recovered_payload"),
+    [
+        ("get_arp_table", "ARP", []),
+        ("get_ndp_table", "NDP", []),
+        ("get_host_observations", "Host observation", {"source": "discovery", "rows": []}),
+    ],
+)
 async def test_optional_lookup_failure_warns_once_then_debug_then_recovers(
     make_config_entry: Callable[..., MockConfigEntry],
     caplog: pytest.LogCaptureFixture,
+    failure: OPNsenseError | None,
+    method_name: str,
+    label: str,
+    recovered_payload: object,
 ) -> None:
     """Repeated optional lookup failures log one warning, then debug, then an info recovery.
 
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
         caplog (pytest.LogCaptureFixture): Captured log records.
+        failure (OPNsenseError | None): Raised or suppressed client failure.
+        method_name (str): Optional client lookup exercised by the refresh.
+        label (str): Lookup label included in outage and recovery logs.
+        recovered_payload (object): Successful response, including empty neighbor tables.
     """
     mac = "aa:bb:cc:dd:ee:ff"
-    observations = AsyncMock(
+    lookup = AsyncMock(
         side_effect=[
-            OPNsensePrivilegeMissing("denied"),
-            OPNsensePrivilegeMissing("denied"),
-            {"source": "discovery", "rows": []},
-            OPNsensePrivilegeMissing("denied"),
+            failure,
+            failure,
+            recovered_payload,
+            failure,
         ]
     )
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
     coordinator = _dt_observation_coordinator(
-        entry, [{"mac": mac, "ip": "2001:db8::1"}], observations
+        entry,
+        [{"mac": mac, "ip": "2001:db8::1"}],
+        AsyncMock(return_value={"source": "discovery", "rows": []}),
     )
+    setattr(coordinator._client, method_name, lookup)
     caplog.set_level(logging.DEBUG, logger="custom_components.opnsense.coordinator")
 
     def lookup_records(level: int) -> list[logging.LogRecord]:
-        """Return host-observation log records at one level.
+        """Return the selected lookup's log records at one level.
 
         Args:
             level (int): Logging level to filter on.
@@ -2454,14 +2474,14 @@ async def test_optional_lookup_failure_warns_once_then_debug_then_recovers(
             list[logging.LogRecord]: Matching records.
         """
         return [
-            r for r in caplog.records if r.levelno == level and "Host observation" in r.getMessage()
+            r for r in caplog.records if r.levelno == level and f"{label} lookup" in r.getMessage()
         ]
 
     await coordinator._async_update_data()
     await coordinator._async_update_data()
     warnings = lookup_records(logging.WARNING)
     assert len(warnings) == 1
-    assert warnings[0].exc_info is not None
+    assert (warnings[0].exc_info is not None) == (failure is not None)
     debug_records = lookup_records(logging.DEBUG)
     assert len(debug_records) == 1
     assert debug_records[0].exc_info is None
