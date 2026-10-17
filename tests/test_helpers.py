@@ -262,12 +262,26 @@ def test_detach_shared_router_parent_legacy_reparenting(
             else {}
         ),
     )
+
+    def get_router(identifier: tuple[str, str], entry_id: str) -> Any:
+        """Return the router device only for the identifier owned by the queried entry.
+
+        Args:
+            identifier (tuple[str, str]): Device identifier requested by the helper.
+            entry_id (str): Config entry whose router is being resolved.
+
+        Returns:
+            Any: Router device for a matching owner, or ``None`` for no match.
+        """
+        _domain, unique_id = owner_entries.get(entry_id, (None, None))
+        if unique_id is None or unique_id == "missing-router":
+            return None
+        if identifier != (DOMAIN, unique_id):
+            return None
+        return SimpleNamespace(id=f"{unique_id}-device")
+
     registry = MagicMock()
-    registry.async_get_device_by_identifier.side_effect = lambda identifier, _entry_id: (
-        SimpleNamespace(id=f"{identifier[1][0]}-router-device")
-        if identifier[1] != "missing-router"
-        else None
-    )
+    registry.async_get_device_by_identifier.side_effect = get_router
 
     result = detach_shared_router_parent(
         shared_config_entry_id="entry-id",
