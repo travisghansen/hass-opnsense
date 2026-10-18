@@ -3706,10 +3706,23 @@ async def test_async_setup_entry_handles_partial_or_malformed_dynamic_sensor_pay
         ({"openvpn": {}}, "Missing wireguard inventory"),
         ({"wireguard": {}, "openvpn": "bad"}, "Malformed wireguard inventory"),
         ({"wireguard": {}, "openvpn": {}}, "Missing ipsec inventory"),
+        ({"wireguard": {}, "openvpn": {}, "ipsec": {"connections": {}}}, "Missing ipsec children"),
         ({"wireguard": {}, "openvpn": {}, "ipsec": "bad"}, "Malformed ipsec inventory"),
         (
-            {"wireguard": {}, "openvpn": {}, "ipsec": {"connections": {"ike-1": "bad"}}},
+            {
+                "wireguard": {},
+                "openvpn": {},
+                "ipsec": {"connections": {"ike-1": "bad"}, "children": {}},
+            },
             "Malformed ipsec connection row",
+        ),
+        (
+            {
+                "wireguard": {},
+                "openvpn": {},
+                "ipsec": {"connections": {}, "children": {"c1": "bad"}},
+            },
+            "Malformed ipsec child row",
         ),
     ],
 )
@@ -3741,6 +3754,8 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
             CONF_SYNC_DHCP_LEASES: False,
             CONF_SYNC_VPN: True,
             CONF_SYNC_CERTIFICATES: False,
+            CONF_SYNC_NUT: False,
+            CONF_SYNC_LIVE_TRAFFIC: False,
         }
     )
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -3766,6 +3781,63 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
     )
     assert "entities" in recorded, description
     assert recorded["entities"] is None, description
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_records_complete_vpn_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """A complete VPN inventory, including IPsec children, marks sensor reconciliation complete.
+
+    Positive control for ``test_async_setup_entry_records_none_for_partial_vpn_inventory``.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    config_entry = make_config_entry(
+        {
+            CONF_DEVICE_UNIQUE_ID: "id",
+            CONF_SYNC_TELEMETRY: False,
+            CONF_SYNC_VNSTAT: False,
+            CONF_SYNC_SPEEDTEST: False,
+            CONF_SYNC_SMART: False,
+            CONF_SYNC_GATEWAYS: False,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_DHCP_LEASES: False,
+            CONF_SYNC_VPN: True,
+            CONF_SYNC_CERTIFICATES: False,
+            CONF_SYNC_NUT: False,
+            CONF_SYNC_LIVE_TRAFFIC: False,
+        }
+    )
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = {
+        "openvpn": {},
+        "wireguard": {},
+        "ipsec": {"connections": {}, "children": {}},
+    }
+    setattr(config_entry.runtime_data, COORDINATOR, coordinator)
+    recorded: dict[str, Any] = {}
+
+    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+        """Capture the desired-entity payload sent to reconciliation.
+
+        Args:
+            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
+            _platform (str): Platform name passed through the mocked loader.
+            entities (Any | None): Entities captured by the platform add callback.
+        """
+        recorded["entities"] = entities
+
+    monkeypatch.setattr(sensor_module, "record_desired_entities", capture)
+
+    await async_setup_entry(
+        MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
+    )
+    assert recorded["entities"] is not None
 
 
 @pytest.mark.parametrize(
@@ -3872,7 +3944,7 @@ async def test_async_setup_entry_ignores_unconsumed_openvpn_client_rows(
         coordinator_data={
             "openvpn": {"clients": {"bad": None}, "servers": {}},
             "wireguard": {"clients": {}, "servers": {}},
-            "ipsec": {"connections": {}},
+            "ipsec": {"connections": {}, "children": {}},
         },
         sync_vpn=True,
     )
@@ -3906,7 +3978,7 @@ async def test_async_setup_entry_ignores_unconsumed_openvpn_client_rows(
         # VPN
         ({}, False, False, False, False, False, False, False, False, True, None),
         (
-            {"openvpn": {}, "wireguard": {}, "ipsec": {}},
+            {"openvpn": {}, "wireguard": {}, "ipsec": {"children": {}}},
             False,
             False,
             False,
@@ -6579,6 +6651,108 @@ async def test_compile_vpn_sensors_builds_ipsec_connection_entities(
     assert status_sensor.entity_description.entity_registry_enabled_default is True
 
 
+_IPSEC_CHILD_ROW: dict[str, Any] = {
+    "uuid": "child-1",
+    "name": "Site A nets",
+    "connection": "ike-1",
+    "enabled": True,
+    "connected": True,
+    "status": "connected",
+    "installed_sas": 2,
+    "local_ts": "10.0.0.0/8",
+    "remote_ts": "172.16.1.0/24,172.16.2.0/24",
+    "active_local_ts": ["10.0.0.0/8"],
+    "active_remote_ts": ["172.16.1.0/24"],
+    "install_time": 20,
+    "total_bytes_recv": 1000,
+    "total_bytes_sent": 2000,
+    "total_packets_recv": 10,
+    "total_packets_sent": 20,
+}
+
+
+@pytest.mark.asyncio
+async def test_compile_vpn_sensors_builds_ipsec_child_entities(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """IPsec children compile into a status sensor plus the shared traffic sensors.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    state: dict[str, Any] = {
+        "openvpn": {"servers": {}},
+        "wireguard": {"clients": {}, "servers": {}},
+        "ipsec": {"connections": {}, "children": {"child-1": dict(_IPSEC_CHILD_ROW)}},
+    }
+    entry = make_config_entry()
+    coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    coordinator.data = state
+
+    entities = await sensor_module._compile_vpn_sensors(entry, coordinator, state)
+
+    keys = sorted(entity.entity_description.key for entity in entities)
+    assert keys == [
+        "ipsec.children.child-1.status",
+        "ipsec.children.child-1.total_bytes_recv",
+        "ipsec.children.child-1.total_bytes_recv_kilobytes_per_second",
+        "ipsec.children.child-1.total_bytes_sent",
+        "ipsec.children.child-1.total_bytes_sent_kilobytes_per_second",
+    ]
+    status_sensor = next(
+        entity for entity in entities if entity.entity_description.key.endswith(".status")
+    )
+    assert status_sensor.entity_description.name == "IPsec Child Site A nets status"
+    assert status_sensor.entity_description.entity_registry_enabled_default is True
+
+
+@pytest.mark.parametrize(
+    ("connected", "status", "expected_icon"),
+    [
+        (True, "connected", "mdi:check-network"),
+        (False, "disconnected", "mdi:close-network-outline"),
+    ],
+)
+def test_ipsec_child_status_sensor_exposes_selectors_and_icon(
+    connected: bool,
+    status: str,
+    expected_icon: str,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """IPsec child status sensors expose configured and negotiated selectors.
+
+    Args:
+        connected (bool): Whether the child has an installed SA.
+        status (str): Child status string reported by aiopnsense.
+        expected_icon (str): Icon the sensor must expose for this state.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    entry = make_config_entry()
+    coord = MagicMock(spec=OPNsenseDataUpdateCoordinator)
+    row = dict(_IPSEC_CHILD_ROW, connected=connected, status=status)
+    coord.data = {"ipsec": {"children": {"child-1": row}}}
+    desc = MagicMock()
+    desc.key = "ipsec.children.child-1.status"
+    desc.name = "IPsec Child Site A nets status"
+    desc.icon = "mdi:check-network"
+
+    sensor = OPNsenseVPNSensor(config_entry=entry, coordinator=coord, entity_description=desc)
+    sensor.hass = MagicMock()
+    sensor.entity_id = "sensor.ipsec_child_site_a_nets_status"
+    object.__setattr__(sensor, "async_write_ha_state", lambda: None)
+    sensor._handle_coordinator_update()
+
+    assert sensor.native_value == status
+    assert sensor.icon == expected_icon
+    attrs = sensor.extra_state_attributes
+    assert attrs is not None
+    assert attrs["connection"] == "ike-1"
+    assert attrs["installed_sas"] == 2
+    assert attrs["remote_ts"] == "172.16.1.0/24,172.16.2.0/24"
+    assert attrs["active_remote_ts"] == ["172.16.1.0/24"]
+    assert "total_bytes_recv" not in attrs
+
+
 @pytest.mark.parametrize(
     ("row", "expected_value", "expected_attributes"),
     [
@@ -6748,6 +6922,15 @@ def test_vpn_sensor_rows_are_complete_rejects_malformed_ipsec_rows() -> None:
         "ipsec": {"connections": {"ike-1": {}}},
     }
     assert sensor_module._vpn_sensor_rows_are_complete(malformed_state) is False
+
+    malformed_child_state: dict[str, Any] = {
+        **complete_state,
+        "ipsec": {
+            "connections": {"ike-1": dict(_IPSEC_CONNECTION_ROW)},
+            "children": {"c1": "bad"},
+        },
+    }
+    assert sensor_module._vpn_sensor_rows_are_complete(malformed_child_state) is False
 
     missing_state: dict[str, Any] = {
         "openvpn": {"servers": {}},
