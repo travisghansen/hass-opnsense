@@ -3709,8 +3709,20 @@ async def test_async_setup_entry_handles_partial_or_malformed_dynamic_sensor_pay
         ({"wireguard": {}, "openvpn": {}, "ipsec": {"connections": {}}}, "Missing ipsec children"),
         ({"wireguard": {}, "openvpn": {}, "ipsec": "bad"}, "Malformed ipsec inventory"),
         (
-            {"wireguard": {}, "openvpn": {}, "ipsec": {"connections": {"ike-1": "bad"}}},
+            {
+                "wireguard": {},
+                "openvpn": {},
+                "ipsec": {"connections": {"ike-1": "bad"}, "children": {}},
+            },
             "Malformed ipsec connection row",
+        ),
+        (
+            {
+                "wireguard": {},
+                "openvpn": {},
+                "ipsec": {"connections": {}, "children": {"c1": "bad"}},
+            },
+            "Malformed ipsec child row",
         ),
     ],
 )
@@ -6910,6 +6922,15 @@ def test_vpn_sensor_rows_are_complete_rejects_malformed_ipsec_rows() -> None:
         "ipsec": {"connections": {"ike-1": {}}},
     }
     assert sensor_module._vpn_sensor_rows_are_complete(malformed_state) is False
+
+    malformed_child_state: dict[str, Any] = {
+        **complete_state,
+        "ipsec": {
+            "connections": {"ike-1": dict(_IPSEC_CONNECTION_ROW)},
+            "children": {"c1": "bad"},
+        },
+    }
+    assert sensor_module._vpn_sensor_rows_are_complete(malformed_child_state) is False
 
     missing_state: dict[str, Any] = {
         "openvpn": {"servers": {}},
