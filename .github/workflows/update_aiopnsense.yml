@@ -71,7 +71,8 @@ jobs:
 
       - name: Regenerate uv lock
         if: steps.versions.outputs.update_needed == 'true'
-        run: uv lock
+        # PyPI discovery can see a new release before the restored uv cache does.
+        run: uv lock --refresh-package aiopnsense
 
       - name: Build aiopnsense release notes
         if: steps.versions.outputs.update_needed == 'true'
