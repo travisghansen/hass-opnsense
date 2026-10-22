@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/travisghansen/hass-opnsense/compare/v1.3.0...v1.3.1) (2026-10-22)
+
+
+### Dependencies
+
+* update prek hooks ([#781](https://github.com/travisghansen/hass-opnsense/issues/781)) ([c58408b](https://github.com/travisghansen/hass-opnsense/commit/c58408b050dccc7a862312f131f5c797964ee03a))
+
 ## [1.3.0](https://github.com/travisghansen/hass-opnsense/compare/v1.2.1...v1.3.0) (2026-10-19)
 
 
