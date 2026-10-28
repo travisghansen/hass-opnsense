@@ -831,7 +831,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         self._attr_mac_address: str | None = mac
         self._attr_source_type: SourceType = SourceType.ROUTER
         self._attr_icon: str | None = None
-        self._fallback_device_info_consumed: bool = False
+        self._device_info_without_enabled_match: bool = False
         self._router_device_id: str | None = router_device_id
 
     def _has_matching_enabled_mac_device(self) -> bool:
@@ -898,7 +898,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         """
         if self._attr_entity_registry_enabled_default:
             return True
-        if self._fallback_device_info_consumed:
+        if self._device_info_without_enabled_match:
             return False
         return self._has_matching_enabled_mac_device()
 
@@ -1085,40 +1085,21 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
 
         self.async_write_ha_state()
 
-    @property  # type: ignore[misc] # overriding final from ScannerEntity
-    def device_info(self) -> DeviceInfo | None:
+    @property  # type: ignore[misc] # ScannerEntity marks this final before HA 2026.11.
+    def device_info(self) -> DeviceInfo:
         """Return device registry metadata for the tracker.
 
-        Home Assistant's ``ScannerEntity`` can automatically attach a scanner
-        entity to an existing device when the device registry already has a
-        matching network MAC connection. That auto-link path only runs when
-        the scanner entity does not provide its own device info.
-
-        When a matching enabled device exists, return ``None`` so the base
-        scanner implementation links this tracker to that device, unless
-        ``pref_disable_new_entities`` is enabled on the config entry.
-        In that preference-enabled case, return device info so the entity is
-        linked to an existing device during registry creation while the entity
-        remains disabled by preference.
-
-        When no matching enabled device exists, return the historical
-        hass-opnsense device info so Home Assistant still creates the manually
-        associated tracker device or preserves disabled-device behavior.
+        Explicit metadata registers the client device on HA 2026.3+ without
+        depending on ScannerEntity's MAC-linking hook, removed in HA 2026.11.
+        Remember when no enabled MAC match existed before device registration
+        so the newly created device cannot enable its own discovered tracker.
 
         Returns:
-            DeviceInfo | None: ``None`` for an existing enabled MAC-matched device, except when
-            ``pref_disable_new_entities`` is enabled, otherwise fallback
-            device registry metadata for the tracked MAC address.
+            DeviceInfo: Client MAC and name, optional manufacturer, and parent router
+                metadata.
         """
-        # Returning None here opts into ScannerEntity's existing-device linking
-        # path. Returning DeviceInfo below preserves the previous fallback
-        # behavior for trackers whose MAC is not already in the device registry.
-        has_matching_enabled_mac_device = self._has_matching_enabled_mac_device()
-        if has_matching_enabled_mac_device and not self.config_entry.pref_disable_new_entities:
-            return None
-
-        if not has_matching_enabled_mac_device:
-            self._fallback_device_info_consumed = True
+        if not self._has_matching_enabled_mac_device():
+            self._device_info_without_enabled_match = True
 
         connections: set[tuple[str, str]] = set()
         if self.mac_address is not None:
@@ -1126,9 +1107,10 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
 
         device_info = DeviceInfo(
             connections=connections,
-            manufacturer=self._mac_vendor or "",
             name=self.hostname or self.mac_address or "",
         )
+        if self._mac_vendor:
+            device_info["manufacturer"] = self._mac_vendor
         if self._router_device_id is not None:
             device_info["via_device_id"] = self._router_device_id
             return device_info
