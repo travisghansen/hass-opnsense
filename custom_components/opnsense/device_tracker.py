@@ -1095,7 +1095,8 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         so the newly created device cannot enable its own discovered tracker.
 
         Returns:
-            DeviceInfo: Client MAC, name, manufacturer, and parent router metadata.
+            DeviceInfo: Client MAC and name, optional manufacturer, and parent router
+                metadata.
         """
         if not self._has_matching_enabled_mac_device():
             self._device_info_without_enabled_match = True
@@ -1106,9 +1107,10 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
 
         device_info = DeviceInfo(
             connections=connections,
-            manufacturer=self._mac_vendor or "",
             name=self.hostname or self.mac_address or "",
         )
+        if self._mac_vendor:
+            device_info["manufacturer"] = self._mac_vendor
         if self._router_device_id is not None:
             device_info["via_device_id"] = self._router_device_id
             return device_info

@@ -1573,12 +1573,76 @@ async def test_restore_last_state_normalizes_connected_time_and_skips_empty_attr
 @pytest.mark.asyncio
 @pytest.mark.parametrize("legacy_mac_linking", [True, False], ids=["pre-2026.11", "2026.11+"])
 @pytest.mark.parametrize(
-    ("existing_device", "enabled_default", "disable_new", "expected_disabler"),
+    (
+        "existing_device",
+        "enabled_default",
+        "disable_new",
+        "expected_disabler",
+        "mac_vendor",
+        "existing_manufacturer",
+        "expected_manufacturer",
+    ),
     [
-        pytest.param(True, False, False, None, id="existing-enabled-mac"),
-        pytest.param(False, False, False, er.RegistryEntryDisabler.INTEGRATION, id="discovered"),
-        pytest.param(False, True, False, None, id="selected"),
-        pytest.param(True, False, True, er.RegistryEntryDisabler.INTEGRATION, id="preference"),
+        pytest.param(
+            True,
+            False,
+            False,
+            None,
+            "Client Vendor",
+            None,
+            "Client Vendor",
+            id="existing-enabled-mac",
+        ),
+        pytest.param(
+            False,
+            False,
+            False,
+            er.RegistryEntryDisabler.INTEGRATION,
+            "Client Vendor",
+            None,
+            "Client Vendor",
+            id="discovered",
+        ),
+        pytest.param(
+            False,
+            True,
+            False,
+            None,
+            "Client Vendor",
+            None,
+            "Client Vendor",
+            id="selected",
+        ),
+        pytest.param(
+            True,
+            False,
+            True,
+            er.RegistryEntryDisabler.INTEGRATION,
+            "Client Vendor",
+            None,
+            "Client Vendor",
+            id="preference",
+        ),
+        pytest.param(
+            False,
+            False,
+            False,
+            None,
+            None,
+            "Known Vendor",
+            "Known Vendor",
+            id="unknown-vendor-preserves-manufacturer",
+        ),
+        pytest.param(
+            False,
+            False,
+            False,
+            None,
+            "",
+            "Known Vendor",
+            "Known Vendor",
+            id="empty-vendor-preserves-manufacturer",
+        ),
     ],
 )
 async def test_tracker_platform_registers_client_device(
@@ -1591,6 +1655,9 @@ async def test_tracker_platform_registers_client_device(
     enabled_default: bool,
     disable_new: bool,
     expected_disabler: er.RegistryEntryDisabler | None,
+    mac_vendor: str | None,
+    existing_manufacturer: str | None,
+    expected_manufacturer: str,
 ) -> None:
     """Register client metadata and retain enabled defaults without legacy MAC linking.
 
@@ -1604,6 +1671,9 @@ async def test_tracker_platform_registers_client_device(
         enabled_default (bool): Whether this tracker was explicitly selected.
         disable_new (bool): Whether the config entry disables new entities.
         expected_disabler (er.RegistryEntryDisabler | None): Expected registry disable reason.
+        mac_vendor (str | None): Optional manufacturer reported by the tracker.
+        existing_manufacturer (str | None): Existing registry manufacturer to preserve.
+        expected_manufacturer (str): Expected manufacturer after registration.
     """
     coordinator.data = {"arp_table": []}
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
@@ -1623,12 +1693,19 @@ async def test_tracker_platform_registers_client_device(
             config_entry_id=other_entry.entry_id,
             connections={(dr.CONNECTION_NETWORK_MAC, mac_address)},
         )
+    if existing_manufacturer is not None:
+        device_reg.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            connections={(dr.CONNECTION_NETWORK_MAC, mac_address)},
+            manufacturer=existing_manufacturer,
+            name="Existing Client",
+        )
     entity = OPNsenseScannerEntity(
         config_entry=entry,
         coordinator=coordinator,
         enabled_default=enabled_default,
         mac=mac_address,
-        mac_vendor="Client Vendor",
+        mac_vendor=mac_vendor,
         hostname="Client",
         router_device_id=router.id,
     )
@@ -1665,7 +1742,7 @@ async def test_tracker_platform_registers_client_device(
     assert (dr.CONNECTION_NETWORK_MAC, mac_address) in client_device.connections
     assert device_belongs_to_config_entry(client_device, entry.entry_id)
     assert client_device.name == "Client"
-    assert client_device.manufacturer == "Client Vendor"
+    assert client_device.manufacturer == expected_manufacturer
     assert client_device.via_device_id == router.id
     await platform.async_reset()
 
