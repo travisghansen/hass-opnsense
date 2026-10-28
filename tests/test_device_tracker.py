@@ -4,7 +4,7 @@ These tests cover setup, coordinator update handling, restore state behavior,
 and device info formatting for the integration's device tracker entities.
 """
 
-from collections.abc import Callable, Iterable, MutableMapping
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 import logging
 from types import MappingProxyType
@@ -704,10 +704,7 @@ def test_entity_registry_enabled_default_without_mac_stays_disabled(
     assert ent.entity_registry_enabled_default is False
     device_info = ent.device_info
     assert device_info is not None
-    if isinstance(device_info, MutableMapping):
-        connections = device_info.get("connections", [])
-    else:
-        connections = getattr(device_info, "connections", [])
+    connections = device_info["connections"]
     assert all(connection[1] != "" for connection in connections)
 
 
@@ -741,10 +738,7 @@ def test_entity_registry_enabled_default_pref_disable_new_entities_keeps_device_
     device_info = ent.device_info
     assert device_info is not None
 
-    if isinstance(device_info, MutableMapping):
-        connections = device_info.get("connections", [])
-    else:
-        connections = getattr(device_info, "connections", [])
+    connections = device_info["connections"]
     assert any(conn[1] == "aa:bb:cc" for conn in connections)
 
 
@@ -837,8 +831,7 @@ def test_entity_registry_enabled_default_falls_back_for_disabled_mac_device(
 
     device_info = ent.device_info
     assert device_info is not None
-    assert isinstance(device_info, MutableMapping)
-    connections = device_info.get("connections", [])
+    connections = device_info["connections"]
     assert any(conn[1] == "aa:bb:cc" for conn in connections)
 
 

@@ -206,14 +206,11 @@ class OPNsenseEntity(OPNsenseBaseEntity):
         else:
             firmware = state.get("host_firmware_version")
 
-        device_info: DeviceInfo = {
-            "identifiers": {(DOMAIN, self._device_unique_id)},
-            "name": self.config_entry.title or self._get_opnsense_state_value("system_info.name"),
-            "configuration_url": self.config_entry.data.get("url", None),
-        }
-
-        device_info["model"] = model
-        device_info["manufacturer"] = manufacturer
-        device_info["sw_version"] = firmware
-
-        return device_info
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_unique_id)},
+            name=self.config_entry.title or self._get_opnsense_state_value("system_info.name"),
+            configuration_url=self.config_entry.data.get("url", None),
+            model=model,
+            manufacturer=manufacturer,
+            sw_version=firmware,
+        )
