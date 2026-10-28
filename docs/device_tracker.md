@@ -42,6 +42,13 @@ Each tracker exposes `ipv4_addresses` and `ipv6_addresses` state attributes. The
 IP address uses IPv4 when available and otherwise uses IPv6. MAC addresses remain the tracker
 identity: a device can move between IPv4 and IPv6 without creating a new tracker.
 
+Each tracker provides device registry metadata for its client, including the MAC address,
+hostname (or MAC address when unnamed), manufacturer when known, and parent OPNsense router.
+This works with Home Assistant 2026.3+ and the scanner registration changes in 2026.11+.
+The integration retains its existing enabled-default rules: selected devices are enabled by
+default, while automatically discovered trackers stay disabled unless an enabled MAC-matched
+device already exists. The config entry's preference to disable new entities still applies.
+
 ### When to use manual MAC addresses
 
 Use the manual MAC field when:

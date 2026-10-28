@@ -6,16 +6,18 @@ and device info formatting for the integration's device tracker entities.
 
 from collections.abc import Callable, Iterable, MutableMapping
 from datetime import UTC, datetime, timedelta
+import logging
 from types import MappingProxyType
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from aiopnsense.exceptions import OPNsenseTimeoutError
 from homeassistant.components.device_tracker import SourceType
+from homeassistant.components.device_tracker.entity import BaseScannerEntity, ScannerEntity
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import device_registry as dr, entity_registry as er
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddEntitiesCallback, EntityPlatform
 from homeassistant.util import slugify
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -614,7 +616,8 @@ def test_entity_registry_enabled_default_uses_existing_mac_device(
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
 
     assert ent.entity_registry_enabled_default is True
-    assert ent.device_info is None
+    assert dict(ent.device_info)["connections"] == {(dr.CONNECTION_NETWORK_MAC, "aa:bb:cc")}
+    assert ent.entity_registry_enabled_default is True
 
 
 @pytest.mark.parametrize(
@@ -656,7 +659,7 @@ def test_suggested_object_id_for_matching_enabled_mac_device(
     device_reg = fake_reg_factory(device_exists=True, device_id="existing-device")
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
 
-    assert ent.device_info is None
+    assert ent.device_info is not None
     assert ent.suggested_object_id == expected_object_id
 
 
@@ -1575,113 +1578,103 @@ async def test_restore_last_state_normalizes_connected_time_and_skips_empty_attr
 
 
 @pytest.mark.asyncio
-async def test_async_internal_added_to_hass_creates_integration_device_for_existing_mac(
-    ph_hass: Any,
+@pytest.mark.parametrize("legacy_mac_linking", [True, False], ids=["pre-2026.11", "2026.11+"])
+@pytest.mark.parametrize(
+    ("existing_device", "enabled_default", "disable_new", "expected_disabler"),
+    [
+        pytest.param(True, False, False, None, id="existing-enabled-mac"),
+        pytest.param(False, False, False, er.RegistryEntryDisabler.INTEGRATION, id="discovered"),
+        pytest.param(False, True, False, None, id="selected"),
+        pytest.param(True, False, True, er.RegistryEntryDisabler.INTEGRATION, id="preference"),
+    ],
+)
+async def test_tracker_platform_registers_client_device(
+    hass: HomeAssistant,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
+    monkeypatch: pytest.MonkeyPatch,
+    legacy_mac_linking: bool,
+    existing_device: bool,
+    enabled_default: bool,
+    disable_new: bool,
+    expected_disabler: er.RegistryEntryDisabler | None,
 ) -> None:
-    """Scanner entity should create its integration device for an existing MAC.
+    """Register client metadata and retain enabled defaults without legacy MAC linking.
 
     Args:
-        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        hass (HomeAssistant): Home Assistant test instance.
+        coordinator (MagicMock): Coordinator supplying tracker state.
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+        monkeypatch (pytest.MonkeyPatch): Fixture replacing the removed Core hook.
+        legacy_mac_linking (bool): Whether to retain Core's pre-2026.11 linking hook.
+        existing_device (bool): Whether another integration already knows the MAC.
+        enabled_default (bool): Whether this tracker was explicitly selected.
+        disable_new (bool): Whether the config entry disables new entities.
+        expected_disabler (er.RegistryEntryDisabler | None): Expected registry disable reason.
     """
     coordinator.data = {"arp_table": []}
-    entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"}, entry_id="entry-1")
-    entry.add_to_hass(ph_hass)
-    existing_entry = make_config_entry(
-        data={CONF_DEVICE_UNIQUE_ID: "other"}, entry_id="existing-entry"
+    entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
+    entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(entry, pref_disable_new_entities=disable_new)
+    device_reg = dr.async_get(hass)
+    router = device_reg.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, "dev1")},
+        name="Router",
     )
-    existing_entry.add_to_hass(ph_hass)
-    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
     mac_address = "aa:bb:cc:dd:ee:ff"
-    ent = OPNsenseScannerEntity(
-        config_entry=entry,
-        coordinator=coordinator,
-        enabled_default=False,
-        mac=mac_address,
-        mac_vendor=None,
-        hostname=None,
-    )
-    ent.hass = ph_hass
-    ent.platform = MagicMock(config_entry=entry, platform_name=DOMAIN)
-
-    device_reg = dr.async_get(ph_hass)
-    existing_device = device_reg.async_get_or_create(
-        config_entry_id="existing-entry",
-        connections={(dr.CONNECTION_NETWORK_MAC, mac_address)},
-    )
-    assert (
-        device_reg.async_get_device_by_connection(
-            (dr.CONNECTION_NETWORK_MAC, mac_address), existing_entry.entry_id
+    if existing_device:
+        other_entry = MockConfigEntry(domain="other")
+        other_entry.add_to_hass(hass)
+        device_reg.async_get_or_create(
+            config_entry_id=other_entry.entry_id,
+            connections={(dr.CONNECTION_NETWORK_MAC, mac_address)},
         )
-        == existing_device
-    )
-    entity_reg = er.async_get(ph_hass)
-    unique_id = ent.unique_id
-    assert unique_id is not None
-    ent.registry_entry = entity_reg.async_get_or_create(
-        "device_tracker",
-        DOMAIN,
-        unique_id,
-        config_entry=entry,
-    )
-    ent.entity_id = ent.registry_entry.entity_id
-
-    await ent.async_internal_added_to_hass()
-
-    device_id = ent.registry_entry.device_id
-    assert device_id is not None
-    linked_device = device_reg.async_get(device_id)
-    assert isinstance(linked_device, dr.DeviceEntry)
-    assert linked_device.id != existing_device.id
-    assert (dr.CONNECTION_NETWORK_MAC, mac_address) in linked_device.connections
-    assert device_belongs_to_config_entry(linked_device, entry.entry_id)
-
-
-@pytest.mark.asyncio
-async def test_async_internal_added_to_hass_keeps_fallback_device_info_without_match(
-    ph_hass: Any,
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Scanner entity should keep its fallback device info when no MAC device exists.
-
-    Args:
-        ph_hass (Any): Home Assistant test instance used to register and inspect entities.
-        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-    """
-    coordinator.data = {"arp_table": []}
-    entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"}, entry_id="entry-1")
-    entry.add_to_hass(ph_hass)
-    setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
-    ent = OPNsenseScannerEntity(
+    entity = OPNsenseScannerEntity(
         config_entry=entry,
         coordinator=coordinator,
-        enabled_default=False,
-        mac="aa:bb:cc",
-        mac_vendor=None,
-        hostname=None,
+        enabled_default=enabled_default,
+        mac=mac_address,
+        mac_vendor="Client Vendor",
+        hostname="Client",
+        router_device_id=router.id,
     )
-    ent.hass = ph_hass
-    ent.platform = MagicMock(config_entry=entry, platform_name=DOMAIN)
-    entity_reg = er.async_get(ph_hass)
-    unique_id = ent.unique_id
+    if not legacy_mac_linking:
+        # HA 2026.11 removes ScannerEntity's special post-registration MAC linking.
+        monkeypatch.setattr(
+            ScannerEntity,
+            "async_internal_added_to_hass",
+            BaseScannerEntity.async_internal_added_to_hass,
+        )
+    platform = EntityPlatform(
+        hass=hass,
+        logger=logging.getLogger(__name__),
+        domain="device_tracker",
+        platform_name=DOMAIN,
+        platform=None,
+        scan_interval=timedelta(seconds=30),
+        entity_namespace=None,
+    )
+    platform.config_entry = entry
+    with patch.object(OPNsenseBaseEntity, "async_added_to_hass", AsyncMock()):
+        await platform.async_add_entities([entity])
+
+    unique_id = entity.unique_id
     assert unique_id is not None
-    ent.registry_entry = entity_reg.async_get_or_create(
-        "device_tracker",
-        DOMAIN,
-        unique_id,
-        config_entry=entry,
-    )
-    ent.entity_id = ent.registry_entry.entity_id
-
-    await ent.async_internal_added_to_hass()
-
-    assert ent.registry_entry.device_id is None
-    assert ent.device_info is not None
+    registry_entry = er.async_get(hass).async_get_entity_id("device_tracker", DOMAIN, unique_id)
+    assert registry_entry is not None
+    registered = er.async_get(hass).async_get(registry_entry)
+    assert registered is not None
+    assert registered.disabled_by == expected_disabler
+    assert registered.device_id is not None
+    client_device = device_reg.async_get(registered.device_id)
+    assert isinstance(client_device, dr.DeviceEntry)
+    assert (dr.CONNECTION_NETWORK_MAC, mac_address) in client_device.connections
+    assert device_belongs_to_config_entry(client_device, entry.entry_id)
+    assert client_device.name == "Client"
+    assert client_device.manufacturer == "Client Vendor"
+    assert client_device.via_device_id == router.id
+    await platform.async_reset()
 
 
 @pytest.mark.asyncio
