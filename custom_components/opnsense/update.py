@@ -1,14 +1,16 @@
 """OPNsense integration."""
 
-import asyncio
 from collections.abc import Mapping, MutableMapping
 import logging
 from typing import Any
 
+from aiopnsense.exceptions import OPNsenseError
+from aiopnsense.helpers import firmware_is_newer
 from homeassistant.components.update import UpdateDeviceClass, UpdateEntity, UpdateEntityDescription
 from homeassistant.components.update.const import UpdateEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
@@ -161,6 +163,7 @@ class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
         self._attr_in_progress: bool = False
         self._attr_installed_version: str | None = None
         self._attr_latest_version: str | None = None
+        self._raw_latest_version: str | None = None
         self._attr_release_url: str | None = None
         self._attr_release_summary: str | None = None
         self._release_notes: str | None = None
@@ -178,8 +181,9 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             return
         self._available = True
 
-        self._attr_installed_version = self._get_installed_version(state)
         product_version, product_latest, product_series = self._get_versions(state)
+        self._attr_installed_version = product_version
+        self._raw_latest_version = product_latest
         self._attr_latest_version = product_latest.replace("_", ".") if product_latest else None
 
         product_class = self._get_product_class(product_series)
@@ -213,6 +217,28 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             )
         self.async_write_ha_state()
 
+    def version_is_newer(self, latest_version: str, installed_version: str) -> bool:
+        """Compare OPNsense versions without losing numeric hotfix revisions.
+
+        Args:
+            latest_version (str): Candidate version, including the displayed latest version.
+            installed_version (str): Raw installed firmware version.
+
+        Returns:
+            bool: Whether the candidate is newer, preserving package-only updates
+                and Home Assistant's fallback for unknown version formats.
+        """
+        # Compare the same snapshot as the published attributes, before display normalization.
+        raw_latest = (
+            self._raw_latest_version if latest_version == self.latest_version else latest_version
+        )
+        if raw_latest == f"{installed_version}+":
+            return True
+        newer = firmware_is_newer(raw_latest, installed_version)
+        if newer is None:
+            return super().version_is_newer(latest_version, installed_version)
+        return newer
+
     def _is_update_available(self, state: MutableMapping[str, Any]) -> bool:
         """Return whether an update is available.
 
@@ -229,18 +255,6 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             return False
         status = firmware_update_info.get("status")
         return isinstance(status, str) and status not in {"", "error"}
-
-    def _get_installed_version(self, state: MutableMapping[str, Any]) -> str | None:
-        """Return the installed firmware version.
-
-        Args:
-            state (MutableMapping[str, Any]): Current OPNsense state payload.
-
-        Returns:
-            str | None: The installed firmware version, or ``None`` when unavailable.
-        """
-        product_version = dict_get(state, "firmware_update_info.product.product_version")
-        return product_version if isinstance(product_version, str) else None
 
     def _get_versions(
         self, state: MutableMapping[str, Any]
@@ -386,59 +400,42 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             version (str | None): Requested firmware version, if provided by Home Assistant.
             backup (bool): Whether Home Assistant requested a backup before install.
             _kwargs (Any): Additional installation options provided by Home Assistant.
+
+        Raises:
+            HomeAssistantError: Installation is unavailable, unsupported, or fails
+                verification in aiopnsense.
         """
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            _LOGGER.error("Cannot update firmware, state data is missing")
-            return
+            raise HomeAssistantError("Cannot update firmware: state data is missing")
         upgrade_type = dict_get(state, "firmware_update_info.status")
         if upgrade_type not in {"update", "upgrade"} or not self._client:
-            return
-
-        upgrade_details = await self._client.upgrade_firmware(upgrade_type)
-        _LOGGER.debug(
-            "[async_install] Starting Firmware %s. upgrade_details: %s",
-            upgrade_type,
-            upgrade_details,
-        )
-        sleep_time = 10
-        exceptions = 0
-        running: bool = True
-        while running:
-            await asyncio.sleep(sleep_time)
-            try:
-                response = await self._client.upgrade_status()
-                _LOGGER.debug("[async_install] upgrade_status: %s", response)
-                # after finished status is "done"
-                running = response["status"] == "running"
-            except (KeyError, TypeError) as e:
-                exceptions += 1
-                _LOGGER.warning(
-                    "Error #%s while getting upgrade_status. %s: %s",
-                    exceptions,
-                    type(e).__name__,
-                    e,
+            raise HomeAssistantError("Cannot update firmware: no actionable update or client")
+        installed_version, latest_version, _ = self._get_versions(state)
+        if upgrade_type == "upgrade":
+            major_target = dict_get(state, "firmware_update_info.upgrade_major_version")
+            if (
+                not isinstance(major_target, str)
+                or not major_target.strip()
+                or major_target != major_target.strip()
+                or not installed_version
+                or firmware_is_newer(major_target, installed_version) is not True
+            ):
+                raise HomeAssistantError(
+                    "Cannot update firmware: major upgrade target is invalid or not newer "
+                    "than installed firmware"
                 )
-                if exceptions > 3:
-                    return
-            else:
-                exceptions = 0
+        if not latest_version:
+            raise HomeAssistantError("Cannot update firmware: target version is unavailable")
+        if version is not None and version != latest_version:
+            raise HomeAssistantError(
+                "Only the currently available firmware update can be installed"
+            )
 
-        # check needs_reboot, if yes trigger reboot
-        response = await self._client.get_firmware_update_info()
-        _LOGGER.debug("[async_install] firmware_update_info: %s", response)
-
-        upgrade_needs_reboot: bool = (
-            dict_get(response, "upgrade_needs_reboot") == "1"
-            if dict_get(response, "upgrade_needs_reboot")
-            else False
-        )
-        needs_reboot: bool = (
-            dict_get(response, "needs_reboot") == "1"
-            if dict_get(response, "needs_reboot")
-            else False
-        )
-
-        if upgrade_needs_reboot or needs_reboot:
-            _LOGGER.debug("[async_install] Rebooting")
-            await self._client.system_reboot()
+        # A trailing '+' represents package-only updates with an unchanged product version.
+        target_version = latest_version.removesuffix("+")
+        try:
+            await self._client.install_firmware(upgrade_type, target_version=target_version)
+        except OPNsenseError as err:
+            raise HomeAssistantError(f"Firmware installation failed: {err}") from err
+        await self.coordinator.async_request_refresh()
