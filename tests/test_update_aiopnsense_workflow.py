@@ -4,16 +4,62 @@ from importlib import util
 from io import StringIO
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tomllib
 from types import ModuleType
 from typing import Never
 
 import pytest
+import yaml
 
 SCRIPT_PATH = Path(".github/scripts/update_aiopnsense_pins.py")
 RELEASE_NOTES_SCRIPT_PATH = Path(".github/scripts/build_aiopnsense_release_notes.py")
 CLEANUP_SCRIPT_PATH = Path(".github/scripts/cleanup_aiopnsense_update_branches.py")
+
+
+@pytest.mark.parametrize(
+    ("failures", "expected_attempts", "expected_status"),
+    [(0, 1, 0), (1, 2, 0), (4, 5, 0), (5, 5, 1)],
+)
+def test_lock_step_retries_index_propagation(
+    failures: int, expected_attempts: int, expected_status: int
+) -> None:
+    """Retry temporary index failures and fail after the final unsuccessful attempt.
+
+    Args:
+        failures (int): Number of simulated resolver failures before success.
+        expected_attempts (int): Expected number of resolver invocations.
+        expected_status (int): Expected shell exit status.
+    """
+    workflow = yaml.safe_load(Path(".github/workflows/update_aiopnsense.yml").read_text())
+    steps = workflow["jobs"]["update-aiopnsense"]["steps"]
+    command = next(step["run"] for step in steps if step["name"] == "Regenerate uv lock")
+    # Run the actual workflow shell with deterministic resolver and delay substitutes.
+    script = f"""
+    calls=0
+    uv() {{
+      calls=$((calls + 1))
+      echo "uv $*"
+      [ "$calls" -gt {failures} ]
+    }}
+    sleep() {{ echo "sleep $*"; }}
+    {command}
+    """
+    result = subprocess.run(  # noqa: S603
+        ["/bin/bash", "-e", "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=5,
+    )
+
+    assert result.returncode == expected_status, result.stderr
+    assert result.stdout.splitlines().count("uv lock --refresh-package aiopnsense") == (
+        expected_attempts
+    )
+    assert result.stdout.splitlines().count("sleep 30") == expected_attempts - 1
+    assert ("::error::" in result.stdout) is (expected_status != 0)
 
 
 class FakeCleanupClient:
