@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.3.1](https://github.com/travisghansen/hass-opnsense/compare/v1.3.0...v1.3.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* **deps:** update vulnerable Pillow, certifi, and uv versions ([#785](https://github.com/travisghansen/hass-opnsense/issues/785)) ([665bd1b](https://github.com/travisghansen/hass-opnsense/commit/665bd1b6b2142762a3314a9302787c714ebe23b2))
+* prepare device registration for Home Assistant 2026.11 ([#787](https://github.com/travisghansen/hass-opnsense/issues/787)) ([9aa2a06](https://github.com/travisghansen/hass-opnsense/commit/9aa2a0651eba84b4f1b452ea4909b10d9bb151e5))
+* retry aiopnsense lock generation during PyPI propagation ([#789](https://github.com/travisghansen/hass-opnsense/issues/789)) ([ca022c2](https://github.com/travisghansen/hass-opnsense/commit/ca022c2414ca607107a1a2ade55fe33ab9273db3))
+* verify firmware installation and hotfix availability ([#793](https://github.com/travisghansen/hass-opnsense/issues/793)) ([4e9d629](https://github.com/travisghansen/hass-opnsense/commit/4e9d629be56a4ff2b8bcb2562ca75669bc18a633))
+
+
+### Dependencies
+
+* **aiopnsense:** bump to 1.3.3 ([#790](https://github.com/travisghansen/hass-opnsense/issues/790)) ([b9e3165](https://github.com/travisghansen/hass-opnsense/commit/b9e31655a80fccb5001ecfe72f706decc98b9b1c))
+* update prek hooks ([#781](https://github.com/travisghansen/hass-opnsense/issues/781)) ([c58408b](https://github.com/travisghansen/hass-opnsense/commit/c58408b050dccc7a862312f131f5c797964ee03a))
+* update prek hooks ([#788](https://github.com/travisghansen/hass-opnsense/issues/788)) ([a8b7e8a](https://github.com/travisghansen/hass-opnsense/commit/a8b7e8a3d00f3f30611df25febcd45b45167c56e))
+
+
+### Build System
+
+* **deps-dev:** bump the python-dependencies group with 4 updates ([#783](https://github.com/travisghansen/hass-opnsense/issues/783)) ([1640f01](https://github.com/travisghansen/hass-opnsense/commit/1640f01d79b30da37273e41d31b45cda1814b6af))
+* **deps-dev:** bump the python-dependencies group with 5 updates ([#792](https://github.com/travisghansen/hass-opnsense/issues/792)) ([3cf3b56](https://github.com/travisghansen/hass-opnsense/commit/3cf3b565fafec8f731939a1fa2752027d5f1c33d))
+* **deps:** bump astral-sh/setup-uv ([#791](https://github.com/travisghansen/hass-opnsense/issues/791)) ([666898a](https://github.com/travisghansen/hass-opnsense/commit/666898abbccced8b16689838c6428d105a6a4396))
+
 ## [1.3.0](https://github.com/travisghansen/hass-opnsense/compare/v1.2.1...v1.3.0) (2026-10-19)
 
 
