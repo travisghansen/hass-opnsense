@@ -398,12 +398,6 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         upgrade_type = dict_get(state, "firmware_update_info.status")
         if upgrade_type not in {"update", "upgrade"} or not self._client:
             raise HomeAssistantError("Cannot update firmware: no actionable update or client")
-        install_firmware = getattr(self._client, "install_firmware", None)
-        if not callable(install_firmware):
-            raise HomeAssistantError(
-                "Firmware installation requires an aiopnsense release with verified "
-                "firmware installation support"
-            )
         _, latest_version, _ = self._get_versions(state)
         if not latest_version:
             raise HomeAssistantError("Cannot update firmware: target version is unavailable")
@@ -415,7 +409,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         # A trailing '+' represents package-only updates with an unchanged product version.
         target_version = latest_version.removesuffix("+")
         try:
-            await install_firmware(upgrade_type, target_version=target_version)
+            await self._client.install_firmware(upgrade_type, target_version=target_version)
         except OPNsenseError as err:
             raise HomeAssistantError(f"Firmware installation failed: {err}") from err
         await self.coordinator.async_request_refresh()

@@ -181,28 +181,6 @@ async def test_async_install_rejects_invalid_requests(
     client.system_reboot.assert_not_awaited()
 
 
-async def test_async_install_rejects_client_without_verified_installation(
-    firmware_install_entity: OPNsenseFirmwareUpdatesAvailableUpdate,
-) -> None:
-    """Report an unsupported client without dispatching or rebooting the router.
-
-    Args:
-        firmware_install_entity (OPNsenseFirmwareUpdatesAvailableUpdate): Update entity.
-    """
-    entity = firmware_install_entity
-    client = MagicMock(spec=["upgrade_firmware", "system_reboot"])
-    client.upgrade_firmware = AsyncMock()
-    client.system_reboot = AsyncMock()
-    object.__setattr__(entity, "_client", client)
-
-    with pytest.raises(HomeAssistantError, match="aiopnsense release with verified"):
-        await entity.async_install()
-
-    client.upgrade_firmware.assert_not_awaited()
-    client.system_reboot.assert_not_awaited()
-    cast("AsyncMock", entity.coordinator.async_request_refresh).assert_not_awaited()
-
-
 async def test_async_install_preserves_cancellation(
     firmware_install_entity: OPNsenseFirmwareUpdatesAvailableUpdate,
 ) -> None:
