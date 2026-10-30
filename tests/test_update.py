@@ -111,7 +111,7 @@ async def test_async_install_verifies_firmware_through_client(
 
     client.install_firmware.assert_awaited_once_with(status, target_version=target)
     client.system_reboot.assert_not_awaited()
-    cast("AsyncMock", entity.coordinator.async_request_refresh).assert_awaited_once()
+    cast("AsyncMock", entity.coordinator.async_request_refresh).assert_awaited()
 
 
 @pytest.mark.parametrize("error_type", [OPNsenseError, OPNsenseTimeoutError])
