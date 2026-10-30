@@ -147,6 +147,7 @@ async def test_async_install_reports_failure_without_reboot(
         pytest.param(None, True, id="none"),
         pytest.param("", True, id="empty"),
         pytest.param("   ", True, id="whitespace"),
+        pytest.param(" 27.1", True, id="untrimmed"),
         pytest.param(27.1, True, id="non-string"),
         pytest.param("invalid-version", True, id="invalid-version"),
         pytest.param("26.7.8", True, id="current-version"),
