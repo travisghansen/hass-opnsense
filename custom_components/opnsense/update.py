@@ -1,14 +1,15 @@
 """OPNsense integration."""
 
-import asyncio
 from collections.abc import Mapping, MutableMapping
 import logging
 from typing import Any
 
+from aiopnsense.exceptions import OPNsenseError
 from homeassistant.components.update import UpdateDeviceClass, UpdateEntity, UpdateEntityDescription
 from homeassistant.components.update.const import UpdateEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
@@ -386,59 +387,29 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             version (str | None): Requested firmware version, if provided by Home Assistant.
             backup (bool): Whether Home Assistant requested a backup before install.
             _kwargs (Any): Additional installation options provided by Home Assistant.
+
+        Raises:
+            HomeAssistantError: Installation is unavailable, unsupported, or fails
+                verification in aiopnsense.
         """
         state: dict[str, Any] = self.coordinator.data
         if not isinstance(state, MutableMapping):
-            _LOGGER.error("Cannot update firmware, state data is missing")
-            return
+            raise HomeAssistantError("Cannot update firmware: state data is missing")
         upgrade_type = dict_get(state, "firmware_update_info.status")
         if upgrade_type not in {"update", "upgrade"} or not self._client:
-            return
+            raise HomeAssistantError("Cannot update firmware: no actionable update or client")
+        _, latest_version, _ = self._get_versions(state)
+        if not latest_version:
+            raise HomeAssistantError("Cannot update firmware: target version is unavailable")
+        if version is not None and version != latest_version:
+            raise HomeAssistantError(
+                "Only the currently available firmware update can be installed"
+            )
 
-        upgrade_details = await self._client.upgrade_firmware(upgrade_type)
-        _LOGGER.debug(
-            "[async_install] Starting Firmware %s. upgrade_details: %s",
-            upgrade_type,
-            upgrade_details,
-        )
-        sleep_time = 10
-        exceptions = 0
-        running: bool = True
-        while running:
-            await asyncio.sleep(sleep_time)
-            try:
-                response = await self._client.upgrade_status()
-                _LOGGER.debug("[async_install] upgrade_status: %s", response)
-                # after finished status is "done"
-                running = response["status"] == "running"
-            except (KeyError, TypeError) as e:
-                exceptions += 1
-                _LOGGER.warning(
-                    "Error #%s while getting upgrade_status. %s: %s",
-                    exceptions,
-                    type(e).__name__,
-                    e,
-                )
-                if exceptions > 3:
-                    return
-            else:
-                exceptions = 0
-
-        # check needs_reboot, if yes trigger reboot
-        response = await self._client.get_firmware_update_info()
-        _LOGGER.debug("[async_install] firmware_update_info: %s", response)
-
-        upgrade_needs_reboot: bool = (
-            dict_get(response, "upgrade_needs_reboot") == "1"
-            if dict_get(response, "upgrade_needs_reboot")
-            else False
-        )
-        needs_reboot: bool = (
-            dict_get(response, "needs_reboot") == "1"
-            if dict_get(response, "needs_reboot")
-            else False
-        )
-
-        if upgrade_needs_reboot or needs_reboot:
-            _LOGGER.debug("[async_install] Rebooting")
-            await self._client.system_reboot()
+        # A trailing '+' represents package-only updates with an unchanged product version.
+        target_version = latest_version.removesuffix("+")
+        try:
+            await self._client.install_firmware(upgrade_type, target_version=target_version)
+        except OPNsenseError as err:
+            raise HomeAssistantError(f"Firmware installation failed: {err}") from err
+        await self.coordinator.async_request_refresh()

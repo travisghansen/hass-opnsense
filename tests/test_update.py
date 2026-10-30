@@ -9,6 +9,7 @@ from aiopnsense.exceptions import OPNsenseError, OPNsenseTimeoutError
 from homeassistant.components.update import UpdateDeviceClass, UpdateEntityDescription
 from homeassistant.components.update.const import UpdateEntityFeature
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
@@ -23,6 +24,180 @@ from custom_components.opnsense.update import (
     OPNsenseFirmwareUpdatesAvailableUpdate,
     async_setup_entry,
 )
+
+
+@pytest.fixture
+def firmware_install_entity(
+    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
+) -> OPNsenseFirmwareUpdatesAvailableUpdate:
+    """Create an update entity with an isolated installation client.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+        dummy_coordinator (MagicMock): Coordinator supplying firmware data.
+
+    Returns:
+        OPNsenseFirmwareUpdatesAvailableUpdate: Entity ready to install an update.
+    """
+    entity = OPNsenseFirmwareUpdatesAvailableUpdate(
+        config_entry=make_config_entry(),
+        coordinator=dummy_coordinator,
+        entity_description=UpdateEntityDescription(
+            key="firmware.update_available", name="Firmware"
+        ),
+    )
+    client = MagicMock()
+    client.install_firmware = AsyncMock()
+    client.system_reboot = AsyncMock()
+    object.__setattr__(entity, "_client", client)
+    dummy_coordinator.async_request_refresh = AsyncMock()
+    dummy_coordinator.data = _firmware_update_state(
+        product_version="26.7.7", product_latest="26.7.8", product_series="26.7"
+    )
+    return entity
+
+
+@pytest.mark.parametrize(
+    ("status", "installed", "latest", "major", "packages", "target"),
+    [
+        pytest.param("update", "26.7.7", "26.7.8", None, None, "26.7.8", id="minor"),
+        pytest.param("update", "26.7.8", "26.7.8_1", None, None, "26.7.8_1", id="hotfix"),
+        pytest.param("update", "26.7.8", "26.7.8", None, None, "26.7.8", id="packages"),
+        pytest.param("upgrade", "26.7.8", "26.7.8", "27.1", None, "27.1", id="major"),
+        pytest.param(
+            "update",
+            "26.7.8",
+            "26.7.8",
+            None,
+            [{"name": "opnsense", "new_version": "26.7.8_1"}],
+            "26.7.8_1",
+            id="package-version-overrides-product-latest",
+        ),
+    ],
+)
+async def test_async_install_verifies_firmware_through_client(
+    firmware_install_entity: OPNsenseFirmwareUpdatesAvailableUpdate,
+    status: str,
+    installed: str,
+    latest: str,
+    major: str | None,
+    packages: list[dict[str, str]] | None,
+    target: str,
+) -> None:
+    """Delegate installation and refresh only after the client verifies completion.
+
+    Args:
+        firmware_install_entity (OPNsenseFirmwareUpdatesAvailableUpdate): Update entity.
+        status (str): Available firmware action.
+        installed (str): Current version.
+        latest (str): Advertised latest version.
+        major (str | None): Available major version.
+        packages (list[dict[str, str]] | None): Actual package upgrade candidates.
+        target (str): Actual version expected after installation.
+    """
+    entity = firmware_install_entity
+    entity.coordinator.data = _firmware_update_state(
+        product_version=installed,
+        product_latest=latest,
+        product_series="26.7",
+        status=status,
+        upgrade_major_version=major,
+        upgrade_packages=packages,
+    )
+    entity.coordinator.data["firmware_update_info"]["needs_reboot"] = "1"
+    client: Any = entity._client
+
+    await entity.async_install()
+
+    client.install_firmware.assert_awaited_once_with(status, target_version=target)
+    client.system_reboot.assert_not_awaited()
+    cast("AsyncMock", entity.coordinator.async_request_refresh).assert_awaited_once()
+
+
+@pytest.mark.parametrize("error_type", [OPNsenseError, OPNsenseTimeoutError])
+async def test_async_install_reports_failure_without_reboot(
+    firmware_install_entity: OPNsenseFirmwareUpdatesAvailableUpdate,
+    error_type: type[OPNsenseError],
+) -> None:
+    """Surface backend installation failures to Home Assistant without rebooting.
+
+    Args:
+        firmware_install_entity (OPNsenseFirmwareUpdatesAvailableUpdate): Update entity.
+        error_type (type[OPNsenseError]): Backend failure to report.
+    """
+    entity = firmware_install_entity
+    client: Any = entity._client
+    client.install_firmware.side_effect = error_type("installation did not start")
+    entity.coordinator.data["firmware_update_info"]["needs_reboot"] = "1"
+
+    with pytest.raises(
+        HomeAssistantError, match="Firmware installation failed: installation did not start"
+    ):
+        await entity.async_install()
+
+    client.install_firmware.assert_awaited_once()
+    client.system_reboot.assert_not_awaited()
+    cast("AsyncMock", entity.coordinator.async_request_refresh).assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("invalid", "requested_version"),
+    [
+        pytest.param("state", None, id="missing-state"),
+        pytest.param("status", None, id="no-update"),
+        pytest.param("target", None, id="missing-target"),
+        pytest.param("client", None, id="missing-client"),
+        pytest.param(None, "25.1", id="unsupported-requested-version"),
+    ],
+)
+async def test_async_install_rejects_invalid_requests(
+    firmware_install_entity: OPNsenseFirmwareUpdatesAvailableUpdate,
+    invalid: str | None,
+    requested_version: str | None,
+) -> None:
+    """Reject unavailable or unsupported installations before contacting the client.
+
+    Args:
+        firmware_install_entity (OPNsenseFirmwareUpdatesAvailableUpdate): Update entity.
+        invalid (str | None): Installation prerequisite to invalidate.
+        requested_version (str | None): Explicit requested firmware version.
+    """
+    entity = firmware_install_entity
+    client: Any = entity._client
+    if invalid == "state":
+        coordinator: Any = entity.coordinator
+        coordinator.data = None
+    elif invalid == "status":
+        entity.coordinator.data["firmware_update_info"]["status"] = "none"
+    elif invalid == "target":
+        entity.coordinator.data["firmware_update_info"]["product"]["product_latest"] = None
+    elif invalid == "client":
+        object.__setattr__(entity, "_client", None)
+
+    with pytest.raises(HomeAssistantError):
+        await entity.async_install(version=requested_version)
+
+    client.install_firmware.assert_not_awaited()
+    client.system_reboot.assert_not_awaited()
+
+
+async def test_async_install_preserves_cancellation(
+    firmware_install_entity: OPNsenseFirmwareUpdatesAvailableUpdate,
+) -> None:
+    """Propagate cancellation without reporting completion or requesting a reboot.
+
+    Args:
+        firmware_install_entity (OPNsenseFirmwareUpdatesAvailableUpdate): Update entity.
+    """
+    entity = firmware_install_entity
+    client: Any = entity._client
+    client.install_firmware.side_effect = asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        await entity.async_install()
+
+    client.system_reboot.assert_not_awaited()
+    cast("AsyncMock", entity.coordinator.async_request_refresh).assert_not_awaited()
 
 
 def _firmware_update_state(
@@ -60,74 +235,6 @@ def _firmware_update_state(
     if upgrade_major_version is not None:
         firmware_update_info["upgrade_major_version"] = upgrade_major_version
     return {"firmware_update_info": firmware_update_info}
-
-
-class _FirmwareInstallClient:
-    """Fake firmware client for update install flow tests."""
-
-    def __init__(
-        self,
-        *,
-        status_responses: list[Any] | None = None,
-        status_response: Any = None,
-        status_error: BaseException | None = None,
-        firmware_info: dict[str, Any] | None = None,
-    ) -> None:
-        """Initialize a fake firmware install client.
-
-        Args:
-            status_responses (list[Any] | None): Queued responses returned by ``upgrade_status``.
-            status_response (Any): Repeated response returned by ``upgrade_status``.
-            status_error (BaseException | None): Error raised by ``upgrade_status``.
-            firmware_info (dict[str, Any] | None): Payload returned by ``get_firmware_update_info``.
-        """
-        self.status_responses = list(status_responses or [])
-        self.status_response = status_response
-        self.status_error = status_error
-        self.firmware_info = firmware_info or {
-            "needs_reboot": None,
-            "upgrade_needs_reboot": None,
-        }
-        self.rebooted = False
-
-    async def upgrade_firmware(self, _upgrade_type: Any) -> dict[str, Any]:
-        """Simulate accepting an upgrade request before polling.
-
-        Args:
-            _upgrade_type (Any): Upgrade mode requested by the entity and ignored by
-                this fake client.
-
-        Returns:
-            dict[str, Any]: Payload indicating that the upgrade request started.
-        """
-        return {"started": True}
-
-    async def upgrade_status(self) -> Any:
-        """Return or raise the configured polling result.
-
-        Raises:
-            self.status_error: The configured polling error, when provided.
-
-        Returns:
-            Any: The next queued status response, or the configured repeated response.
-        """
-        if self.status_error is not None:
-            raise self.status_error
-        if self.status_responses:
-            return self.status_responses.pop(0)
-        return self.status_response
-
-    async def get_firmware_update_info(self) -> dict[str, Any]:
-        """Return configured firmware metadata.
-
-        Returns:
-            dict[str, Any]: Firmware update metadata.
-        """
-        return self.firmware_info
-
-    async def system_reboot(self) -> None:
-        """Record that the update entity requested a system reboot."""
-        self.rebooted = True
 
 
 @pytest.mark.asyncio
@@ -761,115 +868,6 @@ def test_get_release_notes_upgrade_uses_target_version_in_header(
     assert "2.0.0" not in notes
 
 
-@pytest.mark.asyncio
-async def test_async_install_reboots_when_needed(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-    dummy_coordinator: MagicMock,
-) -> None:
-    """async_install should trigger a reboot when the update requires it.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
-    """
-    entry = make_config_entry()
-    coord = dummy_coordinator
-    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=entry,
-        coordinator=coord,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available", name="Firmware"
-        ),
-    )
-    object.__setattr__(ent, "async_write_ha_state", lambda: None)
-
-    status_responses = [{"status": "running"}, {"status": "done"}]
-    fake: Any = _FirmwareInstallClient(
-        status_responses=status_responses,
-        firmware_info={"needs_reboot": "1", "upgrade_needs_reboot": None},
-    )
-    object.__setattr__(fake, "upgrade_status", AsyncMock(side_effect=status_responses))
-    object.__setattr__(fake, "upgrade_firmware", AsyncMock(wraps=fake.upgrade_firmware))
-    object.__setattr__(ent, "_client", fake)
-
-    ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
-
-    sleep_spy = AsyncMock(return_value=None)
-    monkeypatch.setattr(asyncio, "sleep", sleep_spy)
-
-    await ent.async_install()
-    assert fake.rebooted is True
-    assert fake.upgrade_status.await_count == 2
-    fake.upgrade_firmware.assert_awaited_once_with("update")
-    assert 1 <= sleep_spy.await_count <= 5
-
-
-@pytest.mark.asyncio
-async def test_async_install_does_nothing_on_non_update_status(
-    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
-) -> None:
-    """async_install should early-return and not call upgrade_firmware when status is not update/upgrade.
-
-    Args:
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
-    """
-    entry = make_config_entry()
-    coord = dummy_coordinator
-    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=entry,
-        coordinator=coord,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available", name="Firmware"
-        ),
-    )
-    object.__setattr__(ent, "async_write_ha_state", lambda: None)
-
-    ent.coordinator.data = {"firmware_update_info": {"status": "none"}}
-
-    client = MagicMock()
-    object.__setattr__(client, "upgrade_firmware", AsyncMock())
-    ent._client = client
-
-    await ent.async_install()
-
-    client.upgrade_firmware.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_async_install_early_returns_and_no_client(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-    dummy_coordinator: MagicMock,
-) -> None:
-    """async_install should return early when there's no client available.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
-    """
-    entry = make_config_entry()
-    coord = dummy_coordinator
-    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=entry,
-        coordinator=coord,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available", name="Firmware"
-        ),
-    )
-    object.__setattr__(ent, "async_write_ha_state", lambda: None)
-
-    ent.coordinator.data = cast("dict[str, Any]", None)
-    await ent.async_install()
-
-    ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
-    object.__setattr__(ent, "_client", None)
-    await ent.async_install()
-
-
 def test_get_versions_malformed_state_returns_empty_versions(
     make_config_entry: Callable[..., MockConfigEntry],
     dummy_coordinator: MagicMock,
@@ -915,132 +913,6 @@ def test_get_release_notes_malformed_state_returns_none(
     )
 
     assert ent._get_release_notes({"firmware_update_info": []}, None, None) is None
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "upgrade_status_response",
-    [
-        pytest.param(None, id="none-response"),
-        pytest.param({}, id="missing-status"),
-    ],
-)
-async def test_async_install_handles_masked_polling_response(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-    dummy_coordinator: MagicMock,
-    upgrade_status_response: Any,
-) -> None:
-    """async_install should handle masked aiopnsense polling failures.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
-        upgrade_status_response (Any): Parameterized upgrade status response used by the test install handles masked polling response scenario.
-    """
-    entry = make_config_entry()
-    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=entry,
-        coordinator=dummy_coordinator,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available", name="Firmware"
-        ),
-    )
-
-    bad: Any = _FirmwareInstallClient(status_response=upgrade_status_response)
-    object.__setattr__(ent, "_client", bad)
-    ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
-    monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
-
-    await ent.async_install()
-    assert bad.rebooted is False
-
-
-@pytest.mark.asyncio
-async def test_async_install_terminates_after_invalid_polling_responses(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-    dummy_coordinator: MagicMock,
-) -> None:
-    """Malformed polling responses should terminate without fetching info or rebooting.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
-    """
-    entry = make_config_entry()
-    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=entry,
-        coordinator=dummy_coordinator,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available", name="Firmware"
-        ),
-    )
-
-    bad: Any = _FirmwareInstallClient(
-        firmware_info={"needs_reboot": "1", "upgrade_needs_reboot": None},
-    )
-    object.__setattr__(bad, "upgrade_status", AsyncMock(side_effect=[None, None, None, None]))
-    object.__setattr__(bad, "upgrade_firmware", AsyncMock(wraps=bad.upgrade_firmware))
-    object.__setattr__(
-        bad,
-        "get_firmware_update_info",
-        AsyncMock(wraps=bad.get_firmware_update_info),
-    )
-    object.__setattr__(ent, "_client", bad)
-    ent.coordinator.data = {"firmware_update_info": {"status": "upgrade"}}
-    monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
-
-    await ent.async_install()
-
-    bad.upgrade_status.assert_awaited()
-    bad.upgrade_firmware.assert_awaited_once()
-    bad.get_firmware_update_info.assert_not_awaited()
-    assert bad.rebooted is False
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("error_type", "message"),
-    [
-        pytest.param(OPNsenseTimeoutError, "fail", id="timeout"),
-        pytest.param(OPNsenseError, "unexpected", id="generic"),
-    ],
-)
-async def test_async_install_polling_error_raises(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-    dummy_coordinator: MagicMock,
-    error_type: type[OPNsenseError],
-    message: str,
-) -> None:
-    """async_install should not hide errors raised by aiopnsense while polling.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
-        error_type (type[OPNsenseError]): Parameterized error type used by the test install polling error raises scenario.
-        message (str): Parameterized message used by the test install polling error raises scenario.
-    """
-    entry = make_config_entry()
-    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=entry,
-        coordinator=dummy_coordinator,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available", name="Firmware"
-        ),
-    )
-
-    bad: Any = _FirmwareInstallClient(status_error=error_type(message))
-    object.__setattr__(ent, "_client", bad)
-    ent.coordinator.data = {"firmware_update_info": {"status": "update"}}
-    monkeypatch.setattr(asyncio, "sleep", AsyncMock(return_value=None))
-
-    with pytest.raises(error_type, match=message):
-        await ent.async_install()
 
 
 def test_get_installed_version_none_on_error(
