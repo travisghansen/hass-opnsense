@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 from aiopnsense.exceptions import OPNsenseError
+from aiopnsense.helpers import firmware_is_newer
 from homeassistant.components.update import UpdateDeviceClass, UpdateEntity, UpdateEntityDescription
 from homeassistant.components.update.const import UpdateEntityFeature
 from homeassistant.config_entries import ConfigEntry
@@ -162,6 +163,7 @@ class OPNsenseUpdate(OPNsenseEntity, UpdateEntity):
         self._attr_in_progress: bool = False
         self._attr_installed_version: str | None = None
         self._attr_latest_version: str | None = None
+        self._raw_latest_version: str | None = None
         self._attr_release_url: str | None = None
         self._attr_release_summary: str | None = None
         self._release_notes: str | None = None
@@ -181,6 +183,7 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
 
         self._attr_installed_version = self._get_installed_version(state)
         product_version, product_latest, product_series = self._get_versions(state)
+        self._raw_latest_version = product_latest
         self._attr_latest_version = product_latest.replace("_", ".") if product_latest else None
 
         product_class = self._get_product_class(product_series)
@@ -213,6 +216,28 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
                 state, f"firmware_update_info.{key}"
             )
         self.async_write_ha_state()
+
+    def version_is_newer(self, latest_version: str, installed_version: str) -> bool:
+        """Compare OPNsense versions without losing numeric hotfix revisions.
+
+        Args:
+            latest_version (str): Candidate version, including the displayed latest version.
+            installed_version (str): Raw installed firmware version.
+
+        Returns:
+            bool: Whether the candidate is newer, preserving package-only updates
+                and Home Assistant's fallback for unknown version formats.
+        """
+        # Compare the same snapshot as the published attributes, before display normalization.
+        raw_latest = (
+            self._raw_latest_version if latest_version == self.latest_version else latest_version
+        )
+        if raw_latest == f"{installed_version}+":
+            return True
+        newer = firmware_is_newer(raw_latest, installed_version)
+        if newer is None:
+            return super().version_is_newer(latest_version, installed_version)
+        return newer
 
     def _is_update_available(self, state: MutableMapping[str, Any]) -> bool:
         """Return whether an update is available.

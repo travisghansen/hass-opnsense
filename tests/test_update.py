@@ -40,7 +40,7 @@ def firmware_install_entity(
         OPNsenseFirmwareUpdatesAvailableUpdate: Entity ready to install an update.
     """
     entity = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=make_config_entry(),
+        config_entry=make_config_entry({"url": "https://router.example"}),
         coordinator=dummy_coordinator,
         entity_description=UpdateEntityDescription(
             key="firmware.update_available", name="Firmware"
@@ -235,6 +235,96 @@ def _firmware_update_state(
     if upgrade_major_version is not None:
         firmware_update_info["upgrade_major_version"] = upgrade_major_version
     return {"firmware_update_info": firmware_update_info}
+
+
+@pytest.mark.parametrize(
+    ("installed", "latest", "status", "packages", "major", "expected_state"),
+    [
+        pytest.param("26.7.6_9", "26.7.6_9", "none", None, None, "off", id="equal-hotfix"),
+        pytest.param("26.7.6_10", "26.7.6_9", "none", None, None, "off", id="older-hotfix"),
+        pytest.param(
+            "26.7.6_10", "26.7.6_9", "update", None, None, "off", id="older-advertised-update"
+        ),
+        pytest.param("26.7.6_9", "26.7.6_10", "update", None, None, "on", id="newer-hotfix"),
+        pytest.param("26.7.6_10", "26.7.7", "update", None, None, "on", id="new-full-release"),
+        pytest.param("26.7.6.0_9", "26.7.6_9", "none", None, None, "off", id="equivalent-base"),
+        pytest.param(
+            "26.7.6_10", "26.7.6.0_9", "none", None, None, "off", id="older-equivalent-base"
+        ),
+        pytest.param(
+            "26.7.6.0_9", "26.7.6_10", "update", None, None, "on", id="newer-equivalent-base"
+        ),
+        pytest.param("26.7.6_9", "26.7.6_9", "update", None, None, "on", id="package-only"),
+        pytest.param(
+            "26.7.6_9",
+            "26.7.6_9",
+            "update",
+            [{"name": "opnsense", "new_version": "26.7.6_9"}],
+            None,
+            "off",
+            id="equal-package-version",
+        ),
+        pytest.param(
+            "26.7.6_10",
+            "26.7.6_10",
+            "update",
+            [{"name": "opnsense", "new_version": "26.7.6_9"}],
+            None,
+            "off",
+            id="older-package-version",
+        ),
+        pytest.param(
+            "26.7.6_9",
+            "26.7.6_9",
+            "update",
+            [{"name": "opnsense", "new_version": "26.7.6_10"}],
+            None,
+            "on",
+            id="newer-package-version",
+        ),
+        pytest.param("26.7.6_10", "26.7.6", "upgrade", None, "27.1", "on", id="major-upgrade"),
+        pytest.param(None, "26.7.6_9", "none", None, None, None, id="missing-installed"),
+        pytest.param("26.7.6_9", None, "none", None, None, None, id="missing-latest"),
+        pytest.param(
+            "custom-build", "another-build", "none", None, None, "on", id="unknown-versions"
+        ),
+    ],
+)
+def test_firmware_entity_state_compares_raw_hotfix_versions(
+    firmware_install_entity: OPNsenseFirmwareUpdatesAvailableUpdate,
+    installed: str | None,
+    latest: str | None,
+    status: str,
+    packages: list[dict[str, str]] | None,
+    major: str | None,
+    expected_state: str | None,
+) -> None:
+    """Expose real update availability through Home Assistant's entity state.
+
+    Args:
+        firmware_install_entity (OPNsenseFirmwareUpdatesAvailableUpdate): Update entity.
+        installed (str | None): Raw installed firmware version.
+        latest (str | None): Raw advertised firmware version.
+        status (str): Firmware availability status.
+        packages (list[dict[str, str]] | None): Package upgrade candidates.
+        major (str | None): Available major firmware version.
+        expected_state (str | None): Expected public Home Assistant state.
+    """
+    entity = firmware_install_entity
+    entity.coordinator.data = _firmware_update_state(
+        product_version=installed,
+        product_latest=latest,
+        product_series="26.7",
+        status=status,
+        upgrade_packages=packages,
+        upgrade_major_version=major,
+    )
+    object.__setattr__(entity, "async_write_ha_state", lambda: None)
+
+    entity._handle_coordinator_update()
+
+    assert entity.state == expected_state
+    assert entity.installed_version == installed
 
 
 @pytest.mark.asyncio
