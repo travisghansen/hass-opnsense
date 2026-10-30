@@ -71,8 +71,21 @@ jobs:
 
       - name: Regenerate uv lock
         if: steps.versions.outputs.update_needed == 'true'
-        # PyPI discovery can see a new release before the restored uv cache does.
-        run: uv lock --refresh-package aiopnsense
+        # PyPI's JSON API can advertise a release before its simple index does.
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..5}; do
+            if uv lock --refresh-package aiopnsense; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "::error::Failed to regenerate uv.lock after 5 attempts."
+              exit 1
+            fi
+            echo "Lock attempt $attempt failed; retrying in 30 seconds for PyPI propagation."
+            sleep 30
+          done
 
       - name: Build aiopnsense release notes
         if: steps.versions.outputs.update_needed == 'true'
