@@ -141,6 +141,50 @@ async def test_async_install_reports_failure_without_reboot(
 
 
 @pytest.mark.parametrize(
+    ("major_target", "target_present"),
+    [
+        pytest.param(None, False, id="missing"),
+        pytest.param(None, True, id="none"),
+        pytest.param("", True, id="empty"),
+        pytest.param("   ", True, id="whitespace"),
+        pytest.param(27.1, True, id="non-string"),
+        pytest.param("invalid-version", True, id="invalid-version"),
+        pytest.param("26.7.8", True, id="current-version"),
+        pytest.param("26.7.7", True, id="older-version"),
+    ],
+)
+async def test_async_install_rejects_invalid_major_upgrade_target(
+    firmware_install_entity: OPNsenseFirmwareUpdatesAvailableUpdate,
+    major_target: Any,
+    target_present: bool,
+) -> None:
+    """Reject unverifiable or non-newer major upgrades before contacting the client.
+
+    Args:
+        firmware_install_entity (OPNsenseFirmwareUpdatesAvailableUpdate): Update entity.
+        major_target (Any): Raw major-upgrade target to validate.
+        target_present (bool): Whether the major target field exists in firmware state.
+    """
+    entity = firmware_install_entity
+    client: Any = entity._client
+    entity.coordinator.data = _firmware_update_state(
+        product_version="26.7.8",
+        product_latest="26.7.8",
+        product_series="26.7",
+        status="upgrade",
+    )
+    firmware_update_info: dict[str, Any] = entity.coordinator.data["firmware_update_info"]
+    if target_present:
+        firmware_update_info["upgrade_major_version"] = major_target
+
+    with pytest.raises(HomeAssistantError, match="major upgrade target"):
+        await entity.async_install()
+
+    client.install_firmware.assert_not_awaited()
+    client.system_reboot.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
     ("invalid", "requested_version"),
     [
         pytest.param("state", None, id="missing-state"),

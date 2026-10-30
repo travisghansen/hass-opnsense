@@ -423,7 +423,20 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
         upgrade_type = dict_get(state, "firmware_update_info.status")
         if upgrade_type not in {"update", "upgrade"} or not self._client:
             raise HomeAssistantError("Cannot update firmware: no actionable update or client")
-        _, latest_version, _ = self._get_versions(state)
+        installed_version, latest_version, _ = self._get_versions(state)
+        if upgrade_type == "upgrade":
+            major_target = dict_get(state, "firmware_update_info.upgrade_major_version")
+            if (
+                not isinstance(major_target, str)
+                or not major_target.strip()
+                or major_target != major_target.strip()
+                or not installed_version
+                or firmware_is_newer(major_target, installed_version) is not True
+            ):
+                raise HomeAssistantError(
+                    "Cannot update firmware: major upgrade target is invalid or not newer "
+                    "than installed firmware"
+                )
         if not latest_version:
             raise HomeAssistantError("Cannot update firmware: target version is unavailable")
         if version is not None and version != latest_version:
