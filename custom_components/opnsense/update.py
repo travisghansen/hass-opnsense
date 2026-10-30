@@ -181,8 +181,8 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             return
         self._available = True
 
-        self._attr_installed_version = self._get_installed_version(state)
         product_version, product_latest, product_series = self._get_versions(state)
+        self._attr_installed_version = product_version
         self._raw_latest_version = product_latest
         self._attr_latest_version = product_latest.replace("_", ".") if product_latest else None
 
@@ -255,18 +255,6 @@ class OPNsenseFirmwareUpdatesAvailableUpdate(OPNsenseUpdate):
             return False
         status = firmware_update_info.get("status")
         return isinstance(status, str) and status not in {"", "error"}
-
-    def _get_installed_version(self, state: MutableMapping[str, Any]) -> str | None:
-        """Return the installed firmware version.
-
-        Args:
-            state (MutableMapping[str, Any]): Current OPNsense state payload.
-
-        Returns:
-            str | None: The installed firmware version, or ``None`` when unavailable.
-        """
-        product_version = dict_get(state, "firmware_update_info.product.product_version")
-        return product_version if isinstance(product_version, str) else None
 
     def _get_versions(
         self, state: MutableMapping[str, Any]

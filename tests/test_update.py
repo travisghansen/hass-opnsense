@@ -1049,26 +1049,6 @@ def test_get_release_notes_malformed_state_returns_none(
     assert ent._get_release_notes({"firmware_update_info": []}, None, None) is None
 
 
-def test_get_installed_version_none_on_error(
-    make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
-) -> None:
-    """_get_installed_version returns None on malformed or missing state.
-
-    Args:
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-        dummy_coordinator (MagicMock): Coordinator supplying simulated OPNsense data.
-    """
-    entry = make_config_entry()
-    ent = OPNsenseFirmwareUpdatesAvailableUpdate(
-        config_entry=entry,
-        coordinator=dummy_coordinator,
-        entity_description=UpdateEntityDescription(
-            key="firmware.update_available", name="Firmware"
-        ),
-    )
-    assert ent._get_installed_version({}) is None
-
-
 @pytest.mark.asyncio
 async def test_async_release_notes_returns_value(
     make_config_entry: Callable[..., MockConfigEntry], dummy_coordinator: MagicMock
