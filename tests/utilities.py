@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, Final
+from datetime import datetime
+from typing import Any, Final, Literal
 
 from aiopnsense import OPNsenseClient
 from homeassistant.const import CONF_VERIFY_SSL
@@ -126,6 +127,7 @@ def arp_ndp_entry(
     interface: object = None,
     expires: object = None,
     arp_type: object = None,
+    permanent: bool = False,
 ) -> OPNsenseClient.ArpNdpEntry:
     """Build a client neighbor entry from already-normalized values.
 
@@ -145,6 +147,7 @@ def arp_ndp_entry(
         interface (object): Copied interface metadata.
         expires (object): Copied raw expiration metadata.
         arp_type (object): Copied raw neighbor entry type.
+        permanent (bool): Whether the client marked this row as permanent.
 
     Returns:
         OPNsenseClient.ArpNdpEntry: Entry with the supplied fields.
@@ -160,6 +163,7 @@ def arp_ndp_entry(
         interface=interface,
         expires=expires,
         arp_type=arp_type,
+        permanent=permanent,
     )
 
 
@@ -168,6 +172,7 @@ def arp_ndp_table(
     *,
     unparsed_row_count: int = 0,
     raw_rows: Sequence[object] = (),
+    fetched_at: datetime | None = None,
 ) -> OPNsenseClient.ArpNdpTable:
     """Build a client neighbor table from explicit entries.
 
@@ -175,15 +180,56 @@ def arp_ndp_table(
         entries (Sequence[OPNsenseClient.ArpNdpEntry]): Normalized entries in table order.
         unparsed_row_count (int): Number of source rows that were not mappings.
         raw_rows (Sequence[object]): Raw rows kept for diagnostics only.
+        fetched_at (datetime | None): Fixed UTC-aware acquisition time, or None to use the
+            library's current UTC timestamp.
 
     Returns:
         OPNsenseClient.ArpNdpTable: Table built from the supplied values.
     """
-    return OPNsenseClient.ArpNdpTable(
+    table = OPNsenseClient.ArpNdpTable(
         entries=tuple(entries),
         unparsed_row_count=unparsed_row_count,
         raw_rows=tuple(raw_rows),
     )
+    if fetched_at is not None:
+        return OPNsenseClient.ArpNdpTable(
+            entries=table.entries,
+            unparsed_row_count=table.unparsed_row_count,
+            raw_rows=table.raw_rows,
+            fetched_at=fetched_at,
+        )
+    return table
+
+
+def host_observation(mac: str, ip: str, last_seen: datetime) -> OPNsenseClient.HostObservation:
+    """Build one already-normalized typed host observation for client-boundary tests.
+
+    Args:
+        mac (str): Canonical lowercase MAC address.
+        ip (str): Compressed IPv4 or IPv6 address.
+        last_seen (datetime): UTC-aware discovery timestamp.
+
+    Returns:
+        OPNsenseClient.HostObservation: Observation with the supplied normalized values.
+    """
+    return OPNsenseClient.HostObservation(mac=mac, ip=ip, last_seen=last_seen)
+
+
+def host_observations(
+    source: Literal["discovery", "arp-ndp"],
+    entries: Sequence[OPNsenseClient.HostObservation] = (),
+) -> OPNsenseClient.HostObservations:
+    """Build a typed host-observation response for a coordinator or evidence test.
+
+    Args:
+        source (Literal["discovery", "arp-ndp"]): Observation source discriminator returned by
+            the client.
+        entries (Sequence[OPNsenseClient.HostObservation]): Validated timestamped observations.
+
+    Returns:
+        OPNsenseClient.HostObservations: Immutable observation response.
+    """
+    return OPNsenseClient.HostObservations(source=source, entries=tuple(entries))
 
 
 def evidence_snapshot(
@@ -192,7 +238,7 @@ def evidence_snapshot(
     ndp: OPNsenseClient.ArpNdpTable | None = None,
     arp_current: bool = True,
     ndp_current: bool = True,
-    observations: object = None,
+    observations: OPNsenseClient.HostObservations | None = None,
 ) -> DeviceTrackerEvidenceSnapshot:
     """Build a tracker snapshot from already-normalized tables.
 
@@ -201,7 +247,7 @@ def evidence_snapshot(
         ndp (OPNsenseClient.ArpNdpTable | None): Effective NDP table, or None when absent.
         arp_current (bool): Whether ``arp`` was fetched by the current refresh.
         ndp_current (bool): Whether ``ndp`` was fetched by the current refresh.
-        observations (object): Raw host-observation response from the current refresh.
+        observations (OPNsenseClient.HostObservations | None): Typed host-observation response.
 
     Returns:
         DeviceTrackerEvidenceSnapshot: Snapshot built by the production constructor.

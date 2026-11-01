@@ -10,7 +10,13 @@ from custom_components.opnsense.device_tracker_evidence import (
     poll_arp_ndp_provenance,
     setup_arp_ndp_provenance,
 )
-from tests.utilities import arp_ndp_entry, arp_ndp_table, evidence_snapshot
+from tests.utilities import (
+    arp_ndp_entry,
+    arp_ndp_table,
+    evidence_snapshot,
+    host_observation,
+    host_observations,
+)
 
 MAC = "aa:bb:cc:dd:ee:01"
 
@@ -21,7 +27,9 @@ def test_one_snapshot_evaluates_freshness_at_each_consumer_time() -> None:
     snapshot = evidence_snapshot(
         arp=arp_ndp_table(),
         ndp=arp_ndp_table([arp_ndp_entry(MAC, ipv6_address="2001:db8::1")]),
-        observations={"source": "discovery", "rows": [{"mac": MAC, "last_seen": observed_at}]},
+        observations=host_observations(
+            "discovery", [host_observation(MAC, "192.0.2.1", observed_at)]
+        ),
     )
     max_age = timedelta(minutes=20)
 
@@ -40,10 +48,8 @@ def test_snapshot_isolates_consumers_from_later_source_mutation() -> None:
     """A published scan must keep its evidence when caller-owned inputs change."""
     observed_at = datetime(2026, 10, 31, 12, tzinfo=UTC)
     ndp_entries = [arp_ndp_entry(MAC, ipv6_address="2001:db8::1")]
-    observations: dict[str, object] = {
-        "source": "discovery",
-        "rows": [{"mac": MAC, "last_seen": observed_at}],
-    }
+    observation_entries = [host_observation(MAC, "192.0.2.1", observed_at)]
+    observations = host_observations("discovery", observation_entries)
     snapshot = evidence_snapshot(
         arp=arp_ndp_table(),
         ndp=arp_ndp_table(ndp_entries),
@@ -51,7 +57,7 @@ def test_snapshot_isolates_consumers_from_later_source_mutation() -> None:
     )
 
     ndp_entries.clear()
-    observations.clear()
+    observation_entries.clear()
 
     assert snapshot.addresses_for_mac("ndp", MAC) == ("2001:db8::1",)
     assert snapshot.ndp.authoritative
@@ -140,18 +146,30 @@ def test_tuple_shaped_persisted_inventory_cannot_retain_membership() -> None:
 
 
 @pytest.mark.parametrize(
-    ("expired", "status"),
-    [(False, "present"), (True, "absent")],
+    ("expired", "permanent", "status"),
+    [(False, False, "present"), (True, False, "absent"), (True, True, "absent")],
 )
-def test_arp_row_is_fresh_only_when_not_expired(expired: bool, status: str) -> None:
+def test_arp_row_is_fresh_only_when_not_expired(
+    expired: bool, permanent: bool, status: str
+) -> None:
     """Only a non-expired ARP row establishes presence; an expired row does not.
 
     Args:
         expired (bool): Library-normalized expiration state of the only ARP row.
+        permanent (bool): Whether the row is marked permanent for expiry display.
         status (str): Expected presence classification.
     """
     snapshot = evidence_snapshot(
-        arp=arp_ndp_table([arp_ndp_entry(MAC, ipv4_address="192.0.2.1", expired=expired)]),
+        arp=arp_ndp_table(
+            [
+                arp_ndp_entry(
+                    MAC,
+                    ipv4_address="192.0.2.1",
+                    expired=expired,
+                    permanent=permanent,
+                )
+            ]
+        ),
         ndp=arp_ndp_table(),
     )
 
@@ -177,7 +195,9 @@ def test_expired_row_yields_to_other_current_presence_evidence() -> None:
     ndp_snapshot = evidence_snapshot(
         arp=arp_ndp_table([arp_ndp_entry(MAC, ipv4_address="192.0.2.1", expired=True)]),
         ndp=arp_ndp_table([arp_ndp_entry(MAC, ipv6_address="2001:db8::1")]),
-        observations={"source": "discovery", "rows": [{"mac": MAC, "last_seen": observed_at}]},
+        observations=host_observations(
+            "discovery", [host_observation(MAC, "2001:db8::1", observed_at)]
+        ),
     )
     now = observed_at + timedelta(seconds=1)
     max_age = timedelta(minutes=20)
@@ -218,3 +238,69 @@ def test_partial_table_keeps_valid_entries_without_authoritative_absence() -> No
         ).arp_macs
         == ()
     )
+
+
+@pytest.mark.parametrize(
+    ("partial_family", "other_current"),
+    [
+        pytest.param("arp", True, id="partial-arp-plus-empty-ndp"),
+        pytest.param("ndp", True, id="partial-ndp-plus-empty-arp"),
+        pytest.param("arp", False, id="partial-arp-plus-failed-ndp"),
+        pytest.param("ndp", False, id="partial-ndp-plus-failed-arp"),
+    ],
+)
+def test_incomplete_current_family_cannot_prove_absence_or_clear_addresses(
+    partial_family: str,
+    other_current: bool,
+) -> None:
+    """Partial family results leave omitted identities and their addresses uncertain.
+
+    Args:
+        partial_family (str): Family whose current table has an unparsed row.
+        other_current (bool): Whether the other family returned a complete empty table.
+    """
+    partial_table = arp_ndp_table(unparsed_row_count=1)
+    empty_table = arp_ndp_table()
+    snapshot = evidence_snapshot(
+        arp=partial_table if partial_family == "arp" else empty_table if other_current else None,
+        ndp=partial_table if partial_family == "ndp" else empty_table if other_current else None,
+        arp_current=partial_family == "arp" or other_current,
+        ndp_current=partial_family == "ndp" or other_current,
+    )
+
+    presence = snapshot.presence_for_mac(
+        MAC,
+        now=datetime(2026, 10, 31, 12, tzinfo=UTC),
+        max_age=timedelta(minutes=20),
+        previous_ipv4_addresses=["192.0.2.10"],
+        previous_ipv6_addresses=["2001:db8::10"],
+    )
+
+    assert presence.status == "unknown"
+    assert presence.ipv4_addresses == (
+        ("192.0.2.10",) if partial_family == "arp" or not other_current else ()
+    )
+    assert presence.ipv6_addresses == (
+        ("2001:db8::10",) if partial_family == "ndp" or not other_current else ()
+    )
+
+
+def test_partial_ndp_positive_evidence_still_confirms_presence() -> None:
+    """A validated NDP row and fresh discovery timestamp override table incompleteness."""
+    observed_at = datetime(2026, 10, 31, 12, tzinfo=UTC)
+    snapshot = evidence_snapshot(
+        arp=arp_ndp_table(),
+        ndp=arp_ndp_table(
+            [arp_ndp_entry(MAC, ipv6_address="2001:db8::1")],
+            unparsed_row_count=1,
+        ),
+        observations=host_observations(
+            "discovery", [host_observation(MAC, "2001:db8::1", observed_at)]
+        ),
+    )
+
+    presence = snapshot.presence_for_mac(
+        MAC, now=observed_at + timedelta(seconds=1), max_age=timedelta(minutes=20)
+    )
+
+    assert presence.status == "present"

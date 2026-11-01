@@ -72,7 +72,7 @@ _VPN_COUNTER_GROUPS: dict[str, tuple[str, ...]] = {
 _OPTIONAL_TRACKER_METHODS: dict[str, str] = {
     "get_arp_entries": "ARP",
     "get_ndp_entries": "NDP",
-    "get_host_observations": "Host observation",
+    "get_host_observation_entries": "Host observation",
 }
 
 
@@ -493,7 +493,12 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         )
         if self._ndp_table_needs_observations(device_tracker_evidence):
             observation_state = await self._get_states(
-                [{"function": "get_host_observations", "state_key": "host_observations"}]
+                [
+                    {
+                        "function": "get_host_observation_entries",
+                        "state_key": "host_observations",
+                    }
+                ]
             )
             device_tracker_evidence = device_tracker_evidence.with_observations(
                 observation_state.get("host_observations")

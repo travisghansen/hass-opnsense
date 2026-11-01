@@ -23,6 +23,7 @@ class ArpNdpTableEvidence:
     authoritative: bool
     has_payload: bool
     is_ndp: bool
+    fetched_at: datetime | None
     current_entries: tuple[OPNsenseClient.ArpNdpEntry, ...] | None
     entries: tuple[OPNsenseClient.ArpNdpEntry, ...]
 
@@ -87,7 +88,7 @@ class DeviceTrackerEvidenceSnapshot:
         ndp: OPNsenseClient.ArpNdpTable | None = None,
         arp_current: bool = False,
         ndp_current: bool = False,
-        observations: object = None,
+        observations: OPNsenseClient.HostObservations | None = None,
     ) -> DeviceTrackerEvidenceSnapshot:
         """Build an immutable snapshot from the effective normalized tables.
 
@@ -98,7 +99,8 @@ class DeviceTrackerEvidenceSnapshot:
                 current refresh or retained from an earlier one.
             arp_current (bool): Whether ``arp`` was fetched by the current refresh.
             ndp_current (bool): Whether ``ndp`` was fetched by the current refresh.
-            observations (object): Raw host-observation response from the current refresh.
+            observations (OPNsenseClient.HostObservations | None): Typed host-observation response
+                from the current refresh, if available.
 
         Returns:
             DeviceTrackerEvidenceSnapshot: Family evidence and timestamped observations. A
@@ -163,11 +165,14 @@ class DeviceTrackerEvidenceSnapshot:
                 return True
         return False
 
-    def with_observations(self, observations: object) -> DeviceTrackerEvidenceSnapshot:
+    def with_observations(
+        self, observations: OPNsenseClient.HostObservations | None
+    ) -> DeviceTrackerEvidenceSnapshot:
         """Return the same normalized ARP/NDP snapshot with current observation timestamps.
 
         Args:
-            observations (object): Raw host-observation response from the current refresh.
+            observations (OPNsenseClient.HostObservations | None): Typed host-observation response
+                from the current refresh, if available.
 
         Returns:
             DeviceTrackerEvidenceSnapshot: Snapshot reusing its family rows and replacing the
@@ -215,9 +220,9 @@ class DeviceTrackerEvidenceSnapshot:
             now (datetime): Aware time sampled while processing this entity refresh.
             max_age (timedelta): Maximum accepted host-observation age.
             previous_ipv4_addresses (Sequence[object]): Last published IPv4 inventory, retained
-                while its table is unavailable.
+                while its table is unavailable or incomplete.
             previous_ipv6_addresses (Sequence[object]): Last published IPv6 inventory, retained
-                while its table is unavailable.
+                while its table is unavailable or incomplete.
 
         Returns:
             DeviceTrackerPresenceEvidence: Presence classification and effective metadata values.
@@ -227,18 +232,32 @@ class DeviceTrackerEvidenceSnapshot:
         ndp_presence_entries = self.entries_for_mac("ndp", mac)
         arp_failed = not self.arp.successful
         ndp_failed = not self.ndp.successful
-        ipv4_addresses = tuple(_saved_addresses(previous_ipv4_addresses) if arp_failed else ())
-        if not arp_failed:
-            ipv4_addresses = self.addresses_for_mac("arp", mac)
+        observed_ipv4_addresses = self.addresses_for_mac("arp", mac)
+        if self.arp.authoritative:
+            ipv4_addresses = observed_ipv4_addresses
+        elif arp_failed:
+            ipv4_addresses = tuple(_saved_addresses(previous_ipv4_addresses))
+        else:
+            ipv4_addresses = tuple(
+                dict.fromkeys(
+                    list(observed_ipv4_addresses) + _saved_addresses(previous_ipv4_addresses)
+                )
+            )
         observed_ipv6_addresses = self.addresses_for_mac("ndp", mac)
-        if ndp_failed:
+        if self.ndp.authoritative:
+            ipv6_addresses = observed_ipv6_addresses
+        elif ndp_failed:
             ipv6_addresses = tuple(
                 dict.fromkeys(
                     _saved_addresses(previous_ipv6_addresses) + list(observed_ipv6_addresses)
                 )
             )
         else:
-            ipv6_addresses = observed_ipv6_addresses
+            ipv6_addresses = tuple(
+                dict.fromkeys(
+                    list(observed_ipv6_addresses) + _saved_addresses(previous_ipv6_addresses)
+                )
+            )
 
         source = self.ndp_presence_source(mac)
         has_observation = source == "host_discovery"
@@ -253,6 +272,8 @@ class DeviceTrackerEvidenceSnapshot:
             status: PresenceStatus = "present"
         elif (
             observations_failed
+            or (self.arp.successful and not self.arp.authoritative)
+            or (self.ndp.successful and not self.ndp.authoritative)
             or (arp_failed and ndp_failed)
             or (arp_failed and bool(ipv4_addresses))
             or (ndp_failed and bool(ipv6_addresses))
@@ -487,45 +508,31 @@ def _arp_ndp_table_evidence(
         authoritative=successful and rows_complete,
         has_payload=table is not None,
         is_ndp=ndp,
+        fetched_at=table.fetched_at if table is not None else None,
         current_entries=entries if successful else None,
         entries=entries,
     )
 
 
-def _index_discovery_observations(observations: object) -> Mapping[str, datetime] | None:
-    """Index newest valid discovery timestamps into an immutable mapping.
+def _index_discovery_observations(
+    observations: OPNsenseClient.HostObservations | None,
+) -> Mapping[str, datetime] | None:
+    """Index newest discovery timestamps by library-normalized MAC.
 
     Args:
-        observations (object): Raw host-observation payload returned by the client.
+        observations (OPNsenseClient.HostObservations | None): Typed observations from the client.
 
     Returns:
-        Mapping[str, datetime] | None: Latest aware timestamp per normalized MAC when the
-            discovery source has a well-formed rows list, otherwise ``None``.
+        Mapping[str, datetime] | None: Latest timestamp per MAC for discovery observations, or
+            ``None`` when the result is unavailable or came from ARP/NDP tables.
     """
-    if (
-        not isinstance(observations, Mapping)
-        or observations.get("source") != "discovery"
-        or not isinstance(observations.get("rows"), list)
-    ):
+    if observations is None or observations.source != "discovery":
         return None
     latest: dict[str, datetime] = {}
-    for row in observations["rows"]:
-        if not isinstance(row, Mapping):
-            continue
-        mac = row.get("mac")
-        last_seen = row.get("last_seen")
-        if (
-            not isinstance(mac, str)
-            or not isinstance(last_seen, datetime)
-            or not _is_aware(last_seen)
-        ):
-            continue
-        normalized_mac = normalize_mac_address(mac)
-        if normalized_mac is None:
-            continue
-        previous = latest.get(normalized_mac)
-        if previous is None or last_seen > previous:
-            latest[normalized_mac] = last_seen
+    for entry in observations.entries:
+        previous = latest.get(entry.mac)
+        if previous is None or entry.last_seen > previous:
+            latest[entry.mac] = entry.last_seen
     return MappingProxyType(latest)
 
 

@@ -44,7 +44,13 @@ from custom_components.opnsense.device_tracker import OPNsenseScannerEntity
 from custom_components.opnsense.device_tracker_evidence import DeviceTrackerEvidenceSnapshot
 from custom_components.opnsense.entity import OPNsenseBaseEntity
 from custom_components.opnsense.helpers import device_belongs_to_config_entry
-from tests.utilities import arp_ndp_entry, arp_ndp_table, evidence_snapshot
+from tests.utilities import (
+    arp_ndp_entry,
+    arp_ndp_table,
+    evidence_snapshot,
+    host_observation,
+    host_observations,
+)
 
 
 async def _restore_state(entity: OPNsenseScannerEntity) -> None:
@@ -100,14 +106,15 @@ def _publish_device_tracker_evidence(coordinator: Any) -> None:
     if not isinstance(tables, _ScanTables):
         tables = _ScanTables()
     observation_index = getattr(coordinator, "host_observation_times", None)
-    observation_payload: dict[str, object] | None = None
+    observation_payload: OPNsenseClient.HostObservations | None = None
     if isinstance(observation_index, Mapping):
-        observation_payload = {
-            "source": "discovery",
-            "rows": [
-                {"mac": mac, "last_seen": last_seen} for mac, last_seen in observation_index.items()
+        observation_payload = host_observations(
+            "discovery",
+            [
+                host_observation(mac, "192.0.2.1", last_seen)
+                for mac, last_seen in observation_index.items()
             ],
-        }
+        )
     coordinator.device_tracker_evidence = evidence_snapshot(
         arp=tables.arp,
         ndp=tables.ndp,
@@ -1032,24 +1039,29 @@ def test_entity_registry_enabled_default_falls_back_for_disabled_mac_device(
 
 
 @pytest.mark.parametrize(
-    "arp_table",
+    ("arp_table", "expected_available"),
     [
-        arp_ndp_table(unparsed_row_count=1),
-        arp_ndp_table([arp_ndp_entry("dd:ee:ff", valid_mac=None)]),
+        pytest.param(arp_ndp_table(unparsed_row_count=1), False, id="malformed-row-incomplete"),
+        pytest.param(
+            arp_ndp_table([arp_ndp_entry("dd:ee:ff", valid_mac=None)]),
+            True,
+            id="nonmatching-mapping-row-complete",
+        ),
     ],
-    ids=["malformed_row", "nonmatching_mapping_row"],
 )
-def test_handle_coordinator_update_skips_unusable_arp_entries(
+def test_handle_coordinator_update_does_not_infer_absence_from_incomplete_arp(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
     arp_table: OPNsenseClient.ArpNdpTable,
+    expected_available: bool,
 ) -> None:
-    """Malformed or nonmatching ARP rows should be skipped while searching for the tracked MAC.
+    """Only a complete ARP table can establish absence when no matching row is present.
 
     Args:
         coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-        arp_table (OPNsenseClient.ArpNdpTable): ARP table without a row for the tracked MAC.
+        arp_table (OPNsenseClient.ArpNdpTable): ARP table without a matching tracker row.
+        expected_available (bool): Whether the scan has enough evidence to establish away state.
     """
     ent = _make_scanner_entity(
         coordinator=coordinator,
@@ -1061,7 +1073,7 @@ def test_handle_coordinator_update_skips_unusable_arp_entries(
     _handle_coordinator_update(ent)
 
     assert ent.is_connected is False
-    assert ent.available is True
+    assert ent.available is expected_available
 
 
 @pytest.mark.parametrize(
@@ -1520,7 +1532,7 @@ def test_valid_ndp_sighting_survives_unrelated_malformed_row(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Usable rotating IPv6 sightings refresh presence and prune old addresses.
+    """Partial NDP rows refresh presence while retaining unprunable prior addresses.
 
     Args:
         previously_observed (bool): Whether the tracker already has a saved IPv6 observation.
@@ -1571,7 +1583,9 @@ def test_valid_ndp_sighting_survives_unrelated_malformed_row(
     attributes = entity.extra_state_attributes
     assert attributes is not None
     assert attributes["last_known_connected_time"].timestamp() == 1_900_000_000.0
-    assert attributes["ipv6_addresses"] == ["2001:db8::2"]
+    assert attributes["ipv6_addresses"] == (
+        ["2001:db8::2", "2001:db8::1"] if previously_observed else ["2001:db8::2"]
+    )
 
     coordinator.data = {"update_time": 2_000_000_000.0}
     coordinator.scan_tables = _ScanTables(
@@ -1590,16 +1604,20 @@ def test_valid_ndp_sighting_survives_unrelated_malformed_row(
     assert entity.is_connected is True
     attributes = entity.extra_state_attributes
     assert attributes is not None
-    assert attributes["ipv6_addresses"] == ["2001:db8::3"]
+    assert attributes["ipv6_addresses"] == (
+        ["2001:db8::3", "2001:db8::2", "2001:db8::1"]
+        if previously_observed
+        else ["2001:db8::3", "2001:db8::2"]
+    )
 
 
 @pytest.mark.parametrize("consider_home", [0, 30])
-def test_successful_ndp_inventory_ages_ipv6_tracker_when_mac_is_missing(
+def test_incomplete_ndp_inventory_preserves_tracker_until_complete_scan(
     consider_home: int,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """An incomplete unrelated row does not prevent a successful departure observation.
+    """An incomplete NDP table leaves departure unknown until a complete scan arrives.
 
     Args:
         consider_home (int): Presence grace period applied to the previous sighting.
@@ -1641,6 +1659,17 @@ def test_successful_ndp_inventory_ages_ipv6_tracker_when_mac_is_missing(
         arp=arp_ndp_table(),
         ndp=arp_ndp_table([arp_ndp_entry(None, valid_mac=None, ipv6_address="2001:db8::3")]),
     )
+    _handle_coordinator_update(entity)
+
+    assert entity.available is False
+    assert entity.is_connected is True
+    assert entity.ip_address == "2001:db8::2"
+    attributes = entity.extra_state_attributes
+    assert attributes is not None
+    assert attributes["last_known_connected_time"] == first_observation_time
+    assert attributes["ipv6_addresses"] == ["2001:db8::2"]
+
+    coordinator.scan_tables = _ScanTables(arp=arp_ndp_table(), ndp=arp_ndp_table())
     _handle_coordinator_update(entity)
 
     assert entity.available is True
@@ -2281,6 +2310,95 @@ def test_handle_coordinator_update_exposes_arp_expiry_only_when_valid(
         assert isinstance(attributes.get("expires"), datetime)
     else:
         assert "expires" not in attributes
+
+
+def test_relative_arp_expiry_stays_anchored_to_table_fetch_time(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Repeated entity updates do not move a relative ARP expiry forward.
+
+    Args:
+        coordinator (MagicMock): Coordinator supplying the normalized table.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake config entry.
+    """
+    fetched_at = datetime(2026, 10, 31, 12, tzinfo=UTC)
+    ent = _make_scanner_entity(
+        coordinator,
+        make_config_entry,
+        scan_tables=_ScanTables(
+            arp=arp_ndp_table(
+                [
+                    arp_ndp_entry(
+                        "aa:bb:cc",
+                        ipv4_address="192.0.2.1",
+                        expires=30,
+                    )
+                ],
+                fetched_at=fetched_at,
+            )
+        ),
+    )
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+
+    _handle_coordinator_update(ent)
+    attributes = ent.extra_state_attributes
+    assert attributes is not None
+    first_expiry = attributes["expires"]
+    _handle_coordinator_update(ent)
+
+    assert first_expiry == fetched_at.astimezone() + timedelta(seconds=30)
+    attributes = ent.extra_state_attributes
+    assert attributes is not None
+    assert attributes["expires"] == first_expiry
+
+
+def test_permanent_arp_row_displays_never_even_with_relative_expiry(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """The library's permanent flag takes precedence over a numeric expiry display.
+
+    Args:
+        coordinator (MagicMock): Coordinator supplying the normalized table.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake config entry.
+    """
+    ent = _make_scanner_entity(
+        coordinator,
+        make_config_entry,
+        scan_tables=_ScanTables(
+            arp=arp_ndp_table(
+                [
+                    arp_ndp_entry(
+                        "aa:bb:cc",
+                        ipv4_address="192.0.2.1",
+                        expires=30,
+                        permanent=True,
+                    )
+                ]
+            )
+        ),
+    )
+    object.__setattr__(ent, "async_write_ha_state", MagicMock())
+
+    _handle_coordinator_update(ent)
+
+    attributes = ent.extra_state_attributes
+    assert attributes is not None
+    assert attributes["expires"] == "Never"
+
+
+def test_relative_arp_expiry_is_omitted_without_an_aware_fetch_time() -> None:
+    """A malformed or absent acquisition timestamp cannot produce a moving expiry."""
+    assert (
+        dt_mod._arp_expires_attribute(30, fetched_at=None, permanent=False) is None
+        and dt_mod._arp_expires_attribute(
+            30,
+            fetched_at=datetime(2026, 10, 31, 12),  # noqa: DTZ001
+            permanent=False,
+        )
+        is None
+    )
 
 
 def test_handle_coordinator_update_ip_typeerror(
@@ -3452,11 +3570,10 @@ async def test_coordinator_observation_index_confirms_restored_ndp_tracker(
     client.get_ndp_entries = AsyncMock(
         return_value=arp_ndp_table([arp_ndp_entry(mac, ipv6_address="2001:db8::1")])
     )
-    client.get_host_observations = AsyncMock(
-        return_value={
-            "source": "discovery",
-            "rows": [{"mac": mac, "ip": "192.0.2.1", "last_seen": datetime.now(UTC)}],
-        }
+    client.get_host_observation_entries = AsyncMock(
+        return_value=host_observations(
+            "discovery", [host_observation(mac, "192.0.2.1", datetime.now(UTC))]
+        )
     )
     client.get_query_counts = AsyncMock(return_value=0)
     client.reset_query_counts = AsyncMock(
@@ -3499,7 +3616,7 @@ async def test_coordinator_observation_index_confirms_restored_ndp_tracker(
 @pytest.mark.parametrize("saved_state_kind", ["brand_new", "restored_home"])
 @pytest.mark.parametrize(
     "observation_case",
-    ["unavailable_index", "empty_index", "unobserved_mac", "invalid_index"],
+    ["unavailable_index", "empty_index", "unobserved_mac"],
 )
 @pytest.mark.asyncio
 async def test_first_ndp_sighting_requires_current_same_mac_observation(
@@ -3512,16 +3629,15 @@ async def test_first_ndp_sighting_requires_current_same_mac_observation(
 
     Args:
         saved_state_kind (str): Whether the tracker is new or restores a previously saved home state.
-        observation_case (str): Unavailable, empty, malformed, or nonmatching observation index.
+        observation_case (str): Unavailable, empty, or nonmatching observation index.
         coordinator (MagicMock): Coordinator supplying API boundary state.
         make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
     """
     mac = "aa:bb:cc:dd:ee:01"
-    observation_times_by_case: dict[str, object] = {
+    observation_times_by_case: dict[str, dict[str, datetime] | None] = {
         "unavailable_index": None,
         "empty_index": {},
         "unobserved_mac": {"aa:bb:cc:dd:ee:02": datetime.now(UTC)},
-        "invalid_index": {mac: "not-a-timestamp"},
     }
     observation_times = observation_times_by_case[observation_case]
     coordinator.data = {}
@@ -3597,7 +3713,7 @@ async def test_old_firmware_ndp_metadata_does_not_confirm_presence_without_obser
         "reset_query_counts",
     ]
     if supports_host_observations:
-        methods.append("get_host_observations")
+        methods.append("get_host_observation_entries")
     client = MagicMock(spec=methods)
     client.get_device_unique_id = AsyncMock(return_value="dev1")
     client.get_host_firmware_version = AsyncMock(return_value=firmware_version)
@@ -3610,7 +3726,7 @@ async def test_old_firmware_ndp_metadata_does_not_confirm_presence_without_obser
         )
     )
     if supports_host_observations:
-        client.get_host_observations = AsyncMock(return_value=None)
+        client.get_host_observation_entries = AsyncMock(return_value=None)
     client.get_query_counts = AsyncMock(return_value=0)
     client.reset_query_counts = AsyncMock()
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})

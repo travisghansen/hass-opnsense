@@ -53,7 +53,7 @@ from custom_components.opnsense.const import (
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
-from tests.utilities import arp_ndp_entry, arp_ndp_table
+from tests.utilities import arp_ndp_entry, arp_ndp_table, host_observation, host_observations
 
 
 @pytest.mark.asyncio
@@ -1955,9 +1955,12 @@ async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
     client.get_host_firmware_version = AsyncMock(return_value="26.1")
     client.get_system_info = AsyncMock(return_value={})
     client.get_arp_entries = AsyncMock(side_effect=[arp_ndp_table(), arp_table])
-    host_observations = {"source": "discovery", "rows": []}
-    client.get_host_observations = AsyncMock(
-        side_effect=[host_observations, OPNsensePrivilegeMissing("Host discovery permission")]
+    host_observation_result = host_observations("discovery")
+    client.get_host_observation_entries = AsyncMock(
+        side_effect=[
+            host_observation_result,
+            OPNsensePrivilegeMissing("Host discovery permission"),
+        ]
     )
     client.get_ndp_entries = AsyncMock(
         side_effect=[previous_ndp_table, OPNsensePrivilegeMissing("NDP permission")]
@@ -2010,13 +2013,13 @@ async def test_dt_refresh_indexes_latest_discovery_time_and_clears_unavailable_s
     older = datetime(2026, 10, 15, 12, tzinfo=UTC)
     latest = datetime(2026, 10, 15, 13, tzinfo=UTC)
     refreshed = datetime(2026, 10, 15, 14, tzinfo=UTC)
-    discovery_rows = {
-        "source": "discovery",
-        "rows": [
-            {"mac": "AA-BB-CC-DD-EE-FF", "ip": "192.0.2.1", "last_seen": older},
-            {"mac": mac, "ip": "2001:db8::1", "last_seen": latest},
+    discovery_rows = host_observations(
+        "discovery",
+        [
+            host_observation(mac, "192.0.2.1", older),
+            host_observation(mac, "2001:db8::1", latest),
         ],
-    }
+    )
     client = MagicMock()
     client.get_device_unique_id = AsyncMock(return_value="id")
     client.get_host_firmware_version = AsyncMock(return_value="26.1")
@@ -2025,15 +2028,12 @@ async def test_dt_refresh_indexes_latest_discovery_time_and_clears_unavailable_s
     client.get_ndp_entries = AsyncMock(
         return_value=arp_ndp_table([arp_ndp_entry(mac, ipv6_address="2001:db8::1")])
     )
-    client.get_host_observations = AsyncMock(
+    client.get_host_observation_entries = AsyncMock(
         side_effect=[
             discovery_rows,
-            {
-                "source": "discovery",
-                "rows": [{"mac": mac, "ip": "192.0.2.2", "last_seen": refreshed}],
-            },
+            host_observations("discovery", [host_observation(mac, "192.0.2.2", refreshed)]),
             None,
-            {"source": "arp-ndp", "rows": []},
+            host_observations("arp-ndp"),
         ]
     )
     client.get_query_counts = AsyncMock(return_value=0)
@@ -2141,7 +2141,7 @@ async def test_dt_refresh_requests_arp_resolution_from_options(
     client.get_host_firmware_version = AsyncMock(return_value="26.1")
     client.get_system_info = AsyncMock(return_value={})
     client.get_arp_entries = AsyncMock(return_value=arp_ndp_table())
-    client.get_host_observations = AsyncMock(return_value=None)
+    client.get_host_observation_entries = AsyncMock(return_value=None)
     client.get_ndp_entries = AsyncMock(return_value=arp_ndp_table())
     client.get_query_counts = AsyncMock(return_value=0)
     client.reset_query_counts = AsyncMock()
@@ -2287,7 +2287,7 @@ def _dt_observation_coordinator(
     client.get_system_info = AsyncMock(return_value={})
     client.get_arp_entries = AsyncMock(return_value=arp_ndp_table())
     client.get_ndp_entries = AsyncMock(return_value=ndp_table)
-    client.get_host_observations = observations
+    client.get_host_observation_entries = observations
     client.get_query_counts = AsyncMock(return_value=0)
     client.reset_query_counts = AsyncMock()
     return OPNsenseDataUpdateCoordinator(
@@ -2389,7 +2389,9 @@ async def test_dt_refresh_fetches_observations_only_when_ndp_rows_need_them(
         (entry.valid_mac for entry in ndp_table.entries if entry.valid_mac is not None), mac
     )
     observations = AsyncMock(
-        return_value={"source": "discovery", "rows": [{"mac": observed_mac, "last_seen": seen}]}
+        return_value=host_observations(
+            "discovery", [host_observation(observed_mac, "2001:db8::1", seen)]
+        )
     )
     entry = (
         make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
@@ -2409,40 +2411,6 @@ async def test_dt_refresh_fetches_observations_only_when_ndp_rows_need_them(
 
 
 @pytest.mark.asyncio
-async def test_dt_refresh_indexes_only_usable_observation_rows(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Malformed, timezone-naive and unidentifiable observation rows never reach the index.
-
-    Args:
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-    """
-    mac = "aa:bb:cc:dd:ee:ff"
-    seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
-    observations = AsyncMock(
-        return_value={
-            "source": "discovery",
-            "rows": [
-                "not-a-row",
-                {"mac": 1, "last_seen": seen},
-                {"mac": mac, "last_seen": "2026-10-15T13:00:00+00:00"},
-                {"mac": mac, "last_seen": datetime(2026, 10, 15, 13)},  # noqa: DTZ001
-                {"mac": "not-a-mac", "last_seen": seen},
-                {"mac": mac, "last_seen": seen},
-            ],
-        }
-    )
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
-    coordinator = _dt_observation_coordinator(
-        entry, arp_ndp_table([arp_ndp_entry(mac, ipv6_address="2001:db8::1")]), observations
-    )
-
-    await coordinator._async_update_data()
-
-    assert getattr(coordinator.device_tracker_evidence, "observation_times", None) == {mac: seen}
-
-
-@pytest.mark.asyncio
 async def test_dt_refresh_without_config_entry_treats_every_valid_ndp_mac_as_tracked(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
@@ -2454,7 +2422,7 @@ async def test_dt_refresh_without_config_entry_treats_every_valid_ndp_mac_as_tra
     mac = "aa:bb:cc:dd:ee:ff"
     seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
     observations = AsyncMock(
-        return_value={"source": "discovery", "rows": [{"mac": mac, "last_seen": seen}]}
+        return_value=host_observations("discovery", [host_observation(mac, "2001:db8::1", seen)])
     )
     coordinator = _dt_observation_coordinator(
         make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"}),
@@ -2481,7 +2449,7 @@ async def test_dt_refresh_resets_observation_index_when_next_poll_needs_none(
     mac = "aa:bb:cc:dd:ee:ff"
     seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
     observations = AsyncMock(
-        return_value={"source": "discovery", "rows": [{"mac": mac, "last_seen": seen}]}
+        return_value=host_observations("discovery", [host_observation(mac, "2001:db8::1", seen)])
     )
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
     coordinator = _dt_observation_coordinator(
@@ -2504,7 +2472,7 @@ async def test_dt_refresh_resets_observation_index_when_next_poll_needs_none(
     [
         ("get_arp_entries", "ARP", arp_ndp_table()),
         ("get_ndp_entries", "NDP", arp_ndp_table()),
-        ("get_host_observations", "Host observation", {"source": "discovery", "rows": []}),
+        ("get_host_observation_entries", "Host observation", host_observations("discovery")),
     ],
 )
 async def test_optional_lookup_failure_warns_once_then_debug_then_recovers(
@@ -2538,7 +2506,7 @@ async def test_optional_lookup_failure_warns_once_then_debug_then_recovers(
     coordinator = _dt_observation_coordinator(
         entry,
         arp_ndp_table([arp_ndp_entry(mac, ipv6_address="2001:db8::1")]),
-        AsyncMock(return_value={"source": "discovery", "rows": []}),
+        AsyncMock(return_value=host_observations("discovery")),
     )
     setattr(coordinator._client, method_name, lookup)
     caplog.set_level(logging.DEBUG, logger="custom_components.opnsense.coordinator")

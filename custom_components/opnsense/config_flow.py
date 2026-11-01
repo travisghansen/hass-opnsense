@@ -971,11 +971,7 @@ async def _get_dt_entries(
         for mac, mac_entries in entries_by_mac.items():
             hostname = next((entry.hostname for entry in mac_entries if entry.hostname), None)
             manufacturer = next(
-                (
-                    entry.manufacturer.strip()
-                    for entry in mac_entries
-                    if entry.manufacturer and entry.manufacturer.strip()
-                ),
+                (entry.manufacturer for entry in mac_entries if entry.manufacturer),
                 None,
             )
             entries[mac] = _format_detected_device_label(

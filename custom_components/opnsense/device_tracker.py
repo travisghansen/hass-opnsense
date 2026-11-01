@@ -60,20 +60,33 @@ from .repair_reconciliation import is_reconciliation_active, record_desired_enti
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 
-def _arp_expires_attribute(value: object) -> str | datetime | None:
+def _arp_expires_attribute(
+    value: object,
+    *,
+    fetched_at: datetime | None,
+    permanent: bool,
+) -> str | datetime | None:
     """Return the Home Assistant attribute value for an ARP expiry.
 
     Args:
         value (object): Raw expiry value from OPNsense.
+        fetched_at (datetime | None): Aware time when the source table was acquired.
+        permanent (bool): Whether the library marked this neighbor as permanent.
 
     Returns:
         str | datetime | None: ``"Never"`` for permanent entries, a datetime for relative
             expiry, or ``None``.
     """
-    if value == -1:
+    if permanent or value == -1:
         return "Never"
-    if isinstance(value, int | float):
-        return datetime.now().astimezone() + timedelta(seconds=value)
+    if (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and isinstance(fetched_at, datetime)
+        and fetched_at.tzinfo is not None
+        and fetched_at.utcoffset() is not None
+    ):
+        return fetched_at.astimezone() + timedelta(seconds=value)
     return None
 
 
@@ -101,6 +114,8 @@ def _normalized_ip_address(value: object, *, version: int) -> str | None:
 def _update_arp_extra_state_attributes(
     attributes: dict[str, Any],
     entry: OPNsenseClient.ArpNdpEntry | None,
+    *,
+    fetched_at: datetime | None,
 ) -> None:
     """Update optional ARP extra state attributes from a coordinator entry.
 
@@ -108,6 +123,7 @@ def _update_arp_extra_state_attributes(
         attributes (dict[str, Any]): Entity attributes to mutate in place.
         entry (OPNsenseClient.ArpNdpEntry | None): Normalized ARP/NDP row providing
             optional metadata.
+        fetched_at (datetime | None): Acquisition time for the table containing ``entry``.
     """
     for attr in ("interface", "expires", "type"):
         attributes.pop(attr, None)
@@ -118,7 +134,11 @@ def _update_arp_extra_state_attributes(
     if entry.interface:
         attributes["interface"] = entry.interface
 
-    expires = _arp_expires_attribute(entry.expires)
+    expires = _arp_expires_attribute(
+        entry.expires,
+        fetched_at=fetched_at,
+        permanent=entry.permanent,
+    )
     if expires is not None:
         attributes["expires"] = expires
 
@@ -575,19 +595,23 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
 
         arp_entry = presence.arp_entry
         ndp_entry = presence.ndp_entry
+        metadata_entry = arp_entry or ndp_entry
+        metadata_table = snapshot.arp if arp_entry is not None else snapshot.ndp
         self._attr_hostname = arp_entry.hostname if arp_entry is not None else None
 
         if self._attr_hostname:
             self._last_known_hostname = self._attr_hostname
 
         if presence.status == "unknown":
-            # A matching NDP row without a usable per-MAC timestamp, both lookups failing, or a
-            # previously confirming family becoming unavailable means presence is unknown.
+            # A partial table, a matching NDP row without a usable per-MAC timestamp, both lookups
+            # failing, or a previously confirming family becoming unavailable means presence is
+            # unknown.
             # Preserve last-known address attributes and report unavailable instead of treating
             # that uncertainty as an away observation.
             _update_arp_extra_state_attributes(
                 self._attr_extra_state_attributes,
-                arp_entry or ndp_entry,
+                metadata_entry,
+                fetched_at=metadata_table.fetched_at,
             )
             self._mark_unavailable()
             return
@@ -620,7 +644,8 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
 
         _update_arp_extra_state_attributes(
             self._attr_extra_state_attributes,
-            arp_entry or ndp_entry,
+            metadata_entry,
+            fetched_at=metadata_table.fetched_at,
         )
 
         if self._attr_hostname is None and self._last_known_hostname:
