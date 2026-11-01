@@ -4,7 +4,7 @@ These tests cover setup, coordinator update handling, restore state behavior,
 and device info formatting for the integration's device tracker entities.
 """
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 import logging
 from types import MappingProxyType
@@ -41,6 +41,7 @@ import custom_components.opnsense.device_tracker as dt_mod
 from custom_components.opnsense.device_tracker import OPNsenseScannerEntity
 from custom_components.opnsense.entity import OPNsenseBaseEntity
 from custom_components.opnsense.helpers import device_belongs_to_config_entry
+from custom_components.opnsense.tracker_evidence import TrackerEvidenceSnapshot
 
 
 async def _restore_state(entity: OPNsenseScannerEntity) -> None:
@@ -51,6 +52,56 @@ async def _restore_state(entity: OPNsenseScannerEntity) -> None:
     """
     with patch.object(OPNsenseBaseEntity, "async_added_to_hass", AsyncMock()):
         await entity.async_added_to_hass()
+
+
+def _publish_tracker_evidence(coordinator: Any) -> None:
+    """Publish one normalized snapshot for a manually driven mock-coordinator refresh.
+
+    Args:
+        coordinator (Any): Coordinator test double whose data represents one scan.
+    """
+    if isinstance(coordinator, OPNsenseDataUpdateCoordinator):
+        return
+    observation_index = getattr(coordinator, "host_observation_times", None)
+    observation_payload: dict[str, object] | None = None
+    if isinstance(observation_index, Mapping):
+        observation_payload = {
+            "source": "discovery",
+            "rows": [
+                {"mac": mac, "last_seen": last_seen} for mac, last_seen in observation_index.items()
+            ],
+        }
+    coordinator.tracker_evidence = TrackerEvidenceSnapshot.from_state(
+        coordinator.data,
+        observations=observation_payload,
+    )
+
+
+def _handle_coordinator_update(entity: OPNsenseScannerEntity) -> None:
+    """Publish mock evidence and refresh an entity at the tracker coordinator boundary.
+
+    Args:
+        entity (OPNsenseScannerEntity): Entity whose simulated refresh is being processed.
+    """
+    _publish_tracker_evidence(entity.coordinator)
+    entity._handle_coordinator_update()
+
+
+async def _async_setup_entry(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Publish one mock snapshot and run platform setup.
+
+    Args:
+        hass (HomeAssistant): Home Assistant runtime used for setup.
+        config_entry (MockConfigEntry): Test entry owning the tracker coordinator.
+        async_add_entities (AddEntitiesCallback): Entity registration callback.
+    """
+    coordinator = getattr(config_entry.runtime_data, DEVICE_TRACKER_COORDINATOR)
+    _publish_tracker_evidence(coordinator)
+    await dt_mod.async_setup_entry(hass, config_entry, async_add_entities)
 
 
 def _make_scanner_entity(
@@ -77,6 +128,7 @@ def _make_scanner_entity(
     """
     coordinator.data = {"arp_table": []} if coordinator_data is None else coordinator_data
     coordinator.host_observation_times = None
+    _publish_tracker_evidence(coordinator)
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
     return OPNsenseScannerEntity(
@@ -165,7 +217,16 @@ def test_device_from_tracker_entries(
         ndp_entries (list[Any]): Raw NDP rows from the coordinator.
         expected (dict[str, Any]): Expected device metadata.
     """
-    assert dt_mod._device_from_tracker_entries(mac, arp_entries, ndp_entries) == expected
+    snapshot = TrackerEvidenceSnapshot.from_state(
+        {"arp_table": arp_entries, "ndp_table": ndp_entries}
+    )
+    device = snapshot.devices((mac,))[0]
+    actual = {"mac": device.mac}
+    if device.hostname is not None:
+        actual["hostname"] = device.hostname
+    if device.manufacturer is not None:
+        actual["manufacturer"] = device.manufacturer
+    assert actual == expected
 
 
 @pytest.mark.parametrize(
@@ -227,10 +288,21 @@ def test_devices_from_tracker_entries(
         expected_macs (list[str]): Expected canonical MAC addresses in discovery order.
         expected_devices (list[dict[str, Any]]): Expected device metadata.
     """
-    devices, mac_addresses = dt_mod._devices_from_tracker_entries(arp_entries, ndp_entries)
+    snapshot = TrackerEvidenceSnapshot.from_state(
+        {"arp_table": arp_entries, "ndp_table": ndp_entries}
+    )
+    devices = snapshot.devices()
+    actual_devices = [
+        {
+            "mac": device.mac,
+            **({"hostname": device.hostname} if device.hostname is not None else {}),
+            **({"manufacturer": device.manufacturer} if device.manufacturer is not None else {}),
+        }
+        for device in devices
+    ]
 
-    assert mac_addresses == expected_macs
-    assert devices == expected_devices
+    assert [device.mac for device in devices] == expected_macs
+    assert actual_devices == expected_devices
 
 
 @pytest.mark.asyncio
@@ -285,7 +357,7 @@ async def test_async_setup_entry_configured_devices(
         """
         added.extend(ents)
 
-    await dt_mod.async_setup_entry(hass, entry, cast("AddEntitiesCallback", async_add_entities))
+    await _async_setup_entry(hass, entry, cast("AddEntitiesCallback", async_add_entities))
 
     assert len(added) == 1
     created = added[0]
@@ -355,7 +427,7 @@ async def test_async_setup_entry_discovers_ipv6_only_tracker(
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
     added: list[Any] = []
 
-    await dt_mod.async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
+    await _async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
 
     assert len(added) == 1
     assert added[0].mac_address == "aa:bb:cc:dd:ee:01"
@@ -418,7 +490,7 @@ async def test_async_setup_entry_removes_nonmatching_tracked_macs(
         """
         added.extend(ents)
 
-    await dt_mod.async_setup_entry(hass, entry, cast("AddEntitiesCallback", async_add_entities))
+    await _async_setup_entry(hass, entry, cast("AddEntitiesCallback", async_add_entities))
 
     assert hass.config_entries.async_update_entry.called
     call = hass.config_entries.async_update_entry.call_args
@@ -468,7 +540,7 @@ def test_handle_coordinator_update_entry_present(
     )
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
 
     assert ent.ip_address == "1.2.3.4"
     assert ent.hostname == "host"
@@ -511,13 +583,13 @@ def test_handle_coordinator_update_unusable_data_keeps_connected_tracker_unavail
     )
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
 
     assert ent.available is True
     assert ent.is_connected is True
 
     coordinator.data = unusable_data
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
 
     assert ent.available is False
     assert ent.is_connected is True
@@ -571,7 +643,7 @@ def test_handle_coordinator_update_missing_table_preserves_cached_family(
         mac="aa:bb:cc:dd:ee:01",
     )
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
 
     coordinator.data = {
         successful_table: [successful_entry],
@@ -580,7 +652,7 @@ def test_handle_coordinator_update_missing_table_preserves_cached_family(
     if successful_table == "ndp_table":
         last_seen = datetime.now(UTC)
         coordinator.host_observation_times = {"aa:bb:cc:dd:ee:01": last_seen}
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
 
     assert ent.available is True
     assert ent.is_connected is True
@@ -857,7 +929,7 @@ def test_handle_coordinator_update_skips_unusable_arp_entries(
     )
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
 
     assert ent.is_connected is False
     assert ent.available is True
@@ -894,7 +966,7 @@ def test_handle_coordinator_update_matches_arp_row_variants(
     )
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
 
     assert ent.ip_address == "1.2.3.4"
     attributes = ent.extra_state_attributes
@@ -939,7 +1011,7 @@ def test_handle_coordinator_update_merges_ipv4_and_ipv6_addresses_and_ages_faile
     write_state = MagicMock()
     object.__setattr__(entity, "async_write_ha_state", write_state)
 
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     attributes = entity.extra_state_attributes
     assert attributes is not None
@@ -959,7 +1031,7 @@ def test_handle_coordinator_update_merges_ipv4_and_ipv6_addresses_and_ages_faile
         "unavailable_device_tracker_tables": ["ndp_table"],
         "update_time": 1_800_000_500.0,
     }
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert entity.available is False
     assert entity.is_connected is True
@@ -998,13 +1070,13 @@ def test_handle_coordinator_update_clears_arp_attributes_missing_from_latest_row
         },
     )
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
     attributes = ent.extra_state_attributes
     assert attributes is not None
     assert {"interface", "expires", "type"} <= attributes.keys()
 
     coordinator.data = {"arp_table": [{"mac": "aa:bb:cc", "ip": "1.2.3.4"}]}
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
 
     assert not {"interface", "expires", "type"} & attributes.keys()
 
@@ -1044,7 +1116,7 @@ def test_handle_coordinator_update_skips_malformed_arp_rows(
     )
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
 
     assert ent.ip_address == "1.2.3.4"
     assert ent.hostname == "host"
@@ -1111,7 +1183,7 @@ def test_handle_coordinator_update_applies_consider_home_to_absent_or_expired_ro
     )
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
 
     assert ent.is_connected is expected_connected
 
@@ -1208,7 +1280,7 @@ async def test_restore_last_state_and_device_info(
 
     # Restored hostname and IP surface only once a poll finds the device without live values.
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
     attributes = ent.extra_state_attributes
     assert attributes is not None
     assert attributes.get("last_known_hostname") == "oldhost"
@@ -1288,7 +1360,7 @@ async def test_restored_address_family_is_preserved_during_table_failure(
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
 
     await _restore_state(entity)
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert entity.available is False
     attributes = entity.extra_state_attributes
@@ -1334,7 +1406,7 @@ def test_valid_ndp_sighting_survives_unrelated_malformed_row(
             "update_time": 1_800_000_000.0,
         }
         coordinator.host_observation_times = {"aa:bb:cc:dd:ee:01": observation["last_seen"]}
-        entity._handle_coordinator_update()
+        _handle_coordinator_update(entity)
     observation["last_seen"] = datetime.now(UTC)
     coordinator.data = {
         "arp_table": [],
@@ -1346,7 +1418,7 @@ def test_valid_ndp_sighting_survives_unrelated_malformed_row(
     }
     coordinator.host_observation_times = {"aa:bb:cc:dd:ee:01": observation["last_seen"]}
 
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert entity.available is True
     assert entity.is_connected is True
@@ -1365,7 +1437,7 @@ def test_valid_ndp_sighting_survives_unrelated_malformed_row(
     }
     observation["last_seen"] = datetime.now(UTC)
     coordinator.host_observation_times = {"aa:bb:cc:dd:ee:01": observation["last_seen"]}
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert entity.is_connected is True
     attributes = entity.extra_state_attributes
@@ -1409,7 +1481,7 @@ def test_successful_ndp_inventory_ages_ipv6_tracker_when_mac_is_missing(
     observed_at = datetime.fromtimestamp(last_sighting, UTC)
     coordinator.host_observation_times = {"aa:bb:cc:dd:ee:02": observed_at}
 
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
     attributes = entity.extra_state_attributes
     assert attributes is not None
     first_observation_time = attributes["last_known_connected_time"]
@@ -1418,7 +1490,7 @@ def test_successful_ndp_inventory_ages_ipv6_tracker_when_mac_is_missing(
         "arp_table": [],
         "ndp_table": [{"ip": "2001:db8::3"}],
     }
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert entity.available is True
     assert entity.is_connected is False
@@ -1460,12 +1532,12 @@ def test_both_lookups_failing_after_empty_scan_keeps_tracker_unavailable(
         "ndp_table": [],
         "update_time": datetime.now(UTC).timestamp() - 10,
     }
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
     assert entity.is_connected is True
 
     # A successful scan with no rows clears addresses but stays home within consider_home.
     coordinator.data = {"arp_table": [], "ndp_table": []}
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
     assert entity.available is True
     assert entity.is_connected is True
     attributes = entity.extra_state_attributes
@@ -1480,7 +1552,7 @@ def test_both_lookups_failing_after_empty_scan_keeps_tracker_unavailable(
         "ndp_table": [],
         "unavailable_device_tracker_tables": ["arp_table", "ndp_table"],
     }
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert entity.available is False
 
@@ -1775,7 +1847,7 @@ async def test_async_setup_entry_state_not_mapping(
     fake = fake_reg_factory(device_exists=False)
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: fake, raising=False)
 
-    await dt_mod.async_setup_entry(hass, entry, cast("AddEntitiesCallback", added.extend))
+    await _async_setup_entry(hass, entry, cast("AddEntitiesCallback", added.extend))
     assert len(added) == 0
     assert not hass.config_entries.async_update_entry.called
 
@@ -1878,7 +1950,7 @@ async def test_async_setup_entry_reconciles_desired_trackers_from_arp_table(
     monkeypatch.setattr(dt_mod, "record_desired_entities", record)
     added: list[Any] = []
 
-    await dt_mod.async_setup_entry(
+    await _async_setup_entry(
         MagicMock(),
         entry,
         cast("AddEntitiesCallback", lambda entities, _=False: added.extend(entities)),
@@ -1932,7 +2004,7 @@ async def test_async_setup_entry_removes_previous_mac(
 
     hass.config_entries.async_update_entry = MagicMock()
 
-    await dt_mod.async_setup_entry(hass, entry, cast("AddEntitiesCallback", lambda _x: None))
+    await _async_setup_entry(hass, entry, cast("AddEntitiesCallback", lambda _x: None))
     fake.async_remove_device.assert_not_called()
     fake.async_update_device.assert_called_once_with(
         "dev_to_remove", remove_config_entry_id=entry.entry_id
@@ -1970,9 +2042,7 @@ async def test_async_setup_entry_preserves_previous_device_during_reconciliation
     monkeypatch.setattr(dt_mod, "record_desired_entities", record)
     ph_hass.config_entries.async_update_entry = MagicMock()
 
-    await dt_mod.async_setup_entry(
-        ph_hass, entry, cast("AddEntitiesCallback", lambda _entities: None)
-    )
+    await _async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", lambda _entities: None))
 
     fake.async_remove_device.assert_not_called()
     fake.async_update_device.assert_not_called()
@@ -2018,7 +2088,7 @@ def test_handle_coordinator_update_exposes_arp_expiry_only_when_valid(
     )
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
 
     attributes = ent.extra_state_attributes
     assert attributes is not None
@@ -2054,7 +2124,7 @@ def test_handle_coordinator_update_ip_typeerror(
     )
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
     assert ent.ip_address is None
 
 
@@ -2083,7 +2153,7 @@ def test_handle_coordinator_update_expired_preserve_last_known_ip(
     ent._last_known_ip = "1.2.3.4"
     object.__setattr__(ent, "async_write_ha_state", MagicMock())
 
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
     assert ent.is_connected is False
     attributes = ent.extra_state_attributes
     assert attributes is not None
@@ -2171,7 +2241,7 @@ async def test_async_setup_entry_removes_stale_tracker_entities_and_detaches_the
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", MagicMock(return_value=device_registry))
 
     ph_hass.config_entries.async_update_entry = MagicMock()
-    await dt_mod.async_setup_entry(ph_hass, entry, MagicMock())
+    await _async_setup_entry(ph_hass, entry, MagicMock())
 
     removed_ids = {item.args[0] for item in entity_registry.async_remove.call_args_list}
     assert removed_ids == {
@@ -2264,7 +2334,7 @@ async def test_async_setup_entry_removes_stale_tracker_entities_clears_missing_p
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", MagicMock(return_value=device_registry))
 
     ph_hass.config_entries.async_update_entry = MagicMock()
-    await dt_mod.async_setup_entry(ph_hass, entry, MagicMock())
+    await _async_setup_entry(ph_hass, entry, MagicMock())
 
     device_registry.async_update_device.assert_called_once_with(
         stale_device.id,
@@ -2315,7 +2385,7 @@ async def test_async_setup_entry_keeps_trackers_when_first_refresh_fails(
     ph_hass.config_entries.async_update_entry = MagicMock()
     added: list[Any] = []
 
-    await dt_mod.async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
+    await _async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
 
     assert sorted(entity.mac_address for entity in added) == [
         "aa:bb:cc:dd:ee:01",
@@ -2383,7 +2453,7 @@ async def test_async_setup_entry_retains_only_failed_family_inventory(
     monkeypatch.setattr(dt_mod, "record_desired_entities", record)
     added: list[Any] = []
 
-    await dt_mod.async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
+    await _async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
 
     assert [entity.mac_address for entity in added] == [ndp_mac]
     assert entity_registry.async_get(stale_arp_entity.entity_id) is None
@@ -2447,7 +2517,11 @@ async def test_track_all_absent_device_keeps_last_family_across_arp_outage_reloa
     entry.add_to_hass(ph_hass)
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
 
-    dt_mod._update_track_all_source_inventory(ph_hass, entry, {"arp_table": [], "ndp_table": []})
+    dt_mod._update_track_all_source_inventory(
+        ph_hass,
+        entry,
+        TrackerEvidenceSnapshot.from_state({"arp_table": [], "ndp_table": []}),
+    )
     assert entry.data[TRACKED_ARP_MACS] == [mac]
     assert entry.data[TRACKED_NDP_MACS] == []
 
@@ -2465,7 +2539,7 @@ async def test_track_all_absent_device_keeps_last_family_across_arp_outage_reloa
     coordinator.data = reload_state
     added: list[Any] = []
 
-    await dt_mod.async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
+    await _async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
 
     assert [entity.mac_address for entity in added] == [mac]
     assert entity_registry.async_get(registered.entity_id) == registered
@@ -2506,7 +2580,7 @@ async def test_setup_inventory_write_preserves_next_options_reload(
     reload_entry = AsyncMock(return_value=True)
     monkeypatch.setattr(hass.config_entries, "async_reload", reload_entry)
 
-    await dt_mod.async_setup_entry(hass, entry, MagicMock())
+    await _async_setup_entry(hass, entry, MagicMock())
     assert entry.data[TRACKED_ARP_MACS] == [mac_address]
 
     # Main setup registers this listener only after platform forwarding finishes.
@@ -2584,7 +2658,7 @@ async def test_poll_inventory_write_does_not_suppress_next_options_reload(
     reload_entry = AsyncMock(return_value=True)
     monkeypatch.setattr(hass.config_entries, "async_reload", reload_entry)
 
-    await dt_mod.async_setup_entry(hass, entry, MagicMock())
+    await _async_setup_entry(hass, entry, MagicMock())
     assert coordinator_listeners
     entry.async_on_unload(entry.add_update_listener(init_mod._async_update_listener))
 
@@ -2594,6 +2668,7 @@ async def test_poll_inventory_write_does_not_suppress_next_options_reload(
             "arp_table": [],
             "ndp_table": [{"mac": mac_address, "ip": "2001:db8::10"}],
         }
+        _publish_tracker_evidence(coordinator)
         for listener in coordinator_listeners:
             listener()
 
@@ -2688,9 +2763,7 @@ async def test_track_all_family_transition_is_persisted_once_and_survives_reload
     monkeypatch.setattr(ph_hass.config_entries, "async_update_entry", update_entry)
 
     initially_added: list[Any] = []
-    await dt_mod.async_setup_entry(
-        ph_hass, entry, cast("AddEntitiesCallback", initially_added.extend)
-    )
+    await _async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", initially_added.extend))
 
     assert [entity.mac_address for entity in initially_added] == mac_addresses
     assert all(not entity.entity_registry_enabled_default for entity in initially_added)
@@ -2707,6 +2780,7 @@ async def test_track_all_family_transition_is_persisted_once_and_survives_reload
             for index, mac_address in enumerate(mac_addresses)
         ],
     }
+    _publish_tracker_evidence(coordinator)
     for _ in range(2):
         for listener, _ in first_setup_listeners:
             listener()
@@ -2721,7 +2795,7 @@ async def test_track_all_family_transition_is_persisted_once_and_survives_reload
         "unavailable_device_tracker_tables": ["ndp_table"],
     }
     after_reload: list[Any] = []
-    await dt_mod.async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", after_reload.extend))
+    await _async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", after_reload.extend))
 
     assert [entity.mac_address for entity in after_reload] == mac_addresses
     assert entry.data[TRACKED_NDP_MACS] == mac_addresses
@@ -2786,7 +2860,7 @@ async def test_async_setup_entry_preserves_ndp_tracker_for_unusable_rows(
     monkeypatch.setattr(dt_mod, "record_desired_entities", MagicMock())
     added: list[Any] = []
 
-    await dt_mod.async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
+    await _async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
 
     assert [entity.mac_address for entity in added] == [ndp_mac]
     assert entry.data[TRACKED_MACS] == [ndp_mac]
@@ -2847,7 +2921,7 @@ def test_handle_coordinator_update_ignores_ndp_rows_without_valid_ipv6(
         last_seen = datetime.now(UTC)
         coordinator.host_observation_times = {_COVERAGE_MAC: last_seen}
 
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
 
     assert ent.is_connected is expected_connected
     attributes = ent.extra_state_attributes
@@ -2932,7 +3006,9 @@ def test_update_track_all_source_inventory_leaves_inventory_unchanged_when_inapp
     entry.add_to_hass(ph_hass)
     before = dict(entry.data)
 
-    dt_mod._update_track_all_source_inventory(ph_hass, entry, state)
+    dt_mod._update_track_all_source_inventory(
+        ph_hass, entry, TrackerEvidenceSnapshot.from_state(state)
+    )
 
     assert dict(entry.data) == before
 
@@ -2962,7 +3038,9 @@ def test_update_track_all_source_inventory_treats_non_list_arp_inventory_as_empt
     dt_mod._update_track_all_source_inventory(
         ph_hass,
         entry,
-        {"arp_table": [{"mac": _COVERAGE_MAC}], "ndp_table": []},
+        TrackerEvidenceSnapshot.from_state(
+            {"arp_table": [{"mac": _COVERAGE_MAC}], "ndp_table": []}
+        ),
     )
 
     assert entry.data[TRACKED_ARP_MACS] == [_COVERAGE_MAC]
@@ -2997,11 +3075,13 @@ def test_update_track_all_source_inventory_skips_non_string_inventory_entries(
     dt_mod._update_track_all_source_inventory(
         ph_hass,
         entry,
-        {
-            "arp_table": None,
-            "ndp_table": [],
-            "unavailable_device_tracker_tables": ["arp_table"],
-        },
+        TrackerEvidenceSnapshot.from_state(
+            {
+                "arp_table": None,
+                "ndp_table": [],
+                "unavailable_device_tracker_tables": ["arp_table"],
+            }
+        ),
     )
 
     assert entry.data[TRACKED_ARP_MACS] == [_COVERAGE_MAC]
@@ -3059,7 +3139,7 @@ async def test_async_setup_entry_falls_back_to_tracked_macs_for_non_list_arp_inv
     monkeypatch.setattr(dt_mod, "record_desired_entities", MagicMock())
     added: list[Any] = []
 
-    await dt_mod.async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
+    await _async_setup_entry(ph_hass, entry, cast("AddEntitiesCallback", added.extend))
 
     assert [entity.mac_address for entity in added] == [_COVERAGE_MAC]
     assert entry.data[TRACKED_ARP_MACS] == [_COVERAGE_MAC]
@@ -3102,7 +3182,7 @@ async def test_handle_coordinator_update_exposes_last_known_hostname_only_while_
     object.__setattr__(ent, "async_get_last_state", AsyncMock(return_value=last_state))
     await _restore_state(ent)
 
-    ent._handle_coordinator_update()
+    _handle_coordinator_update(ent)
 
     assert ent.is_connected is True
     attributes = ent.extra_state_attributes
@@ -3138,7 +3218,7 @@ def test_timestamped_ndp_presence_ages_away_and_returns(
         "update_time": datetime.now(UTC).timestamp() - consider_home - 1,
     }
     coordinator.host_observation_times = {mac: last_seen}
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
     identity = entity.unique_id
     assert entity.is_connected is True
     attributes = entity.extra_state_attributes
@@ -3149,7 +3229,7 @@ def test_timestamped_ndp_presence_ages_away_and_returns(
     coordinator.data["update_time"] = datetime.now(UTC).timestamp()
     coordinator.host_observation_times = {mac: datetime.now(UTC) - timedelta(hours=1)}
     for _ in range(2):
-        entity._handle_coordinator_update()
+        _handle_coordinator_update(entity)
         assert entity.available is True
         assert entity.is_connected is False
         assert attributes["last_known_connected_time"] == last_sighting
@@ -3157,14 +3237,14 @@ def test_timestamped_ndp_presence_ages_away_and_returns(
 
     # Other recently observed MACs do not confirm this device's presence.
     coordinator.host_observation_times = {"aa:bb:cc:dd:ee:02": datetime.now(UTC)}
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
     assert entity.available is False
     assert entity.is_connected is False
     assert attributes["ndp_presence_source"] == "no_evidence"
 
     # The same tracker can return through IPv6 after previously being observed through ARP.
     coordinator.host_observation_times = {mac: datetime.now(UTC)}
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
     assert entity.is_connected is True
     assert entity.unique_id == identity
     assert entity.mac_address == mac
@@ -3219,16 +3299,16 @@ async def test_coordinator_observation_index_confirms_restored_ndp_tracker(
     object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=saved_state))
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
     await _restore_state(entity)
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert entity.available is True
     assert entity.is_connected is True
 
     await coordinator.async_refresh()
     assert coordinator.last_update_success is False
-    assert coordinator.host_observation_times is None
+    assert coordinator.tracker_evidence is None
 
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
     assert entity.available is False
     assert entity.is_connected is True
 
@@ -3283,7 +3363,7 @@ async def test_first_ndp_sighting_requires_current_same_mac_observation(
         object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=saved_state))
         await _restore_state(entity)
 
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert entity.available is False
     assert entity.is_connected is False
@@ -3294,7 +3374,7 @@ async def test_first_ndp_sighting_requires_current_same_mac_observation(
 
     coordinator.data["arp_table"] = [{"mac": mac, "ip": "192.0.2.1"}]
     coordinator.data["update_time"] = datetime.now(UTC).timestamp()
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert entity.available is True
     assert entity.is_connected is True
@@ -3357,7 +3437,7 @@ async def test_old_firmware_ndp_metadata_does_not_confirm_presence_without_obser
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
 
     await coordinator.async_refresh()
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert coordinator.last_update_success is True
     assert coordinator.data["ndp_table"] == [{"mac": mac, "ip": "2001:db8::1"}]
@@ -3370,7 +3450,7 @@ async def test_old_firmware_ndp_metadata_does_not_confirm_presence_without_obser
 
     client.get_arp_table.return_value = [{"mac": mac, "ip": "192.0.2.1"}]
     await coordinator.async_refresh()
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert coordinator.last_update_success is True
     assert entity.available is True
@@ -3417,7 +3497,7 @@ async def test_restored_home_needs_current_ndp_evidence(
     healthy_tables = coordinator.data.copy()
     coordinator.data["arp_table"] = None
     coordinator.data["ndp_table"] = None
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
     assert entity.available is False
 
     # Restoring the just-published unavailable state must not let the same NDP row revive home.
@@ -3433,18 +3513,18 @@ async def test_restored_home_needs_current_ndp_evidence(
     object.__setattr__(entity, "async_get_last_state", AsyncMock(return_value=saved))
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
     await _restore_state(entity)
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
     assert entity.available is False
 
     coordinator.data["arp_table"] = [{"mac": mac, "ip": "192.0.2.1"}]
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
     assert entity.available is True
     assert entity.is_connected is True
 
     # A successful empty NDP scan still proves absence even if observations are unavailable.
     coordinator.data["arp_table"] = []
     coordinator.data["ndp_table"] = []
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
     assert entity.available is True
     assert entity.is_connected is False
 
@@ -3493,7 +3573,7 @@ def test_ndp_freshness_window_scales_with_scan_interval(
     }
     coordinator.host_observation_times = {mac: datetime.now(UTC) - timedelta(seconds=age_secs)}
 
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert entity.is_connected is expected_connected
 
@@ -3546,7 +3626,7 @@ def test_expired_arp_with_ndp_row_requires_timestamp_evidence(
             mac: datetime.now(UTC) - timedelta(seconds=observation_age_secs)
         }
 
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert entity.available is expected_available
     assert entity.is_connected is expected_connected
@@ -3577,7 +3657,7 @@ def test_no_evidence_attribute_describes_ndp_evidence_only(
     )
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
 
-    entity._handle_coordinator_update()
+    _handle_coordinator_update(entity)
 
     assert entity.available is True
     assert entity.is_connected is True

@@ -46,232 +46,18 @@ from .helpers import (
     async_get_device_by_identifier,
     async_get_devices_by_connection,
     detach_shared_router_parent,
-    dict_get,
-    get_arp_ip,
-    get_arp_mac,
     has_configured_tracker_macs,
-    normalize_arp_mac,
-    normalize_mac_address,
 )
 from .repair_reconciliation import is_reconciliation_active, record_desired_entities
+from .tracker_evidence import (
+    TrackerEntry,
+    TrackerEvidenceSnapshot,
+    normalize_family_inventory,
+    poll_family_provenance,
+    setup_family_provenance,
+)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-
-
-def _normalize_mac_for_device_tracker(mac_address: str) -> str:
-    """Normalize a user-facing or payload MAC with canonical fallback.
-
-    Args:
-        mac_address (str): A raw MAC-like input.
-
-    Returns:
-        str: Canonical MAC when possible, otherwise permissive lower-case normalized value.
-    """
-    normalized_mac = normalize_mac_address(mac_address)
-    if normalized_mac is not None:
-        return normalized_mac
-    return normalize_arp_mac(mac_address)
-
-
-def _device_data_from_arp_entry(
-    mac_address: str,
-    arp_entry: MutableMapping[str, Any],
-) -> dict[str, Any]:
-    """Build tracked device data from an ARP table entry.
-
-    Args:
-        mac_address (str): MAC address used as the tracked-device identity.
-        arp_entry (MutableMapping[str, Any]): ARP entry containing optional metadata.
-
-    Returns:
-        dict[str, Any]: A device dictionary populated with the MAC address and metadata.
-    """
-    device: dict[str, Any] = {"mac": mac_address}
-
-    hostname = _hostname_from_arp_entry(arp_entry)
-    if hostname is not None:
-        device["hostname"] = hostname
-
-    manufacturer = arp_entry.get("manufacturer")
-    if isinstance(manufacturer, str) and manufacturer:
-        device["manufacturer"] = manufacturer
-
-    return device
-
-
-def _device_data_from_ndp_entry(
-    mac_address: str,
-    ndp_entry: MutableMapping[str, Any],
-) -> dict[str, Any]:
-    """Build tracked-device metadata from an NDP table entry.
-
-    Args:
-        mac_address (str): Canonical MAC address used as the tracked-device identity.
-        ndp_entry (MutableMapping[str, Any]): NDP entry containing optional vendor metadata.
-
-    Returns:
-        dict[str, Any]: A device dictionary populated with the MAC address and metadata.
-    """
-    device: dict[str, Any] = {"mac": mac_address}
-    manufacturer = ndp_entry.get("manufacturer")
-    if isinstance(manufacturer, str) and manufacturer:
-        device["manufacturer"] = manufacturer
-    return device
-
-
-def _device_from_tracker_entries(
-    mac_address: str,
-    arp_entries: list[Any],
-    ndp_entries: list[Any],
-) -> dict[str, Any]:
-    """Build configured tracker metadata from matching ARP and NDP rows.
-
-    Args:
-        mac_address (str): Configured MAC address for the tracker entity.
-        arp_entries (list[Any]): Raw ARP entries returned by OPNsense.
-        ndp_entries (list[Any]): Raw NDP entries returned by OPNsense.
-
-    Returns:
-        dict[str, Any]: Device metadata from either table, or a MAC-only fallback.
-    """
-    device: dict[str, Any] = {"mac": mac_address}
-    normalized_mac = _normalize_mac_for_device_tracker(mac_address)
-    for arp_entry in arp_entries:
-        if not isinstance(arp_entry, MutableMapping):
-            continue
-        arp_mac = get_arp_mac(arp_entry)
-        if not arp_mac or _normalize_mac_for_device_tracker(arp_mac) != normalized_mac:
-            continue
-        device.update(_device_data_from_arp_entry(mac_address, arp_entry))
-        break
-
-    for ndp_entry in ndp_entries:
-        if not isinstance(ndp_entry, MutableMapping):
-            continue
-        ndp_mac = get_arp_mac(ndp_entry)
-        normalized_ndp_mac = normalize_mac_address(ndp_mac)
-        if (
-            normalized_ndp_mac != normalized_mac
-            or _normalized_ip_address(get_arp_ip(ndp_entry), version=6) is None
-        ):
-            continue
-        ndp_device = _device_data_from_ndp_entry(mac_address, ndp_entry)
-        if "manufacturer" not in device and "manufacturer" in ndp_device:
-            device["manufacturer"] = ndp_device["manufacturer"]
-        break
-    return device
-
-
-def _devices_from_tracker_entries(
-    arp_entries: list[Any],
-    ndp_entries: list[Any],
-) -> tuple[list[dict[str, Any]], list[str]]:
-    """Build tracked-device data from unique MAC addresses in either neighbor table.
-
-    Args:
-        arp_entries (list[Any]): Raw ARP entries returned by OPNsense.
-        ndp_entries (list[Any]): Raw NDP entries returned by OPNsense.
-
-    Returns:
-        tuple[list[dict[str, Any]], list[str]]: Devices and their canonical MAC addresses, with
-            dual-stack rows merged into one device.
-    """
-    devices_by_mac: dict[str, dict[str, Any]] = {}
-    for table_entries, is_ndp in ((arp_entries, False), (ndp_entries, True)):
-        for entry in table_entries:
-            if not isinstance(entry, MutableMapping):
-                continue
-            raw_mac = get_arp_mac(entry)
-            if not raw_mac:
-                continue
-            normalized_mac = (
-                normalize_mac_address(raw_mac)
-                if is_ndp
-                else _normalize_mac_for_device_tracker(raw_mac)
-            )
-            if not normalized_mac or (
-                is_ndp and _normalized_ip_address(get_arp_ip(entry), version=6) is None
-            ):
-                continue
-            device = devices_by_mac.setdefault(normalized_mac, {"mac": normalized_mac})
-            entry_device = (
-                _device_data_from_ndp_entry(normalized_mac, entry)
-                if is_ndp
-                else _device_data_from_arp_entry(normalized_mac, entry)
-            )
-            for key in ("hostname", "manufacturer"):
-                if key not in device and key in entry_device:
-                    device[key] = entry_device[key]
-    devices = list(devices_by_mac.values())
-    return devices, list(devices_by_mac)
-
-
-def _mac_addresses_from_table_entries(entries: list[Any], *, ndp: bool) -> list[str]:
-    """Return unique normalized MAC addresses from one neighbor table.
-
-    Args:
-        entries (list[Any]): Neighbor rows returned by OPNsense.
-        ndp (bool): Whether to require complete MAC addresses from NDP rows.
-
-    Returns:
-        list[str]: MAC addresses in table order.
-    """
-    arp_entries = [] if ndp else entries
-    ndp_entries = entries if ndp else []
-    _devices, mac_addresses = _devices_from_tracker_entries(arp_entries, ndp_entries)
-    return mac_addresses
-
-
-def _track_all_table_entries_are_complete(entries: list[Any], *, ndp: bool) -> bool:
-    """Return whether a neighbor-table response can safely reconcile track-all devices.
-
-    Args:
-        entries (list[Any]): Raw ARP or NDP rows already known to be a list.
-        ndp (bool): Whether the response is an NDP table, whose MACs must be complete.
-
-    Returns:
-        bool: Whether the response is a usable authoritative list.
-    """
-    for entry in entries:
-        if not isinstance(entry, MutableMapping):
-            return False
-        if not ndp:
-            continue
-        mac_address = get_arp_mac(entry)
-        if not mac_address or normalize_mac_address(mac_address) is None:
-            return False
-        if _normalized_ip_address(get_arp_ip(entry), version=6) is None:
-            return False
-    return True
-
-
-def _unavailable_device_tracker_tables(state: Mapping[str, Any]) -> list[str]:
-    """Return the neighbor-table keys the coordinator reported as failed this poll.
-
-    Args:
-        state (Mapping[str, Any]): Latest coordinator state.
-
-    Returns:
-        list[str]: Failed table keys, or an empty list when the state carries none.
-    """
-    unavailable_tables = state.get("unavailable_device_tracker_tables", [])
-    return unavailable_tables if isinstance(unavailable_tables, list) else []
-
-
-def _hostname_from_arp_entry(entry: MutableMapping[str, Any]) -> str | None:
-    """Return the normalized hostname from an ARP entry.
-
-    Args:
-        entry (MutableMapping[str, Any]): ARP entry to normalize.
-
-    Returns:
-        str | None: The stripped hostname, or ``None`` when no usable hostname exists.
-    """
-    hostname = entry.get("hostname")
-    if not isinstance(hostname, str):
-        return None
-    hostname = hostname.strip("?")
-    return hostname or None
 
 
 def _arp_expires_attribute(value: object) -> str | datetime | None:
@@ -312,156 +98,37 @@ def _normalized_ip_address(value: object, *, version: int) -> str | None:
     return address.compressed
 
 
-def _addresses_from_entries(entries: list[MutableMapping[str, Any]], *, version: int) -> list[str]:
-    """Return unique canonical IP addresses from neighbor-table rows.
-
-    Args:
-        entries (list[MutableMapping[str, Any]]): Neighbor rows for one tracked MAC.
-        version (int): Expected IP version, either 4 or 6.
-
-    Returns:
-        list[str]: Unique compressed addresses in table order.
-    """
-    addresses: list[str] = []
-    for entry in entries:
-        address = _normalized_ip_address(get_arp_ip(entry), version=version)
-        if address and address not in addresses:
-            addresses.append(address)
-    return addresses
-
-
-def _entries_for_mac(
-    entries: list[Any],
-    mac_address: str,
-    *,
-    require_valid_mac: bool = False,
-) -> list[MutableMapping[str, Any]]:
-    """Return neighbor rows matching a tracker MAC.
-
-    Args:
-        entries (list[Any]): Neighbor rows returned by OPNsense.
-        mac_address (str): Tracker MAC address.
-        require_valid_mac (bool): Whether to reject rows with incomplete MAC addresses.
-
-    Returns:
-        list[MutableMapping[str, Any]]: Matching usable rows.
-    """
-    normalized_tracker_mac = _normalize_mac_for_device_tracker(mac_address)
-    matching_entries: list[MutableMapping[str, Any]] = []
-    for entry in entries:
-        if not isinstance(entry, MutableMapping):
-            continue
-        raw_mac = get_arp_mac(entry)
-        if require_valid_mac:
-            normalized_entry_mac = normalize_mac_address(raw_mac)
-            if _normalized_ip_address(get_arp_ip(entry), version=6) is None:
-                continue
-        else:
-            normalized_entry_mac = _normalize_mac_for_device_tracker(raw_mac)
-        if normalized_entry_mac == normalized_tracker_mac:
-            matching_entries.append(entry)
-    return matching_entries
-
-
 def _update_arp_extra_state_attributes(
     attributes: dict[str, Any],
-    entry: MutableMapping[str, Any],
+    entry: TrackerEntry | None,
 ) -> None:
     """Update optional ARP extra state attributes from a coordinator entry.
 
     Args:
         attributes (dict[str, Any]): Entity attributes to mutate in place.
-        entry (MutableMapping[str, Any]): ARP entry providing optional metadata.
+        entry (TrackerEntry | None): Normalized neighbor row providing optional metadata.
     """
     for attr in ("interface", "expires", "type"):
         attributes.pop(attr, None)
 
-    interface = entry.get("intf_description", entry.get("intf"))
-    if interface:
-        attributes["interface"] = interface
+    if entry is None:
+        return
 
-    expires = _arp_expires_attribute(entry.get("expires"))
+    if entry.interface:
+        attributes["interface"] = entry.interface
+
+    expires = _arp_expires_attribute(entry.expires)
     if expires is not None:
         attributes["expires"] = expires
 
-    arp_type = entry.get("type")
-    if arp_type:
-        attributes["type"] = arp_type
-
-
-def _compile_tracked_devices(
-    config_entry: ConfigEntry,
-    arp_entries: list[Any],
-    ndp_entries: list[Any] | None = None,
-) -> tuple[list[dict[str, Any]], list[str], bool]:
-    """Compile device tracker source data from options and both neighbor tables.
-
-    Args:
-        config_entry (ConfigEntry): Config entry containing device-tracker options.
-        arp_entries (list[Any]): Raw ARP entries returned by OPNsense.
-        ndp_entries (list[Any] | None): Raw NDP entries returned by OPNsense.
-
-    Returns:
-        tuple[list[dict[str, Any]], list[str], bool]: A tuple of devices, MAC addresses, and
-            the default enabled flag.
-    """
-    if not config_entry.options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED):
-        return [], [], False
-
-    configured_mac_addresses: list[str] = []
-    for mac_address in config_entry.options.get(CONF_DEVICES, []):
-        if not isinstance(mac_address, str):
-            continue
-        normalized_mac = _normalize_mac_for_device_tracker(mac_address)
-        if not normalized_mac or normalized_mac in configured_mac_addresses:
-            continue
-        configured_mac_addresses.append(normalized_mac)
-
-    if configured_mac_addresses:
-        _LOGGER.debug(
-            "[device_tracker async_setup_entry] configured_mac_addresses: %s",
-            configured_mac_addresses,
-        )
-        devices = [
-            _device_from_tracker_entries(mac_address, arp_entries, ndp_entries or [])
-            for mac_address in configured_mac_addresses
-        ]
-        return devices, list(configured_mac_addresses), True
-
-    devices, mac_addresses = _devices_from_tracker_entries(arp_entries, ndp_entries or [])
-    return devices, mac_addresses, False
-
-
-def _normalize_mac_inventory(value: object, *, ndp: bool) -> list[str]:
-    """Normalize a stored family inventory, keeping only unique usable MAC addresses.
-
-    Args:
-        value (object): Stored MAC inventory from config-entry data.
-        ndp (bool): Whether this is an NDP inventory requiring complete MAC addresses.
-
-    Returns:
-        list[str]: Normalized MAC addresses in their stored order.
-    """
-    if not isinstance(value, list):
-        return []
-    normalized_macs: list[str] = []
-    for mac_address in value:
-        if not isinstance(mac_address, str):
-            continue
-        normalized_mac = (
-            normalize_mac_address(mac_address)
-            if ndp
-            else _normalize_mac_for_device_tracker(mac_address)
-        )
-        if normalized_mac and normalized_mac not in normalized_macs:
-            normalized_macs.append(normalized_mac)
-    return normalized_macs
+    if entry.arp_type:
+        attributes["type"] = entry.arp_type
 
 
 def _update_track_all_source_inventory(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    state: object,
+    snapshot: TrackerEvidenceSnapshot,
 ) -> None:
     """Update family provenance for already tracked MACs from complete table results.
 
@@ -473,10 +140,8 @@ def _update_track_all_source_inventory(
     Args:
         hass (HomeAssistant): Home Assistant runtime used to persist config-entry data.
         config_entry (ConfigEntry): Config entry owning the tracked devices.
-        state (object): Latest coordinator state containing ARP and NDP table results.
+        snapshot (TrackerEvidenceSnapshot): Latest normalized tracker evidence.
     """
-    if not isinstance(state, MutableMapping):
-        return
     options = config_entry.options
     has_configured_macs = has_configured_tracker_macs(config_entry)
     if not options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED) or (
@@ -484,58 +149,23 @@ def _update_track_all_source_inventory(
     ):
         return
 
-    tracked_macs = _normalize_mac_inventory(config_entry.data.get(TRACKED_MACS), ndp=False)
+    tracked_macs = list(normalize_family_inventory(config_entry.data.get(TRACKED_MACS)))
     if not tracked_macs:
         return
 
-    arp_entries = state.get("arp_table")
-    ndp_entries = state.get("ndp_table")
-    failed_tables = _unavailable_device_tracker_tables(state)
-    arp_authoritative = (
-        isinstance(arp_entries, list)
-        and "arp_table" not in failed_tables
-        and _track_all_table_entries_are_complete(arp_entries, ndp=False)
-    )
-    ndp_authoritative = (
-        isinstance(ndp_entries, list)
-        and "ndp_table" not in failed_tables
-        and _track_all_table_entries_are_complete(ndp_entries, ndp=True)
-    )
-    if not arp_authoritative and not ndp_authoritative:
+    if not snapshot.arp.authoritative and not snapshot.ndp.authoritative:
         return
 
     stored_arp_macs = config_entry.data.get(TRACKED_ARP_MACS, tracked_macs)
     stored_ndp_macs = config_entry.data.get(TRACKED_NDP_MACS, [])
-    previous_arp_macs = set(_normalize_mac_inventory(stored_arp_macs, ndp=False))
-    previous_ndp_macs = set(_normalize_mac_inventory(stored_ndp_macs, ndp=True))
-    current_arp_macs = set(
-        _mac_addresses_from_table_entries(arp_entries, ndp=False)
-        if isinstance(arp_entries, list)
-        else []
+    provenance = poll_family_provenance(
+        snapshot,
+        tracked_macs=tracked_macs,
+        previous_arp_macs=stored_arp_macs,
+        previous_ndp_macs=stored_ndp_macs,
     )
-    current_ndp_macs = set(
-        _mac_addresses_from_table_entries(ndp_entries, ndp=True)
-        if isinstance(ndp_entries, list)
-        else []
-    )
-    updated_arp_macs: list[str] = []
-    updated_ndp_macs: list[str] = []
-    for mac_address in tracked_macs:
-        seen_in_arp = arp_authoritative and mac_address in current_arp_macs
-        seen_in_ndp = ndp_authoritative and mac_address in current_ndp_macs
-        if seen_in_arp or seen_in_ndp:
-            # Positively seen: authoritative families reflect the scan, others keep provenance.
-            in_arp = seen_in_arp if arp_authoritative else mac_address in previous_arp_macs
-            in_ndp = seen_in_ndp if ndp_authoritative else mac_address in previous_ndp_macs
-        else:
-            # Absent from every authoritative scan: keep the last known membership so a later
-            # outage of the other family cannot orphan the device.
-            in_arp = mac_address in previous_arp_macs
-            in_ndp = mac_address in previous_ndp_macs
-        if in_arp:
-            updated_arp_macs.append(mac_address)
-        if in_ndp:
-            updated_ndp_macs.append(mac_address)
+    updated_arp_macs = list(provenance.arp_macs)
+    updated_ndp_macs = list(provenance.ndp_macs)
     if (
         config_entry.data.get(TRACKED_ARP_MACS) == updated_arp_macs
         and config_entry.data.get(TRACKED_NDP_MACS) == updated_ndp_macs
@@ -565,7 +195,10 @@ def _register_track_all_source_inventory_listener(
     @callback
     def update_track_all_source_inventory() -> None:
         """Refresh family provenance from the latest coordinator poll."""
-        _update_track_all_source_inventory(hass, config_entry, coordinator.data)
+        snapshot = coordinator.tracker_evidence
+        if snapshot is None:
+            return
+        _update_track_all_source_inventory(hass, config_entry, snapshot)
 
     config_entry.async_on_unload(coordinator.async_add_listener(update_track_all_source_inventory))
 
@@ -588,70 +221,62 @@ async def async_setup_entry(
     coordinator: OPNsenseDataUpdateCoordinator = getattr(
         config_entry.runtime_data, DEVICE_TRACKER_COORDINATOR
     )
-    state: dict[str, Any] = coordinator.data
+    state = coordinator.data
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in device tracker async_setup_entry")
         return
+    snapshot = coordinator.tracker_evidence
+    if snapshot is None:
+        # A failed initial refresh can leave no current snapshot. Continue with persisted tracker
+        # identities, but do not use the previous coordinator payload as fresh discovery data.
+        snapshot = TrackerEvidenceSnapshot.from_state({})
     reconciliation_complete = True
     entities: list = []
 
-    arp_entries = dict_get(state, "arp_table")
-    ndp_entries = dict_get(state, "ndp_table", [])
     has_configured_macs = has_configured_tracker_macs(config_entry)
-    table_response_available = isinstance(state.get("arp_table"), list) or isinstance(
-        state.get("ndp_table"), list
-    )
+    table_response_available = snapshot.arp.has_payload or snapshot.ndp.has_payload
     if not has_configured_macs:
         reconciliation_complete = table_response_available
-    arp_table_unavailable = not isinstance(arp_entries, list)
-    ndp_table_unavailable = "ndp_table" not in state or not isinstance(ndp_entries, list)
-    unavailable_tables = _unavailable_device_tracker_tables(state)
-    arp_table_unavailable = arp_table_unavailable or "arp_table" in unavailable_tables
-    ndp_table_unavailable = ndp_table_unavailable or "ndp_table" in unavailable_tables
-    if not isinstance(arp_entries, list):
-        arp_entries = []
-    if not isinstance(ndp_entries, list):
-        ndp_entries = []
-    devices, mac_addresses, enabled_default = _compile_tracked_devices(
-        config_entry, arp_entries, ndp_entries
-    )
     track_all_enabled = bool(
         config_entry.options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)
         and not has_configured_macs
     )
+    tracker_enabled = bool(
+        config_entry.options.get(CONF_DEVICE_TRACKER_ENABLED, DEFAULT_DEVICE_TRACKER_ENABLED)
+    )
+    configured_macs = config_entry.options.get(CONF_DEVICES, [])
+    configured_macs = (
+        [mac for mac in configured_macs if isinstance(mac, str)]
+        if isinstance(configured_macs, list)
+        else []
+    )
+    if tracker_enabled:
+        selected_macs = configured_macs if has_configured_macs else None
+        tracker_devices = list(snapshot.devices(selected_macs))
+        mac_addresses = [device.mac for device in tracker_devices]
+        enabled_default = has_configured_macs
+    else:
+        tracker_devices = []
+        mac_addresses = []
+        enabled_default = False
+
+    arp_authoritative = snapshot.arp.authoritative
+    ndp_authoritative = snapshot.ndp.authoritative
     if track_all_enabled:
-        # Before NDP tracking was added, every persisted auto-discovered MAC came from ARP. Treat
-        # that legacy union as ARP provenance until the new per-family lists are recorded.
-        stored_arp_macs = config_entry.data.get(TRACKED_ARP_MACS, previous_mac_addresses)
-        stored_ndp_macs = config_entry.data.get(TRACKED_NDP_MACS, [])
-        if not isinstance(stored_arp_macs, list):
-            stored_arp_macs = (
-                previous_mac_addresses if isinstance(previous_mac_addresses, list) else []
-            )
-        previous_arp_macs = _normalize_mac_inventory(stored_arp_macs, ndp=False)
-        previous_ndp_macs = _normalize_mac_inventory(stored_ndp_macs, ndp=True)
-        current_arp_macs = _mac_addresses_from_table_entries(arp_entries, ndp=False)
-        current_ndp_macs = _mac_addresses_from_table_entries(ndp_entries, ndp=True)
-        arp_rows_complete = _track_all_table_entries_are_complete(arp_entries, ndp=False)
-        ndp_rows_complete = _track_all_table_entries_are_complete(ndp_entries, ndp=True)
-        arp_authoritative = not arp_table_unavailable and arp_rows_complete
-        ndp_authoritative = not ndp_table_unavailable and ndp_rows_complete
-        tracked_arp_macs = list(
-            dict.fromkeys(current_arp_macs + ([] if arp_authoritative else previous_arp_macs))
-        )
-        tracked_ndp_macs = list(
-            dict.fromkeys(current_ndp_macs + ([] if ndp_authoritative else previous_ndp_macs))
-        )
+        provenance = setup_family_provenance(snapshot, config_entry.data)
+        tracked_arp_macs = list(provenance.arp_macs)
+        tracked_ndp_macs = list(provenance.ndp_macs)
         mac_addresses = list(dict.fromkeys(tracked_arp_macs + tracked_ndp_macs))
-        existing_macs = {device.get("mac") for device in devices}
+        devices_by_mac = {device.mac: device for device in tracker_devices}
         for mac_address in mac_addresses:
-            if mac_address not in existing_macs:
-                devices.append(_device_from_tracker_entries(mac_address, arp_entries, ndp_entries))
+            if mac_address not in devices_by_mac:
+                devices_by_mac[mac_address] = snapshot.devices((mac_address,))[0]
+        tracker_devices = list(devices_by_mac.values())
         # Per-family persisted inventories make a partial failure safe to reconcile: a failed
         # table keeps its previous MACs while a successful table can still remove stale devices.
         reconciliation_complete = (
-            (arp_table_unavailable or arp_rows_complete)
-            and (ndp_table_unavailable or ndp_rows_complete)
+            (not snapshot.arp.successful or arp_authoritative)
+            and (not snapshot.ndp.successful or ndp_authoritative)
             and table_response_available
         )
     else:
@@ -659,24 +284,21 @@ async def async_setup_entry(
         tracked_ndp_macs = []
 
     router_device_id: str | None = None
-    if devices and getattr(dev_reg, "async_get_device_by_identifier", None) is not None:
+    if tracker_devices and getattr(dev_reg, "async_get_device_by_identifier", None) is not None:
         router_device = dev_reg.async_get_or_create(
             config_entry_id=config_entry.entry_id,
             identifiers={(DOMAIN, config_entry.data[CONF_DEVICE_UNIQUE_ID])},
         )
         router_device_id = router_device.id
 
-    for device in devices:
-        mac = device.get("mac")
-        if not isinstance(mac, str):
-            continue
+    for device in tracker_devices:
         entity = OPNsenseScannerEntity(
             config_entry=config_entry,
             coordinator=coordinator,
             enabled_default=enabled_default,
-            mac=mac,
-            mac_vendor=device.get("manufacturer", None),
-            hostname=device.get("hostname", None),
+            mac=device.mac,
+            mac_vendor=device.manufacturer,
+            hostname=device.hostname,
             router_device_id=router_device_id,
         )
         entities.append(entity)
@@ -918,86 +540,31 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             scan_interval = DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
         return max(DEVICE_TRACKER_NDP_MAX_SECS, int(2 * scan_interval))
 
-    def _ndp_presence_from_observations(
-        self,
-        ndp_present: bool,
-    ) -> tuple[bool, bool]:
-        """Qualify a matching NDP row using current timestamped observations.
-
-        Args:
-            ndp_present (bool): Whether a successful NDP scan contains this MAC.
-
-        Returns:
-            tuple[bool, bool]: Whether NDP confirms presence and whether its observation
-                source failed. A matching neighbor row without a usable timestamp for this MAC
-                cannot confirm presence.
-        """
-        tracker_mac = (
-            normalize_mac_address(self.mac_address) if isinstance(self.mac_address, str) else None
-        )
-        last_seen: datetime | None = None
-        observation_times = getattr(self.coordinator, "host_observation_times", None)
-        if tracker_mac is not None and isinstance(observation_times, Mapping):
-            indexed_time = observation_times.get(tracker_mac)
-            if (
-                isinstance(indexed_time, datetime)
-                and indexed_time.tzinfo is not None
-                and indexed_time.utcoffset() is not None
-            ):
-                last_seen = indexed_time
-        self._attr_extra_state_attributes["ndp_presence_source"] = (
-            "host_discovery" if last_seen is not None else "no_evidence"
-        )
-        if not ndp_present:
-            return False, False
-        if last_seen is None:
-            return False, True
-        age = datetime.now().astimezone() - last_seen
-        return age.total_seconds() < self._ndp_freshness_window_secs(), False
-
     @callback
     def _handle_coordinator_update(self) -> None:
         """Refresh tracker state from the latest ARP and NDP tables."""
-        state: dict[str, Any] = self.coordinator.data
-        arp_table = dict_get(state, "arp_table")
-        ndp_table = dict_get(state, "ndp_table")
-        if not isinstance(state, MutableMapping) or not any(
-            isinstance(table, list) for table in (arp_table, ndp_table)
-        ):
+        snapshot = getattr(self.coordinator, "tracker_evidence", None)
+        if snapshot is None or not (snapshot.arp.has_payload or snapshot.ndp.has_payload):
             self._attr_extra_state_attributes["ndp_presence_source"] = "no_evidence"
             self._mark_unavailable()
             return
-        arp_table_lookup_failed = not isinstance(arp_table, list)
-        ndp_table_lookup_failed = not isinstance(ndp_table, list)
         self._available = True
-        arp_table = arp_table if isinstance(arp_table, list) else []
-        ndp_table = ndp_table if isinstance(ndp_table, list) else []
-        failed_tables = _unavailable_device_tracker_tables(state)
-        arp_failed = "arp_table" in failed_tables or arp_table_lookup_failed
-        ndp_failed = "ndp_table" in failed_tables or ndp_table_lookup_failed
-        tracker_mac = self._attr_mac_address
-        arp_entries = (
-            _entries_for_mac(arp_table, tracker_mac) if isinstance(tracker_mac, str) else []
-        )
-        ndp_entries = (
-            _entries_for_mac(ndp_table, tracker_mac, require_valid_mac=True)
-            if isinstance(tracker_mac, str)
-            else []
-        )
-        ndp_presence_entries = (
-            _entries_for_mac(ndp_table, tracker_mac) if isinstance(tracker_mac, str) else []
-        )
-        fresh_arp_entries = [] if arp_failed else arp_entries
-        fresh_ndp_presence_entries = [] if ndp_failed else ndp_presence_entries
-        ipv4_addresses = _addresses_from_entries(arp_entries, version=4)
-        ipv6_addresses = _addresses_from_entries(ndp_entries, version=6)
         last_ipv4_addresses = self._attr_extra_state_attributes.get("ipv4_addresses", [])
         last_ipv6_addresses = self._attr_extra_state_attributes.get("ipv6_addresses", [])
-        if arp_failed and isinstance(last_ipv4_addresses, list):
-            ipv4_addresses = [item for item in last_ipv4_addresses if isinstance(item, str)]
-        if ndp_failed and isinstance(last_ipv6_addresses, list):
-            saved_addresses = [item for item in last_ipv6_addresses if isinstance(item, str)]
-            ipv6_addresses = list(dict.fromkeys(saved_addresses + ipv6_addresses))
+        if not isinstance(last_ipv4_addresses, list):
+            last_ipv4_addresses = []
+        if not isinstance(last_ipv6_addresses, list):
+            last_ipv6_addresses = []
+        presence = snapshot.presence_for_mac(
+            self._attr_mac_address or "",
+            now=datetime.now().astimezone(),
+            max_age=timedelta(seconds=self._ndp_freshness_window_secs()),
+            previous_ipv4_addresses=last_ipv4_addresses,
+            previous_ipv6_addresses=last_ipv6_addresses,
+        )
+        ipv4_addresses = list(presence.ipv4_addresses)
+        ipv6_addresses = list(presence.ipv6_addresses)
+        self._attr_extra_state_attributes["ndp_presence_source"] = presence.ndp_presence_source
         self._attr_extra_state_attributes["ipv4_addresses"] = ipv4_addresses
         self._attr_extra_state_attributes["ipv6_addresses"] = ipv6_addresses
         self._attr_ip_address = next(iter(ipv4_addresses or ipv6_addresses), None)
@@ -1005,28 +572,14 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         if self._attr_ip_address:
             self._last_known_ip = self._attr_ip_address
 
-        arp_entry = arp_entries[0] if arp_entries else {}
-        ndp_entry = ndp_entries[0] if ndp_entries else {}
-        self._attr_hostname = _hostname_from_arp_entry(arp_entry)
+        arp_entry = presence.arp_entry
+        ndp_entry = presence.ndp_entry
+        self._attr_hostname = arp_entry.hostname if arp_entry is not None else None
 
         if self._attr_hostname:
             self._last_known_hostname = self._attr_hostname
 
-        fresh_arp_present = any(not entry.get("expired", False) for entry in fresh_arp_entries)
-        fresh_ndp_present, observations_failed = self._ndp_presence_from_observations(
-            bool(fresh_ndp_presence_entries)
-        )
-        ndp_failed = ndp_failed or observations_failed
-        if (
-            not fresh_arp_present
-            and not fresh_ndp_present
-            and (
-                observations_failed
-                or (arp_failed and ndp_failed)
-                or (arp_failed and bool(ipv4_addresses))
-                or (ndp_failed and bool(ipv6_addresses))
-            )
-        ):
+        if presence.status == "unknown":
             # A matching NDP row without a usable per-MAC timestamp, both lookups failing, or a
             # previously confirming family becoming unavailable means presence is unknown.
             # Preserve last-known address attributes and report unavailable instead of treating
@@ -1037,7 +590,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
             )
             self._mark_unavailable()
             return
-        if not (fresh_arp_present or fresh_ndp_present):
+        if presence.status == "absent":
             was_connected = self._is_connected
             self._is_connected = False
             device_tracker_consider_home = self.config_entry.options.get(
@@ -1049,11 +602,14 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
                 elapsed: timedelta = datetime.now().astimezone() - self._last_known_connected_time
                 if elapsed.total_seconds() < device_tracker_consider_home:
                     self._is_connected = True
-            elif (arp_failed or ndp_failed) and self._last_known_connected_time is None:
+            elif (presence.arp_failed or presence.ndp_failed) and (
+                self._last_known_connected_time is None
+            ):
                 self._is_connected = was_connected
 
         else:
-            update_time = state.get("update_time")
+            state = self.coordinator.data
+            update_time = state.get("update_time") if isinstance(state, Mapping) else None
             if isinstance(update_time, float):
                 self._last_known_connected_time = datetime.fromtimestamp(
                     int(update_time),

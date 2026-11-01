@@ -5,6 +5,7 @@ category building, state fetching, device ID mismatch handling, speed
 calculations, and update flow.
 """
 
+import asyncio
 from collections.abc import Callable, MutableMapping
 from datetime import UTC, datetime, timedelta
 import logging
@@ -1965,7 +1966,7 @@ async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
 
     await coordinator.async_refresh()
     assert coordinator.data["ndp_table"] == previous_ndp_rows
-    assert coordinator.host_observation_times == {}
+    assert getattr(coordinator.tracker_evidence, "observation_times", None) == {}
     assert "host_observations" not in coordinator.data
     assert coordinator.data["unavailable_device_tracker_tables"] == []
 
@@ -1975,7 +1976,7 @@ async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
     assert coordinator.data["arp_table"] == arp_rows
     assert coordinator.data["ndp_table"] == previous_ndp_rows
     assert coordinator.data["unavailable_device_tracker_tables"] == ["ndp_table"]
-    assert coordinator.host_observation_times is None
+    assert getattr(coordinator.tracker_evidence, "observation_times", None) is None
     client.get_arp_table.assert_awaited_with(resolve_hostnames=False)
     client.get_ndp_table.assert_awaited_with()
 
@@ -2030,18 +2031,18 @@ async def test_dt_refresh_indexes_latest_discovery_time_and_clears_unavailable_s
     )
 
     first_state = await coordinator._async_update_data()
-    assert coordinator.host_observation_times == {mac: latest}
+    assert getattr(coordinator.tracker_evidence, "observation_times", None) == {mac: latest}
     assert "host_observations" not in first_state
     assert "host_observation_times" not in first_state
 
     await coordinator._async_update_data()
-    assert coordinator.host_observation_times == {mac: refreshed}
+    assert getattr(coordinator.tracker_evidence, "observation_times", None) == {mac: refreshed}
 
     await coordinator._async_update_data()
-    assert coordinator.host_observation_times is None
+    assert getattr(coordinator.tracker_evidence, "observation_times", None) is None
 
     await coordinator._async_update_data()
-    assert coordinator.host_observation_times is None
+    assert getattr(coordinator.tracker_evidence, "observation_times", None) is None
 
 
 @pytest.mark.asyncio
@@ -2277,6 +2278,38 @@ def _dt_observation_coordinator(
     )
 
 
+@pytest.mark.parametrize("failure", [OPNsenseTimeoutError, asyncio.CancelledError])
+async def test_failed_tracker_refresh_does_not_publish_evidence(
+    failure: type[BaseException],
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late failure or cancellation must discard the attempted scan's evidence.
+
+    Args:
+        failure (type[BaseException]): Failure raised after observations have been fetched.
+        ph_hass (HomeAssistant): Home Assistant runtime driving coordinator refreshes.
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+        monkeypatch (pytest.MonkeyPatch): Fixture replacing the final client read.
+    """
+    coordinator = _dt_observation_coordinator(
+        make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"}), [], AsyncMock(return_value=None)
+    )
+    coordinator.hass = ph_hass
+    await coordinator.async_refresh()
+    assert coordinator.tracker_evidence is not None
+    monkeypatch.setattr(
+        coordinator._client,
+        "get_query_counts",
+        AsyncMock(side_effect=failure("Query-count read aborted")),
+    )
+
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success is False
+    assert coordinator.tracker_evidence is None
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("track_all", "ndp_rows", "expect_call"),
@@ -2342,7 +2375,9 @@ async def test_dt_refresh_fetches_observations_only_when_ndp_rows_need_them(
     await coordinator._async_update_data()
 
     assert observations.await_count == (1 if expect_call else 0)
-    assert coordinator.host_observation_times == ({observed_mac: seen} if expect_call else None)
+    assert getattr(coordinator.tracker_evidence, "observation_times", None) == (
+        {observed_mac: seen} if expect_call else None
+    )
 
 
 @pytest.mark.asyncio
@@ -2376,7 +2411,7 @@ async def test_dt_refresh_indexes_only_usable_observation_rows(
 
     await coordinator._async_update_data()
 
-    assert coordinator.host_observation_times == {mac: seen}
+    assert getattr(coordinator.tracker_evidence, "observation_times", None) == {mac: seen}
 
 
 @pytest.mark.asyncio
@@ -2403,7 +2438,7 @@ async def test_dt_refresh_without_config_entry_treats_every_valid_ndp_mac_as_tra
     await coordinator._async_update_data()
 
     observations.assert_awaited_once()
-    assert coordinator.host_observation_times == {mac: seen}
+    assert getattr(coordinator.tracker_evidence, "observation_times", None) == {mac: seen}
 
 
 @pytest.mark.asyncio
@@ -2425,12 +2460,12 @@ async def test_dt_refresh_resets_observation_index_when_next_poll_needs_none(
         entry, [{"mac": mac, "ip": "2001:db8::1"}], observations
     )
     await coordinator._async_update_data()
-    assert coordinator.host_observation_times == {mac: seen}
+    assert getattr(coordinator.tracker_evidence, "observation_times", None) == {mac: seen}
 
     cast("MagicMock", coordinator._client).get_ndp_table = AsyncMock(return_value=[])
     await coordinator._async_update_data()
 
-    assert coordinator.host_observation_times is None
+    assert getattr(coordinator.tracker_evidence, "observation_times", None) is None
     assert observations.await_count == 1
 
 
