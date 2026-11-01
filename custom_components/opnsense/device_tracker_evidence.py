@@ -371,7 +371,7 @@ class DeviceTrackerEvidenceSnapshot:
         if normalized_mac is None or self.observation_times is None:
             return False
         observed_at = self.observation_times.get(normalized_mac)
-        if observed_at is None or not _is_aware(now):
+        if observed_at is None or now.tzinfo is None or now.utcoffset() is None:
             return False
         return now - observed_at < max_age
 
@@ -575,18 +575,6 @@ def _normalize_inventory(value: object, *, ndp: bool) -> list[str]:
         if mac and mac not in result:
             result.append(mac)
     return result
-
-
-def _is_aware(value: datetime) -> bool:
-    """Return whether a timestamp has a usable UTC offset.
-
-    Args:
-        value (datetime): Timestamp to inspect.
-
-    Returns:
-        bool: Whether the timestamp is timezone-aware.
-    """
-    return value.tzinfo is not None and value.utcoffset() is not None
 
 
 def _saved_addresses(values: Sequence[object]) -> list[str]:
