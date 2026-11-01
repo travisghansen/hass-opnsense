@@ -5,10 +5,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from custom_components.opnsense.const import TRACKED_ARP_MACS, TRACKED_MACS, TRACKED_NDP_MACS
-from custom_components.opnsense.tracker_evidence import (
-    TrackerEvidenceSnapshot,
-    poll_family_provenance,
-    setup_family_provenance,
+from custom_components.opnsense.device_tracker_evidence import (
+    DeviceTrackerEvidenceSnapshot,
+    poll_arp_ndp_provenance,
+    setup_arp_ndp_provenance,
 )
 
 MAC = "aa:bb:cc:dd:ee:01"
@@ -17,7 +17,7 @@ MAC = "aa:bb:cc:dd:ee:01"
 def test_one_snapshot_evaluates_freshness_at_each_consumer_time() -> None:
     """Reusing observations must not freeze their freshness at snapshot construction."""
     observed_at = datetime(2026, 10, 31, 12, tzinfo=UTC)
-    snapshot = TrackerEvidenceSnapshot.from_state(
+    snapshot = DeviceTrackerEvidenceSnapshot.from_state(
         {"arp_table": [], "ndp_table": [{"mac": MAC, "ip": "2001:db8::1"}]},
         observations={"source": "discovery", "rows": [{"mac": MAC, "last_seen": observed_at}]},
     )
@@ -49,7 +49,7 @@ def test_snapshot_isolates_consumers_from_later_source_mutation() -> None:
         "ndp_table": ndp_rows,
         "unavailable_device_tracker_tables": failed_tables,
     }
-    snapshot = TrackerEvidenceSnapshot.from_state(state, observations=observations)
+    snapshot = DeviceTrackerEvidenceSnapshot.from_state(state, observations=observations)
 
     row["ip"] = "2001:db8::99"
     ndp_rows.clear()
@@ -65,11 +65,11 @@ def test_snapshot_isolates_consumers_from_later_source_mutation() -> None:
 
 def test_setup_and_poll_preserve_their_distinct_absence_policies() -> None:
     """A complete empty scan removes setup inventory but keeps polling provenance."""
-    snapshot = TrackerEvidenceSnapshot.from_state({"arp_table": [], "ndp_table": []})
+    snapshot = DeviceTrackerEvidenceSnapshot.from_state({"arp_table": [], "ndp_table": []})
     inventory = {TRACKED_MACS: [MAC], TRACKED_ARP_MACS: [MAC], TRACKED_NDP_MACS: []}
 
-    setup = setup_family_provenance(snapshot, inventory)
-    poll = poll_family_provenance(
+    setup = setup_arp_ndp_provenance(snapshot, inventory)
+    poll = poll_arp_ndp_provenance(
         snapshot,
         tracked_macs=inventory[TRACKED_MACS],
         previous_arp_macs=inventory[TRACKED_ARP_MACS],
@@ -85,7 +85,7 @@ def test_setup_and_poll_preserve_their_distinct_absence_policies() -> None:
 
 def test_cached_rows_preserve_inventory_without_becoming_current_evidence() -> None:
     """An unavailable family retains address metadata without a current sighting."""
-    snapshot = TrackerEvidenceSnapshot.from_state(
+    snapshot = DeviceTrackerEvidenceSnapshot.from_state(
         {
             "arp_table": [{"mac": MAC, "ip": "192.0.2.1"}],
             "ndp_table": [],
@@ -113,9 +113,9 @@ def test_incomplete_ndp_rows_do_not_discover_tracker_membership(row: dict[str, s
     Args:
         row (dict[str, str]): Neighbor row lacking a complete MAC or IPv6 address.
     """
-    snapshot = TrackerEvidenceSnapshot.from_state({"arp_table": [], "ndp_table": [row]})
+    snapshot = DeviceTrackerEvidenceSnapshot.from_state({"arp_table": [], "ndp_table": [row]})
 
-    provenance = setup_family_provenance(snapshot, {})
+    provenance = setup_arp_ndp_provenance(snapshot, {})
 
     assert provenance.ndp_macs == ()
     assert snapshot.devices() == ()
@@ -123,11 +123,11 @@ def test_incomplete_ndp_rows_do_not_discover_tracker_membership(row: dict[str, s
 
 def test_tuple_shaped_persisted_inventory_cannot_retain_membership() -> None:
     """Invalid persisted containers retain no provenance during a family outage."""
-    snapshot = TrackerEvidenceSnapshot.from_state({"arp_table": None, "ndp_table": None})
+    snapshot = DeviceTrackerEvidenceSnapshot.from_state({"arp_table": None, "ndp_table": None})
     inventory = {TRACKED_MACS: (MAC,), TRACKED_NDP_MACS: (MAC,)}
 
-    setup = setup_family_provenance(snapshot, inventory)
-    poll = poll_family_provenance(
+    setup = setup_arp_ndp_provenance(snapshot, inventory)
+    poll = poll_arp_ndp_provenance(
         snapshot,
         tracked_macs=[MAC],
         previous_arp_macs=(MAC,),

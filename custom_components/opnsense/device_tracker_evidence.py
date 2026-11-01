@@ -1,4 +1,4 @@
-"""Apply device-tracker policies to library-normalized neighbor evidence."""
+"""Apply device-tracker policies to library-normalized ARP and NDP data."""
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -11,13 +11,13 @@ from aiopnsense.arp_ndp import ArpNdpEntry, normalize_arp_ndp_entry
 from .const import TRACKED_ARP_MACS, TRACKED_MACS, TRACKED_NDP_MACS
 from .helpers import normalize_arp_mac, normalize_mac_address
 
-TrackerFamily = Literal["arp", "ndp"]
+ArpNdpFamily = Literal["arp", "ndp"]
 PresenceStatus = Literal["present", "absent", "unknown"]
 
 
 @dataclass(frozen=True, slots=True)
-class NeighborTableEvidence:
-    """Current and retained rows from one neighbor-table family."""
+class ArpNdpTableEvidence:
+    """Current and retained rows from one ARP/NDP table family."""
 
     successful: bool
     authoritative: bool
@@ -41,7 +41,7 @@ class NeighborTableEvidence:
 
 
 @dataclass(frozen=True, slots=True)
-class TrackerDevice:
+class TrackedDevice:
     """Normalized metadata for one tracker identity."""
 
     mac: str
@@ -50,7 +50,7 @@ class TrackerDevice:
 
 
 @dataclass(frozen=True, slots=True)
-class FamilyProvenance:
+class ArpNdpProvenance:
     """Immutable family membership inventories for automatically tracked devices."""
 
     arp_macs: tuple[str, ...]
@@ -58,7 +58,7 @@ class FamilyProvenance:
 
 
 @dataclass(frozen=True, slots=True)
-class TrackerPresenceEvidence:
+class DeviceTrackerPresenceEvidence:
     """Correlated current-presence evidence and address metadata for one tracker."""
 
     status: PresenceStatus
@@ -73,11 +73,11 @@ class TrackerPresenceEvidence:
 
 
 @dataclass(frozen=True, slots=True)
-class TrackerEvidenceSnapshot:
+class DeviceTrackerEvidenceSnapshot:
     """Normalized evidence from one device-tracker refresh."""
 
-    arp: NeighborTableEvidence
-    ndp: NeighborTableEvidence
+    arp: ArpNdpTableEvidence
+    ndp: ArpNdpTableEvidence
     observation_times: Mapping[str, datetime] | None
 
     @classmethod
@@ -86,7 +86,7 @@ class TrackerEvidenceSnapshot:
         state: object,
         *,
         observations: object = None,
-    ) -> TrackerEvidenceSnapshot:
+    ) -> DeviceTrackerEvidenceSnapshot:
         """Build an immutable snapshot from the coordinator's effective state.
 
         Args:
@@ -95,7 +95,7 @@ class TrackerEvidenceSnapshot:
             observations (object): Raw host-observation response from the current refresh.
 
         Returns:
-            TrackerEvidenceSnapshot: Normalized family rows and timestamped observations.
+            DeviceTrackerEvidenceSnapshot: Normalized family rows and timestamped observations.
         """
         state_mapping = state if isinstance(state, Mapping) else {}
         unavailable = state_mapping.get("unavailable_device_tracker_tables", [])
@@ -105,22 +105,22 @@ class TrackerEvidenceSnapshot:
             else []
         )
         return cls(
-            arp=_table_evidence(
+            arp=_arp_ndp_table_evidence(
                 state_mapping.get("arp_table"),
                 failed="arp_table" in unavailable_tables,
                 ndp=False,
             ),
-            ndp=_table_evidence(
+            ndp=_arp_ndp_table_evidence(
                 state_mapping.get("ndp_table"),
                 failed="ndp_table" in unavailable_tables,
                 ndp=True,
             ),
-            observation_times=_index_observations(observations),
+            observation_times=_index_discovery_observations(observations),
         )
 
     def entries_for_mac(
         self,
-        family: TrackerFamily,
+        family: ArpNdpFamily,
         mac: str,
         *,
         require_valid_mac: bool = False,
@@ -129,7 +129,7 @@ class TrackerEvidenceSnapshot:
         """Return normalized rows matching one tracker MAC.
 
         Args:
-            family (TrackerFamily): Neighbor-table family to search.
+            family (ArpNdpFamily): ARP/NDP table family to search.
             mac (str): Tracker MAC address.
             require_valid_mac (bool): Whether to reject permissively normalized MACs.
             require_ipv6 (bool): Whether NDP rows must contain a valid IPv6 address.
@@ -137,7 +137,7 @@ class TrackerEvidenceSnapshot:
         Returns:
             tuple[ArpNdpEntry, ...]: Matching normalized rows in table order.
         """
-        normalized_mac = _device_tracker_mac(mac)
+        normalized_mac = _normalize_tracked_mac(mac)
         if not normalized_mac:
             return ()
         table = self.arp if family == "arp" else self.ndp
@@ -173,27 +173,27 @@ class TrackerEvidenceSnapshot:
                 return True
         return False
 
-    def with_observations(self, observations: object) -> TrackerEvidenceSnapshot:
-        """Return the same normalized neighbor snapshot with current observation timestamps.
+    def with_observations(self, observations: object) -> DeviceTrackerEvidenceSnapshot:
+        """Return the same normalized ARP/NDP snapshot with current observation timestamps.
 
         Args:
             observations (object): Raw host-observation response from the current refresh.
 
         Returns:
-            TrackerEvidenceSnapshot: Snapshot reusing its family rows and replacing the
+            DeviceTrackerEvidenceSnapshot: Snapshot reusing its family rows and replacing the
                 timestamp index with an immutable index from ``observations``.
         """
-        return replace(self, observation_times=_index_observations(observations))
+        return replace(self, observation_times=_index_discovery_observations(observations))
 
-    def addresses_for_mac(self, family: TrackerFamily, mac: str) -> tuple[str, ...]:
+    def addresses_for_mac(self, family: ArpNdpFamily, mac: str) -> tuple[str, ...]:
         """Return unique normalized IP addresses for a MAC in one family.
 
         Args:
-            family (TrackerFamily): Neighbor-table family to inspect.
+            family (ArpNdpFamily): ARP/NDP table family to inspect.
             mac (str): Tracker MAC address.
 
         Returns:
-            tuple[str, ...]: Canonical addresses in neighbor-table order.
+            tuple[str, ...]: Canonical addresses in ARP/NDP table order.
         """
         address_key = "ipv4_address" if family == "arp" else "ipv6_address"
         return tuple(
@@ -217,7 +217,7 @@ class TrackerEvidenceSnapshot:
         max_age: timedelta,
         previous_ipv4_addresses: Sequence[object] = (),
         previous_ipv6_addresses: Sequence[object] = (),
-    ) -> TrackerPresenceEvidence:
+    ) -> DeviceTrackerPresenceEvidence:
         """Classify correlated ARP, NDP, and discovery evidence for one tracker.
 
         Args:
@@ -230,7 +230,7 @@ class TrackerEvidenceSnapshot:
                 while its table is unavailable.
 
         Returns:
-            TrackerPresenceEvidence: Presence classification and effective metadata values.
+            DeviceTrackerPresenceEvidence: Presence classification and effective metadata values.
         """
         arp_entries = self.entries_for_mac("arp", mac)
         ndp_entries = self.entries_for_mac("ndp", mac, require_valid_mac=True, require_ipv6=True)
@@ -271,7 +271,7 @@ class TrackerEvidenceSnapshot:
         else:
             status = "absent"
 
-        return TrackerPresenceEvidence(
+        return DeviceTrackerPresenceEvidence(
             status=status,
             ndp_presence_source=source,
             arp_failed=arp_failed,
@@ -283,7 +283,7 @@ class TrackerEvidenceSnapshot:
             ndp_entry=ndp_entries[0] if ndp_entries else None,
         )
 
-    def devices(self, configured_macs: Sequence[str] | None = None) -> tuple[TrackerDevice, ...]:
+    def devices(self, configured_macs: Sequence[str] | None = None) -> tuple[TrackedDevice, ...]:
         """Build tracker devices from effective rows or an explicit MAC selection.
 
         Args:
@@ -291,19 +291,19 @@ class TrackerEvidenceSnapshot:
                 every usable MAC represented in either table.
 
         Returns:
-            tuple[TrackerDevice, ...]: Devices in stable table/configuration order.
+            tuple[TrackedDevice, ...]: Devices in stable table/configuration order.
         """
         if configured_macs is not None:
             normalized_macs = tuple(
                 dict.fromkeys(
                     normalized
                     for mac in configured_macs
-                    if (normalized := _device_tracker_mac(mac))
+                    if (normalized := _normalize_tracked_mac(mac))
                 )
             )
             return tuple(self._device_for_mac(mac) for mac in normalized_macs)
 
-        devices: dict[str, TrackerDevice] = {}
+        devices: dict[str, TrackedDevice] = {}
         for family, entries in (("arp", self.arp.entries), ("ndp", self.ndp.entries)):
             for entry in entries:
                 if not entry.usable:
@@ -311,8 +311,8 @@ class TrackerEvidenceSnapshot:
                 mac = entry.mac if family == "arp" else entry.valid_mac
                 if mac is None or (family == "ndp" and entry.ipv6_address is None):
                     continue
-                previous = devices.get(mac, TrackerDevice(mac))
-                devices[mac] = TrackerDevice(
+                previous = devices.get(mac, TrackedDevice(mac))
+                devices[mac] = TrackedDevice(
                     mac=mac,
                     hostname=previous.hostname or (entry.hostname if family == "arp" else None),
                     manufacturer=previous.manufacturer or entry.manufacturer,
@@ -362,20 +362,20 @@ class TrackerEvidenceSnapshot:
             return False
         return now - observed_at < max_age
 
-    def _device_for_mac(self, mac: str) -> TrackerDevice:
+    def _device_for_mac(self, mac: str) -> TrackedDevice:
         """Build one configured tracker using ARP metadata and the NDP vendor fallback.
 
         Args:
             mac (str): Configured tracker MAC address.
 
         Returns:
-            TrackerDevice: Normalized tracker identity and metadata.
+            TrackedDevice: Normalized tracker identity and metadata.
         """
         arp_entries = self.entries_for_mac("arp", mac)
         ndp_entries = self.entries_for_mac("ndp", mac, require_valid_mac=True, require_ipv6=True)
         arp_entry = arp_entries[0] if arp_entries else None
         ndp_entry = ndp_entries[0] if ndp_entries else None
-        return TrackerDevice(
+        return TrackedDevice(
             mac=mac,
             hostname=arp_entry.hostname if arp_entry is not None else None,
             manufacturer=(
@@ -388,19 +388,19 @@ class TrackerEvidenceSnapshot:
         )
 
 
-def setup_family_provenance(
-    snapshot: TrackerEvidenceSnapshot,
+def setup_arp_ndp_provenance(
+    snapshot: DeviceTrackerEvidenceSnapshot,
     inventory: Mapping[str, object],
-) -> FamilyProvenance:
+) -> ArpNdpProvenance:
     """Reconcile setup inventories, allowing authoritative families to replace membership.
 
     Args:
-        snapshot (TrackerEvidenceSnapshot): Current normalized tracker snapshot.
+        snapshot (DeviceTrackerEvidenceSnapshot): Current normalized tracker snapshot.
         inventory (Mapping[str, object]): Config-entry data containing legacy or family-specific
             persisted MAC inventories.
 
     Returns:
-        FamilyProvenance: Family inventories used by setup and stale-device cleanup.
+        ArpNdpProvenance: Family inventories used by setup and stale-device cleanup.
     """
     previous_arp_inventory = inventory.get(TRACKED_ARP_MACS)
     if not isinstance(previous_arp_inventory, list):
@@ -413,10 +413,10 @@ def setup_family_provenance(
         arp_macs = list(dict.fromkeys(arp_macs + previous_arp))
     if not snapshot.ndp.authoritative:
         ndp_macs = list(dict.fromkeys(ndp_macs + previous_ndp))
-    return FamilyProvenance(tuple(arp_macs), tuple(ndp_macs))
+    return ArpNdpProvenance(tuple(arp_macs), tuple(ndp_macs))
 
 
-def normalize_family_inventory(value: object, *, ndp: bool = False) -> tuple[str, ...]:
+def normalize_tracked_mac_inventory(value: object, *, ndp: bool = False) -> tuple[str, ...]:
     """Normalize one persisted tracker MAC inventory while preserving its order.
 
     Args:
@@ -429,23 +429,23 @@ def normalize_family_inventory(value: object, *, ndp: bool = False) -> tuple[str
     return tuple(_normalize_inventory(value, ndp=ndp))
 
 
-def poll_family_provenance(
-    snapshot: TrackerEvidenceSnapshot,
+def poll_arp_ndp_provenance(
+    snapshot: DeviceTrackerEvidenceSnapshot,
     *,
     tracked_macs: object,
     previous_arp_macs: object,
     previous_ndp_macs: object,
-) -> FamilyProvenance:
+) -> ArpNdpProvenance:
     """Update existing track-all membership while retaining provenance for absent devices.
 
     Args:
-        snapshot (TrackerEvidenceSnapshot): Current normalized tracker snapshot.
+        snapshot (DeviceTrackerEvidenceSnapshot): Current normalized tracker snapshot.
         tracked_macs (object): Existing overall tracker inventory.
         previous_arp_macs (object): Last persisted ARP provenance.
         previous_ndp_macs (object): Last persisted NDP provenance.
 
     Returns:
-        FamilyProvenance: Updated immutable inventories limited to existing tracked MACs.
+        ArpNdpProvenance: Updated immutable inventories limited to existing tracked MACs.
     """
     tracked = _normalize_inventory(tracked_macs, ndp=False)
     prior_arp = set(_normalize_inventory(previous_arp_macs, ndp=False))
@@ -469,19 +469,19 @@ def poll_family_provenance(
             updated_arp.append(mac)
         if in_ndp:
             updated_ndp.append(mac)
-    return FamilyProvenance(tuple(updated_arp), tuple(updated_ndp))
+    return ArpNdpProvenance(tuple(updated_arp), tuple(updated_ndp))
 
 
-def _table_evidence(value: object, *, failed: bool, ndp: bool) -> NeighborTableEvidence:
+def _arp_ndp_table_evidence(value: object, *, failed: bool, ndp: bool) -> ArpNdpTableEvidence:
     """Normalize current or cached table rows and classify authority.
 
     Args:
-        value (object): Effective state value for one neighbor table.
+        value (object): Effective state value for one ARP or NDP table.
         failed (bool): Whether the current lookup failed despite retained rows.
-        ndp (bool): Whether the rows belong to the IPv6 neighbor table.
+        ndp (bool): Whether the rows belong to the IPv6 NDP table.
 
     Returns:
-        NeighborTableEvidence: Normalized rows and their availability classification.
+        ArpNdpTableEvidence: Normalized rows and their availability classification.
     """
     rows = value if isinstance(value, list) else []
     entries = tuple(normalize_arp_ndp_entry(row) for row in rows if isinstance(row, Mapping))
@@ -492,7 +492,7 @@ def _table_evidence(value: object, *, failed: bool, ndp: bool) -> NeighborTableE
         )
     successful = not failed and isinstance(value, list)
     authoritative = successful and rows_complete
-    return NeighborTableEvidence(
+    return ArpNdpTableEvidence(
         successful=successful,
         authoritative=authoritative,
         has_payload=isinstance(value, list),
@@ -502,7 +502,7 @@ def _table_evidence(value: object, *, failed: bool, ndp: bool) -> NeighborTableE
     )
 
 
-def _index_observations(observations: object) -> Mapping[str, datetime] | None:
+def _index_discovery_observations(observations: object) -> Mapping[str, datetime] | None:
     """Index newest valid discovery timestamps into an immutable mapping.
 
     Args:
@@ -539,7 +539,7 @@ def _index_observations(observations: object) -> Mapping[str, datetime] | None:
     return MappingProxyType(latest)
 
 
-def _device_tracker_mac(mac: object) -> str:
+def _normalize_tracked_mac(mac: object) -> str:
     """Normalize a MAC using the tracker's permissive ARP-compatible fallback.
 
     Args:
@@ -570,7 +570,7 @@ def _normalize_inventory(value: object, *, ndp: bool) -> list[str]:
     for item in value:
         if not isinstance(item, str):
             continue
-        mac = normalize_mac_address(item) if ndp else _device_tracker_mac(item)
+        mac = normalize_mac_address(item) if ndp else _normalize_tracked_mac(item)
         if mac and mac not in result:
             result.append(mac)
     return result

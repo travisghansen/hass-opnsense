@@ -36,6 +36,7 @@ from .const import (
     DEFAULT_SYNC_OPTION_VALUE,
     DOMAIN,
 )
+from .device_tracker_evidence import DeviceTrackerEvidenceSnapshot
 from .helpers import (
     dict_get,
     get_smart_device_name,
@@ -49,7 +50,6 @@ from .repairs import (
     build_device_id_mismatch_issue_id,
     is_valid_device_id,
 )
-from .tracker_evidence import TrackerEvidenceSnapshot
 
 if TYPE_CHECKING:
     from aiopnsense import OPNsenseClient
@@ -113,7 +113,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             raise ValueError("config_entry is required for OPNsenseDataUpdateCoordinator")
         self._client: OPNsenseClient = client
         self._state: dict[str, Any] = {}
-        self.tracker_evidence: TrackerEvidenceSnapshot | None = None
+        self.device_tracker_evidence: DeviceTrackerEvidenceSnapshot | None = None
         self._device_tracker_coordinator: bool = device_tracker_coordinator
         self._mismatched_count = 0
         self._device_unique_id: str | None = device_unique_id
@@ -262,11 +262,11 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             self._failing_optional_methods.discard(method_name)
             _LOGGER.info("%s lookup recovered", _OPTIONAL_TRACKER_METHODS[method_name])
 
-    def _ndp_table_needs_observations(self, snapshot: TrackerEvidenceSnapshot) -> bool:
+    def _ndp_table_needs_observations(self, snapshot: DeviceTrackerEvidenceSnapshot) -> bool:
         """Return whether the NDP table has a row that needs timestamped evidence.
 
         Args:
-            snapshot (TrackerEvidenceSnapshot): Normalized evidence from the current scan.
+            snapshot (DeviceTrackerEvidenceSnapshot): Normalized evidence from the current scan.
 
         Returns:
             bool: ``True`` when a row belongs to a tracked MAC. In track-all mode (no manually
@@ -476,19 +476,19 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             previous_table = prior_state.get(table_key)
             self._state[table_key] = previous_table if isinstance(previous_table, list) else None
         self._state["unavailable_device_tracker_tables"] = unavailable_tables
-        tracker_evidence = TrackerEvidenceSnapshot.from_state(self._state)
-        if self._ndp_table_needs_observations(tracker_evidence):
+        device_tracker_evidence = DeviceTrackerEvidenceSnapshot.from_state(self._state)
+        if self._ndp_table_needs_observations(device_tracker_evidence):
             observation_state = await self._get_states(
                 [{"function": "get_host_observations", "state_key": "host_observations"}]
             )
-            tracker_evidence = tracker_evidence.with_observations(
+            device_tracker_evidence = device_tracker_evidence.with_observations(
                 observation_state.get("host_observations")
             )
         if not await self._check_device_unique_id():
-            self.tracker_evidence = None
+            self.device_tracker_evidence = None
             return {}
         restapi_count = await self._client.get_query_counts()
-        self.tracker_evidence = tracker_evidence
+        self.device_tracker_evidence = device_tracker_evidence
         _LOGGER.debug(
             "DT Update Complete. REST API Queries: %s",
             restapi_count,
@@ -610,7 +610,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
         try:
             if self._device_tracker_coordinator:
-                self.tracker_evidence = None
+                self.device_tracker_evidence = None
             _LOGGER.info(
                 "%sUpdating Data",
                 "DT " if self._device_tracker_coordinator else "",

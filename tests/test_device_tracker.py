@@ -39,9 +39,9 @@ from custom_components.opnsense.const import (
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 import custom_components.opnsense.device_tracker as dt_mod
 from custom_components.opnsense.device_tracker import OPNsenseScannerEntity
+from custom_components.opnsense.device_tracker_evidence import DeviceTrackerEvidenceSnapshot
 from custom_components.opnsense.entity import OPNsenseBaseEntity
 from custom_components.opnsense.helpers import device_belongs_to_config_entry
-from custom_components.opnsense.tracker_evidence import TrackerEvidenceSnapshot
 
 
 async def _restore_state(entity: OPNsenseScannerEntity) -> None:
@@ -54,7 +54,7 @@ async def _restore_state(entity: OPNsenseScannerEntity) -> None:
         await entity.async_added_to_hass()
 
 
-def _publish_tracker_evidence(coordinator: Any) -> None:
+def _publish_device_tracker_evidence(coordinator: Any) -> None:
     """Publish one normalized snapshot for a manually driven mock-coordinator refresh.
 
     Args:
@@ -71,7 +71,7 @@ def _publish_tracker_evidence(coordinator: Any) -> None:
                 {"mac": mac, "last_seen": last_seen} for mac, last_seen in observation_index.items()
             ],
         }
-    coordinator.tracker_evidence = TrackerEvidenceSnapshot.from_state(
+    coordinator.device_tracker_evidence = DeviceTrackerEvidenceSnapshot.from_state(
         coordinator.data,
         observations=observation_payload,
     )
@@ -83,7 +83,7 @@ def _handle_coordinator_update(entity: OPNsenseScannerEntity) -> None:
     Args:
         entity (OPNsenseScannerEntity): Entity whose simulated refresh is being processed.
     """
-    _publish_tracker_evidence(entity.coordinator)
+    _publish_device_tracker_evidence(entity.coordinator)
     entity._handle_coordinator_update()
 
 
@@ -100,7 +100,7 @@ async def _async_setup_entry(
         async_add_entities (AddEntitiesCallback): Entity registration callback.
     """
     coordinator = getattr(config_entry.runtime_data, DEVICE_TRACKER_COORDINATOR)
-    _publish_tracker_evidence(coordinator)
+    _publish_device_tracker_evidence(coordinator)
     await dt_mod.async_setup_entry(hass, config_entry, async_add_entities)
 
 
@@ -128,7 +128,7 @@ def _make_scanner_entity(
     """
     coordinator.data = {"arp_table": []} if coordinator_data is None else coordinator_data
     coordinator.host_observation_times = None
-    _publish_tracker_evidence(coordinator)
+    _publish_device_tracker_evidence(coordinator)
     entry = make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
     return OPNsenseScannerEntity(
@@ -217,7 +217,7 @@ def test_device_from_tracker_entries(
         ndp_entries (list[Any]): Raw NDP rows from the coordinator.
         expected (dict[str, Any]): Expected device metadata.
     """
-    snapshot = TrackerEvidenceSnapshot.from_state(
+    snapshot = DeviceTrackerEvidenceSnapshot.from_state(
         {"arp_table": arp_entries, "ndp_table": ndp_entries}
     )
     device = snapshot.devices((mac,))[0]
@@ -288,7 +288,7 @@ def test_devices_from_tracker_entries(
         expected_macs (list[str]): Expected canonical MAC addresses in discovery order.
         expected_devices (list[dict[str, Any]]): Expected device metadata.
     """
-    snapshot = TrackerEvidenceSnapshot.from_state(
+    snapshot = DeviceTrackerEvidenceSnapshot.from_state(
         {"arp_table": arp_entries, "ndp_table": ndp_entries}
     )
     devices = snapshot.devices()
@@ -2520,7 +2520,7 @@ async def test_track_all_absent_device_keeps_last_family_across_arp_outage_reloa
     dt_mod._update_track_all_source_inventory(
         ph_hass,
         entry,
-        TrackerEvidenceSnapshot.from_state({"arp_table": [], "ndp_table": []}),
+        DeviceTrackerEvidenceSnapshot.from_state({"arp_table": [], "ndp_table": []}),
     )
     assert entry.data[TRACKED_ARP_MACS] == [mac]
     assert entry.data[TRACKED_NDP_MACS] == []
@@ -2668,7 +2668,7 @@ async def test_poll_inventory_write_does_not_suppress_next_options_reload(
             "arp_table": [],
             "ndp_table": [{"mac": mac_address, "ip": "2001:db8::10"}],
         }
-        _publish_tracker_evidence(coordinator)
+        _publish_device_tracker_evidence(coordinator)
         for listener in coordinator_listeners:
             listener()
 
@@ -2780,7 +2780,7 @@ async def test_track_all_family_transition_is_persisted_once_and_survives_reload
             for index, mac_address in enumerate(mac_addresses)
         ],
     }
-    _publish_tracker_evidence(coordinator)
+    _publish_device_tracker_evidence(coordinator)
     for _ in range(2):
         for listener, _ in first_setup_listeners:
             listener()
@@ -3007,7 +3007,7 @@ def test_update_track_all_source_inventory_leaves_inventory_unchanged_when_inapp
     before = dict(entry.data)
 
     dt_mod._update_track_all_source_inventory(
-        ph_hass, entry, TrackerEvidenceSnapshot.from_state(state)
+        ph_hass, entry, DeviceTrackerEvidenceSnapshot.from_state(state)
     )
 
     assert dict(entry.data) == before
@@ -3038,7 +3038,7 @@ def test_update_track_all_source_inventory_treats_non_list_arp_inventory_as_empt
     dt_mod._update_track_all_source_inventory(
         ph_hass,
         entry,
-        TrackerEvidenceSnapshot.from_state(
+        DeviceTrackerEvidenceSnapshot.from_state(
             {"arp_table": [{"mac": _COVERAGE_MAC}], "ndp_table": []}
         ),
     )
@@ -3075,7 +3075,7 @@ def test_update_track_all_source_inventory_skips_non_string_inventory_entries(
     dt_mod._update_track_all_source_inventory(
         ph_hass,
         entry,
-        TrackerEvidenceSnapshot.from_state(
+        DeviceTrackerEvidenceSnapshot.from_state(
             {
                 "arp_table": None,
                 "ndp_table": [],
@@ -3306,7 +3306,7 @@ async def test_coordinator_observation_index_confirms_restored_ndp_tracker(
 
     await coordinator.async_refresh()
     assert coordinator.last_update_success is False
-    assert coordinator.tracker_evidence is None
+    assert coordinator.device_tracker_evidence is None
 
     _handle_coordinator_update(entity)
     assert entity.available is False

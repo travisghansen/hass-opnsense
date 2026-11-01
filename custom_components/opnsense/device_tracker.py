@@ -41,6 +41,12 @@ from .const import (
     TRACKED_NDP_MACS,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
+from .device_tracker_evidence import (
+    DeviceTrackerEvidenceSnapshot,
+    normalize_tracked_mac_inventory,
+    poll_arp_ndp_provenance,
+    setup_arp_ndp_provenance,
+)
 from .entity import OPNsenseBaseEntity
 from .helpers import (
     async_get_device_by_connection,
@@ -50,12 +56,6 @@ from .helpers import (
     has_configured_tracker_macs,
 )
 from .repair_reconciliation import is_reconciliation_active, record_desired_entities
-from .tracker_evidence import (
-    TrackerEvidenceSnapshot,
-    normalize_family_inventory,
-    poll_family_provenance,
-    setup_family_provenance,
-)
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ def _normalized_ip_address(value: object, *, version: int) -> str | None:
     """Return a canonical address when the input matches the requested IP version.
 
     Args:
-        value (object): Raw address from a neighbor-table row.
+        value (object): Raw address from a ARP/NDP table row.
         version (int): Expected IP version, either 4 or 6.
 
     Returns:
@@ -106,7 +106,7 @@ def _update_arp_extra_state_attributes(
 
     Args:
         attributes (dict[str, Any]): Entity attributes to mutate in place.
-        entry (ArpNdpEntry | None): Normalized neighbor row providing optional metadata.
+        entry (ArpNdpEntry | None): Normalized ARP/NDP row providing optional metadata.
     """
     for attr in ("interface", "expires", "type"):
         attributes.pop(attr, None)
@@ -128,7 +128,7 @@ def _update_arp_extra_state_attributes(
 def _update_track_all_source_inventory(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
-    snapshot: TrackerEvidenceSnapshot,
+    snapshot: DeviceTrackerEvidenceSnapshot,
 ) -> None:
     """Update family provenance for already tracked MACs from complete table results.
 
@@ -140,7 +140,7 @@ def _update_track_all_source_inventory(
     Args:
         hass (HomeAssistant): Home Assistant runtime used to persist config-entry data.
         config_entry (ConfigEntry): Config entry owning the tracked devices.
-        snapshot (TrackerEvidenceSnapshot): Latest normalized tracker evidence.
+        snapshot (DeviceTrackerEvidenceSnapshot): Latest normalized tracker evidence.
     """
     options = config_entry.options
     has_configured_macs = has_configured_tracker_macs(config_entry)
@@ -149,7 +149,7 @@ def _update_track_all_source_inventory(
     ):
         return
 
-    tracked_macs = list(normalize_family_inventory(config_entry.data.get(TRACKED_MACS)))
+    tracked_macs = list(normalize_tracked_mac_inventory(config_entry.data.get(TRACKED_MACS)))
     if not tracked_macs:
         return
 
@@ -158,7 +158,7 @@ def _update_track_all_source_inventory(
 
     stored_arp_macs = config_entry.data.get(TRACKED_ARP_MACS, tracked_macs)
     stored_ndp_macs = config_entry.data.get(TRACKED_NDP_MACS, [])
-    provenance = poll_family_provenance(
+    provenance = poll_arp_ndp_provenance(
         snapshot,
         tracked_macs=tracked_macs,
         previous_arp_macs=stored_arp_macs,
@@ -189,13 +189,13 @@ def _register_track_all_source_inventory_listener(
     Args:
         hass (HomeAssistant): Home Assistant runtime used to persist config-entry data.
         config_entry (ConfigEntry): Config entry owning the tracked devices.
-        coordinator (OPNsenseDataUpdateCoordinator): Coordinator providing neighbor-table state.
+        coordinator (OPNsenseDataUpdateCoordinator): Coordinator providing ARP/NDP table state.
     """
 
     @callback
     def update_track_all_source_inventory() -> None:
         """Refresh family provenance from the latest coordinator poll."""
-        snapshot = coordinator.tracker_evidence
+        snapshot = coordinator.device_tracker_evidence
         if snapshot is None:
             return
         _update_track_all_source_inventory(hass, config_entry, snapshot)
@@ -225,11 +225,11 @@ async def async_setup_entry(
     if not isinstance(state, MutableMapping):
         _LOGGER.error("Missing state data in device tracker async_setup_entry")
         return
-    snapshot = coordinator.tracker_evidence
+    snapshot = coordinator.device_tracker_evidence
     if snapshot is None:
         # A failed initial refresh can leave no current snapshot. Continue with persisted tracker
         # identities, but do not use the previous coordinator payload as fresh discovery data.
-        snapshot = TrackerEvidenceSnapshot.from_state({})
+        snapshot = DeviceTrackerEvidenceSnapshot.from_state({})
     reconciliation_complete = True
     entities: list = []
 
@@ -263,7 +263,7 @@ async def async_setup_entry(
     arp_authoritative = snapshot.arp.authoritative
     ndp_authoritative = snapshot.ndp.authoritative
     if track_all_enabled:
-        provenance = setup_family_provenance(snapshot, config_entry.data)
+        provenance = setup_arp_ndp_provenance(snapshot, config_entry.data)
         tracked_arp_macs = list(provenance.arp_macs)
         tracked_ndp_macs = list(provenance.ndp_macs)
         mac_addresses = list(dict.fromkeys(tracked_arp_macs + tracked_ndp_macs))
@@ -543,7 +543,7 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Refresh tracker state from the latest ARP and NDP tables."""
-        snapshot = getattr(self.coordinator, "tracker_evidence", None)
+        snapshot = getattr(self.coordinator, "device_tracker_evidence", None)
         if snapshot is None or not (snapshot.arp.has_payload or snapshot.ndp.has_payload):
             self._attr_extra_state_attributes["ndp_presence_source"] = "no_evidence"
             self._mark_unavailable()
