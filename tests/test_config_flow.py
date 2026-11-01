@@ -1238,8 +1238,7 @@ async def test_get_dt_entries_sorts_and_includes_selected(
                 id=row_id,
             )
             for row_id, row in (
-                ("row-missing-mac-key-skipped", arp_ndp_entry(None, ipv4_address="10.0.0.9")),
-                ("row-blank-mac-skipped", arp_ndp_entry(None, ipv4_address="10.0.0.9")),
+                ("row-without-mac-skipped", arp_ndp_entry(None, ipv4_address="10.0.0.9")),
                 ("row-hostname-only-skipped", arp_ndp_entry(None, hostname="ghost")),
             )
         ),
@@ -2877,57 +2876,3 @@ async def test_device_tracker_picker_honours_resolve_hostnames_option(
     await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
 
     client.get_arp_entries.assert_awaited_once_with(resolve_hostnames=expected)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("resolve_hostnames", [True, False])
-async def test_get_dt_entries_forwards_resolve_hostnames_to_client(
-    monkeypatch: pytest.MonkeyPatch, fake_client: Any, resolve_hostnames: bool
-) -> None:
-    """_get_dt_entries should pass the resolution choice through to the ARP request.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        fake_client (Any): Mock OPNsense client used at the integration boundary.
-        resolve_hostnames (bool): Resolution choice supplied to _get_dt_entries.
-    """
-    captured: dict[str, Any] = {}
-    client_cls = fake_client()
-
-    async def _get_arp_entries(self: Any, resolve_hostnames: bool = False) -> Any:
-        """Record the resolution flag and return no ARP rows.
-
-        Args:
-            self (Any): Client instance receiving the patched method call.
-            resolve_hostnames (bool): Whether the simulated query requests hostname resolution.
-
-        Returns:
-            Any: An empty normalized ARP table.
-        """
-        captured["resolve_hostnames"] = resolve_hostnames
-        return arp_ndp_table()
-
-    client_cls.get_arp_entries = _get_arp_entries
-    client_cls.get_ndp_entries = AsyncMock(return_value=arp_ndp_table())
-
-    def _init_client(**kwargs: Any) -> Any:
-        """Return the fake client for any create_opnsense_client call.
-
-        Args:
-            kwargs (Any): Keyword arguments accepted by the test double.
-
-        Returns:
-            Any: Configured fake client instance.
-        """
-        return client_cls(**kwargs)
-
-    monkeypatch.setattr(cf_mod, "create_opnsense_client", _init_client)
-
-    await cf_mod._get_dt_entries(
-        hass=MagicMock(),
-        config={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        selected_devices=[],
-        resolve_hostnames=resolve_hostnames,
-    )
-
-    assert captured["resolve_hostnames"] is resolve_hostnames
