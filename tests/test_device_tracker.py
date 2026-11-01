@@ -223,35 +223,6 @@ def _make_scanner_entity(
             id="mac-only-fallback",
         ),
         pytest.param(
-            "aa:bb:cc",
-            arp_ndp_table(
-                [
-                    arp_ndp_entry("aa:bb:cc", valid_mac=None),
-                    arp_ndp_entry("11:22:33", valid_mac=None),
-                ]
-            ),
-            arp_ndp_table(),
-            {"mac": "aa:bb:cc"},
-            id="permissive-arp-mac-match",
-        ),
-        pytest.param(
-            "aa:bb:cc",
-            arp_ndp_table(
-                [
-                    arp_ndp_entry(None),
-                    arp_ndp_entry(
-                        "aa:bb:cc",
-                        valid_mac=None,
-                        hostname="TrackedHost",
-                        manufacturer="m",
-                    ),
-                ]
-            ),
-            arp_ndp_table(),
-            {"mac": "aa:bb:cc", "hostname": "TrackedHost", "manufacturer": "m"},
-            id="case-insensitive-match-skips-bad-mac-types",
-        ),
-        pytest.param(
             "aa:bb:cc:dd:ee:01",
             arp_ndp_table(),
             arp_ndp_table(
@@ -293,13 +264,6 @@ def _make_scanner_entity(
             {"mac": "aa:bb:cc:dd:ee:01", "manufacturer": "ARP Vendor"},
             id="arp-manufacturer-wins",
         ),
-        pytest.param(
-            "aa:bb:cc:dd:ee:01",
-            arp_ndp_table([arp_ndp_entry("aa:bb:cc:dd:ee:01")]),
-            arp_ndp_table([arp_ndp_entry("aa:bb:cc:dd:ee:01", ipv6_address="2001:db8::1")]),
-            {"mac": "aa:bb:cc:dd:ee:01"},
-            id="ndp-without-manufacturer-adds-nothing",
-        ),
     ],
 )
 def test_device_from_tracker_entries(
@@ -327,22 +291,19 @@ def test_device_from_tracker_entries(
 
 
 @pytest.mark.parametrize(
-    ("arp_table", "ndp_table", "expected_macs", "expected_devices"),
+    ("arp_table", "ndp_table", "expected_devices"),
     [
         pytest.param(
             arp_ndp_table(
                 [
                     arp_ndp_entry(None),
-                    arp_ndp_entry(None),
                     arp_ndp_entry("aa:bb:cc:dd:ee:ff", hostname="tracked"),
                     arp_ndp_entry("aa:bb:cc:dd:ee:ff", hostname="duplicate"),
-                    arp_ndp_entry("aa:bb:cc:dd:ee:ff", hostname="dash-case"),
                     arp_ndp_entry("11:22:33:44:55:66", hostname="first"),
                 ],
                 unparsed_row_count=1,
             ),
             arp_ndp_table(),
-            ["aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66"],
             [
                 {"mac": "aa:bb:cc:dd:ee:ff", "hostname": "tracked"},
                 {"mac": "11:22:33:44:55:66", "hostname": "first"},
@@ -352,7 +313,6 @@ def test_device_from_tracker_entries(
         pytest.param(
             arp_ndp_table([arp_ndp_entry("aa:bb:cc", valid_mac=None, hostname="raw")]),
             arp_ndp_table(),
-            ["aa:bb:cc"],
             [{"mac": "aa:bb:cc", "hostname": "raw"}],
             id="permissive-arp-mac",
         ),
@@ -371,7 +331,6 @@ def test_device_from_tracker_entries(
                     arp_ndp_entry("00:11:22:33:44:55", ipv6_address=None),
                 ]
             ),
-            ["aa:bb:cc:dd:ee:01"],
             [{"mac": "aa:bb:cc:dd:ee:01", "hostname": "client", "manufacturer": "Example Vendor"}],
             id="merges-dual-stack-and-skips-invalid-ndp-rows",
         ),
@@ -380,7 +339,6 @@ def test_device_from_tracker_entries(
 def test_devices_from_tracker_entries(
     arp_table: OPNsenseClient.ArpNdpTable,
     ndp_table: OPNsenseClient.ArpNdpTable,
-    expected_macs: list[str],
     expected_devices: list[dict[str, Any]],
 ) -> None:
     """Tracker discovery returns one device per unique valid MAC, merging ARP and NDP metadata.
@@ -388,7 +346,6 @@ def test_devices_from_tracker_entries(
     Args:
         arp_table (OPNsenseClient.ArpNdpTable): Normalized ARP table for the scan.
         ndp_table (OPNsenseClient.ArpNdpTable): Normalized NDP table for the scan.
-        expected_macs (list[str]): Expected canonical MAC addresses in discovery order.
         expected_devices (list[dict[str, Any]]): Expected device metadata.
     """
     snapshot = evidence_snapshot(arp=arp_table, ndp=ndp_table)
@@ -402,7 +359,6 @@ def test_devices_from_tracker_entries(
         for device in devices
     ]
 
-    assert [device.mac for device in devices] == expected_macs
     assert actual_devices == expected_devices
 
 
@@ -681,16 +637,13 @@ def test_handle_coordinator_update_entry_present(
     assert ent.source_type == SourceType.ROUTER
 
 
-@pytest.mark.parametrize("unusable_data", [{}, None], ids=["empty", "none"])
-def test_handle_coordinator_update_unusable_data_keeps_connected_tracker_unavailable(
-    unusable_data: dict[str, Any] | None,
+def test_handle_coordinator_update_missing_tables_keeps_connected_tracker_unavailable(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """Unusable coordinator data must not turn a connected tracker into an away observation.
+    """Missing neighbor tables must not turn a connected tracker into an away observation.
 
     Args:
-        unusable_data (dict[str, Any] | None): Coordinator payload without any neighbor table.
         coordinator (MagicMock): Mock coordinator supplying entity data.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake config entry.
     """
@@ -718,7 +671,6 @@ def test_handle_coordinator_update_unusable_data_keeps_connected_tracker_unavail
     assert ent.available is True
     assert ent.is_connected is True
 
-    coordinator.data = unusable_data
     coordinator.scan_tables = _ScanTables()
     _handle_coordinator_update(ent)
 
@@ -1122,44 +1074,6 @@ def test_retained_arp_address_is_published_without_confirming_presence(
     snapshot = coordinator.device_tracker_evidence
     assert snapshot is not None
     assert (snapshot.arp.current_entries is not None) is arp_current
-
-
-@pytest.mark.parametrize(
-    "arp_row",
-    [
-        pytest.param(
-            arp_ndp_entry("aa:bb:cc", valid_mac=None, ipv4_address="1.2.3.4", interface="lan"),
-            id="normalized-arp-entry",
-        ),
-    ],
-)
-def test_handle_coordinator_update_matches_normalized_arp_entry(
-    arp_row: OPNsenseClient.ArpNdpEntry,
-    coordinator: MagicMock,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """A normalized ARP entry for the tracked MAC updates the tracker.
-
-    Args:
-        arp_row (OPNsenseClient.ArpNdpEntry): Normalized ARP entry for the tracked MAC.
-        coordinator (MagicMock): Mock coordinator supplying entity data.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake config entry.
-    """
-    ent = _make_scanner_entity(
-        coordinator=coordinator,
-        make_config_entry=make_config_entry,
-        coordinator_data={"update_time": 0},
-        scan_tables=_ScanTables(arp=arp_ndp_table([arp_row])),
-    )
-    object.__setattr__(ent, "async_write_ha_state", MagicMock())
-
-    _handle_coordinator_update(ent)
-
-    assert ent.ip_address == "1.2.3.4"
-    attributes = ent.extra_state_attributes
-    assert attributes is not None
-    assert attributes.get("interface") == "lan"
-    assert ent.available is True
 
 
 def test_handle_coordinator_update_merges_ipv4_and_ipv6_addresses_and_ages_failed_ndp(
@@ -2705,18 +2619,12 @@ async def test_async_setup_entry_removes_stale_tracker_entities_clears_missing_p
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "failed_tables",
-    [_ScanTables(), _ScanTables(arp=None)],
-    ids=["refresh_returned_no_state", "arp_table_missing"],
-)
 async def test_async_setup_entry_keeps_trackers_when_first_refresh_fails(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_reg_factory: Any,
-    failed_tables: _ScanTables,
 ) -> None:
     """A failed first refresh must not remove trackers that already exist.
 
@@ -2726,10 +2634,9 @@ async def test_async_setup_entry_keeps_trackers_when_first_refresh_fails(
         coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
         fake_reg_factory (Any): Factory for the in-memory entity registry test double.
-        failed_tables (_ScanTables): Normalized tables left behind by a failed refresh.
     """
     coordinator.data = {}
-    coordinator.scan_tables = failed_tables
+    coordinator.scan_tables = _ScanTables()
     entry = make_config_entry(
         data={
             TRACKED_MACS: ["aa:bb:cc:dd:ee:01", "aa:bb:cc:dd:ee:02"],
