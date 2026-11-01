@@ -87,17 +87,63 @@ def test_setup_and_poll_preserve_their_distinct_absence_policies() -> None:
 
 
 def test_cached_rows_preserve_inventory_without_becoming_current_evidence() -> None:
-    """An unavailable family retains address metadata without a current sighting."""
+    """Retained ARP rows preserve address metadata without confirming current presence."""
     snapshot = evidence_snapshot(
         arp=arp_ndp_table([arp_ndp_entry(MAC, ipv4_address="192.0.2.1")]),
         ndp=arp_ndp_table(),
         arp_current=False,
+    )
+    presence = snapshot.presence_for_mac(
+        MAC,
+        now=datetime(2026, 10, 31, 12, tzinfo=UTC),
+        max_age=timedelta(minutes=20),
     )
 
     assert snapshot.addresses_for_mac("arp", MAC) == ("192.0.2.1",)
     assert snapshot.arp.current_entries is None
     assert not snapshot.arp.successful
     assert not snapshot.arp.authoritative
+    assert presence.status == "unknown"
+    assert presence.ipv4_addresses == ("192.0.2.1",)
+
+
+def test_failed_arp_merges_saved_and_retained_addresses_once() -> None:
+    """A failed ARP lookup keeps saved addresses and adds cached rows without duplicates."""
+    snapshot = evidence_snapshot(
+        arp=arp_ndp_table(
+            [
+                arp_ndp_entry(MAC, ipv4_address="192.0.2.2"),
+                arp_ndp_entry(MAC, ipv4_address="192.0.2.3"),
+            ]
+        ),
+        ndp=arp_ndp_table(),
+        arp_current=False,
+    )
+
+    presence = snapshot.presence_for_mac(
+        MAC,
+        now=datetime(2026, 10, 31, 12, tzinfo=UTC),
+        max_age=timedelta(minutes=20),
+        previous_ipv4_addresses=["192.0.2.1", "192.0.2.2"],
+    )
+
+    assert presence.status == "unknown"
+    assert presence.ipv4_addresses == ("192.0.2.1", "192.0.2.2", "192.0.2.3")
+
+
+def test_complete_empty_arp_scan_clears_saved_ipv4_metadata() -> None:
+    """An authoritative empty ARP scan still replaces old IPv4 metadata."""
+    snapshot = evidence_snapshot(arp=arp_ndp_table(), ndp=arp_ndp_table())
+
+    presence = snapshot.presence_for_mac(
+        MAC,
+        now=datetime(2026, 10, 31, 12, tzinfo=UTC),
+        max_age=timedelta(minutes=20),
+        previous_ipv4_addresses=["192.0.2.1"],
+    )
+
+    assert presence.status == "absent"
+    assert presence.ipv4_addresses == ()
 
 
 @pytest.mark.parametrize(

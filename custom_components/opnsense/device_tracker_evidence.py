@@ -236,7 +236,11 @@ class DeviceTrackerEvidenceSnapshot:
         if self.arp.authoritative:
             ipv4_addresses = observed_ipv4_addresses
         elif arp_failed:
-            ipv4_addresses = tuple(_saved_addresses(previous_ipv4_addresses))
+            ipv4_addresses = tuple(
+                dict.fromkeys(
+                    _saved_addresses(previous_ipv4_addresses) + list(observed_ipv4_addresses)
+                )
+            )
         else:
             ipv4_addresses = tuple(
                 dict.fromkeys(

@@ -1077,6 +1077,54 @@ def test_handle_coordinator_update_does_not_infer_absence_from_incomplete_arp(
 
 
 @pytest.mark.parametrize(
+    ("arp_current", "expected_available", "expected_connected"),
+    [
+        pytest.param(False, False, False, id="retained-row-is-not-current-presence"),
+        pytest.param(True, True, True, id="current-row-confirms-presence"),
+    ],
+)
+def test_retained_arp_address_is_published_without_confirming_presence(
+    coordinator: MagicMock,
+    make_config_entry: Callable[..., MockConfigEntry],
+    arp_current: bool,
+    expected_available: bool,
+    expected_connected: bool,
+) -> None:
+    """Cached ARP metadata survives an outage while only a current row confirms presence.
+
+    Args:
+        coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake config entry.
+        arp_current (bool): Whether the ARP row came from this scan or a retained cache.
+        expected_available (bool): Whether current evidence is sufficient for entity availability.
+        expected_connected (bool): Whether current evidence marks the entity connected.
+    """
+    arp_table = arp_ndp_table([arp_ndp_entry("aa:bb:cc", ipv4_address="192.0.2.1")])
+    entity = _make_scanner_entity(
+        coordinator,
+        make_config_entry,
+        scan_tables=_ScanTables(
+            arp=arp_table,
+            ndp=arp_ndp_table(),
+            arp_current=arp_current,
+        ),
+    )
+    object.__setattr__(entity, "async_write_ha_state", MagicMock())
+
+    _handle_coordinator_update(entity)
+
+    assert entity.available is expected_available
+    assert entity.is_connected is expected_connected
+    assert entity.ip_address == "192.0.2.1"
+    attributes = entity.extra_state_attributes
+    assert attributes is not None
+    assert attributes["ipv4_addresses"] == ["192.0.2.1"]
+    snapshot = coordinator.device_tracker_evidence
+    assert snapshot is not None
+    assert (snapshot.arp.current_entries is not None) is arp_current
+
+
+@pytest.mark.parametrize(
     "arp_row",
     [
         pytest.param(
