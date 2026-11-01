@@ -1,35 +1,18 @@
-"""Normalize OPNsense neighbor data into immutable tracker evidence."""
+"""Apply device-tracker policies to library-normalized neighbor evidence."""
 
-from collections.abc import Mapping, MutableMapping, Sequence
-import copy
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
-import ipaddress
 from types import MappingProxyType
 from typing import Literal
 
+from aiopnsense.neighbors import NeighborEntry, normalize_neighbor_entry
+
 from .const import TRACKED_ARP_MACS, TRACKED_MACS, TRACKED_NDP_MACS
-from .helpers import get_arp_ip, get_arp_mac, normalize_arp_mac, normalize_mac_address
+from .helpers import normalize_arp_mac, normalize_mac_address
 
 TrackerFamily = Literal["arp", "ndp"]
 PresenceStatus = Literal["present", "absent", "unknown"]
-
-
-@dataclass(frozen=True, slots=True)
-class TrackerEntry:
-    """A normalized neighbor-table row used by tracker decisions."""
-
-    mac: str | None
-    valid_mac: str | None
-    ipv4_address: str | None
-    ipv6_address: str | None
-    hostname: str | None
-    manufacturer: str | None
-    expired: bool
-    interface: object
-    expires: object
-    arp_type: object
-    usable: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,8 +23,8 @@ class NeighborTableEvidence:
     authoritative: bool
     has_payload: bool
     is_ndp: bool
-    current_entries: tuple[TrackerEntry, ...] | None
-    entries: tuple[TrackerEntry, ...]
+    current_entries: tuple[NeighborEntry, ...] | None
+    entries: tuple[NeighborEntry, ...]
 
     @property
     def macs(self) -> tuple[str, ...]:
@@ -85,8 +68,8 @@ class TrackerPresenceEvidence:
     observations_failed: bool
     ipv4_addresses: tuple[str, ...]
     ipv6_addresses: tuple[str, ...]
-    arp_entry: TrackerEntry | None
-    ndp_entry: TrackerEntry | None
+    arp_entry: NeighborEntry | None
+    ndp_entry: NeighborEntry | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +125,7 @@ class TrackerEvidenceSnapshot:
         *,
         require_valid_mac: bool = False,
         require_ipv6: bool = False,
-    ) -> tuple[TrackerEntry, ...]:
+    ) -> tuple[NeighborEntry, ...]:
         """Return normalized rows matching one tracker MAC.
 
         Args:
@@ -152,13 +135,13 @@ class TrackerEvidenceSnapshot:
             require_ipv6 (bool): Whether NDP rows must contain a valid IPv6 address.
 
         Returns:
-            tuple[TrackerEntry, ...]: Matching normalized rows in table order.
+            tuple[NeighborEntry, ...]: Matching normalized rows in table order.
         """
         normalized_mac = _device_tracker_mac(mac)
         if not normalized_mac:
             return ()
         table = self.arp if family == "arp" else self.ndp
-        matching: list[TrackerEntry] = []
+        matching: list[NeighborEntry] = []
         for entry in table.entries:
             if not entry.usable:
                 continue
@@ -501,7 +484,7 @@ def _table_evidence(value: object, *, failed: bool, ndp: bool) -> NeighborTableE
         NeighborTableEvidence: Normalized rows and their availability classification.
     """
     rows = value if isinstance(value, list) else []
-    entries = tuple(_normalize_entry(row) for row in rows if isinstance(row, Mapping))
+    entries = tuple(normalize_neighbor_entry(row) for row in rows if isinstance(row, Mapping))
     rows_complete = len(entries) == len(rows) and all(entry.usable for entry in entries)
     if ndp:
         rows_complete = rows_complete and all(
@@ -516,44 +499,6 @@ def _table_evidence(value: object, *, failed: bool, ndp: bool) -> NeighborTableE
         is_ndp=ndp,
         current_entries=entries if successful else None,
         entries=entries,
-    )
-
-
-def _normalize_entry(row: Mapping[str, object]) -> TrackerEntry:
-    """Copy and normalize the scalar evidence used from one raw row.
-
-    Args:
-        row (Mapping[str, object]): Neighbor row returned by the API.
-
-    Returns:
-        TrackerEntry: Immutable normalized values used by tracker consumers.
-    """
-    copied = copy.deepcopy(dict(row))
-    raw_mac = get_arp_mac(copied)
-    raw_ip = get_arp_ip(copied)
-    hostname = copied.get("hostname")
-    if isinstance(hostname, str):
-        hostname = hostname.strip("?") or None
-    else:
-        hostname = None
-    manufacturer = copied.get("manufacturer")
-    if not isinstance(manufacturer, str) or not manufacturer:
-        manufacturer = None
-    interface = copied.get("intf_description", copied.get("intf"))
-    expires = copied.get("expires")
-    arp_type = copied.get("type")
-    return TrackerEntry(
-        mac=_device_tracker_mac(raw_mac) if raw_mac else None,
-        valid_mac=normalize_mac_address(raw_mac) if raw_mac else None,
-        ipv4_address=_normalized_ip(raw_ip, version=4),
-        ipv6_address=_normalized_ip(raw_ip, version=6),
-        hostname=hostname,
-        manufacturer=manufacturer,
-        expired=bool(copied.get("expired", False)),
-        interface=interface,
-        expires=expires,
-        arp_type=arp_type,
-        usable=isinstance(row, MutableMapping),
     )
 
 
@@ -592,25 +537,6 @@ def _index_observations(observations: object) -> Mapping[str, datetime] | None:
         if previous is None or last_seen > previous:
             latest[normalized_mac] = last_seen
     return MappingProxyType(latest)
-
-
-def _normalized_ip(value: object, *, version: int) -> str | None:
-    """Return a canonical IP address when it matches the requested family.
-
-    Args:
-        value (object): Raw address from a neighbor row.
-        version (int): Expected IP family, 4 or 6.
-
-    Returns:
-        str | None: Compressed address when valid for ``version``.
-    """
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        address = ipaddress.ip_address(value.strip())
-    except ValueError:
-        return None
-    return address.compressed if address.version == version else None
 
 
 def _device_tracker_mac(mac: object) -> str:

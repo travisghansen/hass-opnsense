@@ -7,6 +7,7 @@ import ipaddress
 import logging
 from typing import Any
 
+from aiopnsense.neighbors import NeighborEntry
 from homeassistant.components.device_tracker import ScannerEntity, SourceType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -50,7 +51,6 @@ from .helpers import (
 )
 from .repair_reconciliation import is_reconciliation_active, record_desired_entities
 from .tracker_evidence import (
-    TrackerEntry,
     TrackerEvidenceSnapshot,
     normalize_family_inventory,
     poll_family_provenance,
@@ -100,13 +100,13 @@ def _normalized_ip_address(value: object, *, version: int) -> str | None:
 
 def _update_arp_extra_state_attributes(
     attributes: dict[str, Any],
-    entry: TrackerEntry | None,
+    entry: NeighborEntry | None,
 ) -> None:
     """Update optional ARP extra state attributes from a coordinator entry.
 
     Args:
         attributes (dict[str, Any]): Entity attributes to mutate in place.
-        entry (TrackerEntry | None): Normalized neighbor row providing optional metadata.
+        entry (NeighborEntry | None): Normalized neighbor row providing optional metadata.
     """
     for attr in ("interface", "expires", "type"):
         attributes.pop(attr, None)
