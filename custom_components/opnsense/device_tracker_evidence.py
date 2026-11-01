@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from types import MappingProxyType
 from typing import Literal
 
-from aiopnsense.arp_ndp import ArpNdpEntry, normalize_arp_ndp_entry
+from aiopnsense.dhcp import ArpNdpEntry, normalize_arp_ndp_entry
 
 from .const import TRACKED_ARP_MACS, TRACKED_MACS, TRACKED_NDP_MACS
 from .helpers import normalize_arp_mac, normalize_mac_address

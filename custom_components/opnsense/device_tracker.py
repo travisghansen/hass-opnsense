@@ -7,7 +7,7 @@ import ipaddress
 import logging
 from typing import Any
 
-from aiopnsense.arp_ndp import ArpNdpEntry
+from aiopnsense.dhcp import ArpNdpEntry
 from homeassistant.components.device_tracker import ScannerEntity, SourceType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
