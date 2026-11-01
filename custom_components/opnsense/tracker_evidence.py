@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from types import MappingProxyType
 from typing import Literal
 
-from aiopnsense.arp_ndp import NeighborEntry, normalize_neighbor_entry
+from aiopnsense.arp_ndp import ArpNdpEntry, normalize_arp_ndp_entry
 
 from .const import TRACKED_ARP_MACS, TRACKED_MACS, TRACKED_NDP_MACS
 from .helpers import normalize_arp_mac, normalize_mac_address
@@ -23,8 +23,8 @@ class NeighborTableEvidence:
     authoritative: bool
     has_payload: bool
     is_ndp: bool
-    current_entries: tuple[NeighborEntry, ...] | None
-    entries: tuple[NeighborEntry, ...]
+    current_entries: tuple[ArpNdpEntry, ...] | None
+    entries: tuple[ArpNdpEntry, ...]
 
     @property
     def macs(self) -> tuple[str, ...]:
@@ -68,8 +68,8 @@ class TrackerPresenceEvidence:
     observations_failed: bool
     ipv4_addresses: tuple[str, ...]
     ipv6_addresses: tuple[str, ...]
-    arp_entry: NeighborEntry | None
-    ndp_entry: NeighborEntry | None
+    arp_entry: ArpNdpEntry | None
+    ndp_entry: ArpNdpEntry | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,7 +125,7 @@ class TrackerEvidenceSnapshot:
         *,
         require_valid_mac: bool = False,
         require_ipv6: bool = False,
-    ) -> tuple[NeighborEntry, ...]:
+    ) -> tuple[ArpNdpEntry, ...]:
         """Return normalized rows matching one tracker MAC.
 
         Args:
@@ -135,13 +135,13 @@ class TrackerEvidenceSnapshot:
             require_ipv6 (bool): Whether NDP rows must contain a valid IPv6 address.
 
         Returns:
-            tuple[NeighborEntry, ...]: Matching normalized rows in table order.
+            tuple[ArpNdpEntry, ...]: Matching normalized rows in table order.
         """
         normalized_mac = _device_tracker_mac(mac)
         if not normalized_mac:
             return ()
         table = self.arp if family == "arp" else self.ndp
-        matching: list[NeighborEntry] = []
+        matching: list[ArpNdpEntry] = []
         for entry in table.entries:
             if not entry.usable:
                 continue
@@ -484,7 +484,7 @@ def _table_evidence(value: object, *, failed: bool, ndp: bool) -> NeighborTableE
         NeighborTableEvidence: Normalized rows and their availability classification.
     """
     rows = value if isinstance(value, list) else []
-    entries = tuple(normalize_neighbor_entry(row) for row in rows if isinstance(row, Mapping))
+    entries = tuple(normalize_arp_ndp_entry(row) for row in rows if isinstance(row, Mapping))
     rows_complete = len(entries) == len(rows) and all(entry.usable for entry in entries)
     if ndp:
         rows_complete = rows_complete and all(
