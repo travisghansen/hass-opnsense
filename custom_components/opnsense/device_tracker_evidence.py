@@ -7,7 +7,6 @@ from types import MappingProxyType
 from typing import Literal
 
 from aiopnsense import OPNsenseClient
-from aiopnsense.dhcp import ArpNdpEntry
 
 from .const import TRACKED_ARP_MACS, TRACKED_MACS, TRACKED_NDP_MACS
 from .helpers import normalize_arp_mac, normalize_mac_address
@@ -24,8 +23,8 @@ class ArpNdpTableEvidence:
     authoritative: bool
     has_payload: bool
     is_ndp: bool
-    current_entries: tuple[ArpNdpEntry, ...] | None
-    entries: tuple[ArpNdpEntry, ...]
+    current_entries: tuple[OPNsenseClient.ArpNdpEntry, ...] | None
+    entries: tuple[OPNsenseClient.ArpNdpEntry, ...]
 
     @property
     def macs(self) -> tuple[str, ...]:
@@ -69,8 +68,8 @@ class DeviceTrackerPresenceEvidence:
     observations_failed: bool
     ipv4_addresses: tuple[str, ...]
     ipv6_addresses: tuple[str, ...]
-    arp_entry: ArpNdpEntry | None
-    ndp_entry: ArpNdpEntry | None
+    arp_entry: OPNsenseClient.ArpNdpEntry | None
+    ndp_entry: OPNsenseClient.ArpNdpEntry | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,7 +125,7 @@ class DeviceTrackerEvidenceSnapshot:
         *,
         require_valid_mac: bool = False,
         require_ipv6: bool = False,
-    ) -> tuple[ArpNdpEntry, ...]:
+    ) -> tuple[OPNsenseClient.ArpNdpEntry, ...]:
         """Return normalized rows matching one tracker MAC.
 
         Args:
@@ -136,13 +135,13 @@ class DeviceTrackerEvidenceSnapshot:
             require_ipv6 (bool): Whether NDP rows must contain a valid IPv6 address.
 
         Returns:
-            tuple[ArpNdpEntry, ...]: Matching normalized rows in table order.
+            tuple[OPNsenseClient.ArpNdpEntry, ...]: Matching normalized rows in table order.
         """
         normalized_mac = _normalize_tracked_mac(mac)
         if not normalized_mac:
             return ()
         table = self.arp if family == "arp" else self.ndp
-        matching: list[ArpNdpEntry] = []
+        matching: list[OPNsenseClient.ArpNdpEntry] = []
         for entry in table.entries:
             if not entry.usable:
                 continue
