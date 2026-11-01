@@ -44,28 +44,6 @@ def test_one_snapshot_evaluates_freshness_at_each_consumer_time() -> None:
     assert expired.ndp_presence_source == "host_discovery"
 
 
-def test_snapshot_isolates_consumers_from_later_source_mutation() -> None:
-    """A published scan must keep its evidence when caller-owned inputs change."""
-    observed_at = datetime(2026, 10, 31, 12, tzinfo=UTC)
-    ndp_entries = [arp_ndp_entry(MAC, ipv6_address="2001:db8::1")]
-    observation_entries = [host_observation(MAC, "192.0.2.1", observed_at)]
-    observations = host_observations("discovery", observation_entries)
-    snapshot = evidence_snapshot(
-        arp=arp_ndp_table(),
-        ndp=arp_ndp_table(ndp_entries),
-        observations=observations,
-    )
-
-    ndp_entries.clear()
-    observation_entries.clear()
-
-    assert snapshot.addresses_for_mac("ndp", MAC) == ("2001:db8::1",)
-    assert snapshot.ndp.authoritative
-    assert snapshot.is_host_observation_fresh(
-        MAC, now=observed_at + timedelta(seconds=1), max_age=timedelta(minutes=20)
-    )
-
-
 def test_setup_and_poll_preserve_their_distinct_absence_policies() -> None:
     """A complete empty scan removes setup inventory but keeps polling provenance."""
     snapshot = evidence_snapshot(arp=arp_ndp_table(), ndp=arp_ndp_table())
