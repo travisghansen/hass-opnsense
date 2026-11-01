@@ -5,8 +5,9 @@ import copy
 from datetime import timedelta
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import OPNsenseError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -51,9 +52,6 @@ from .repairs import (
     is_valid_device_id,
 )
 
-if TYPE_CHECKING:
-    from aiopnsense import OPNsenseClient
-
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 _PREVIOUS_STATE_KEYS: tuple[str, ...] = (
@@ -72,8 +70,8 @@ _VPN_COUNTER_GROUPS: dict[str, tuple[str, ...]] = {
 }
 # Device-tracker lookups that may fail without failing the whole poll.
 _OPTIONAL_TRACKER_METHODS: dict[str, str] = {
-    "get_arp_table": "ARP",
-    "get_ndp_table": "NDP",
+    "get_arp_entries": "ARP",
+    "get_ndp_entries": "NDP",
     "get_host_observations": "Host observation",
 }
 
@@ -114,6 +112,9 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
         self._client: OPNsenseClient = client
         self._state: dict[str, Any] = {}
         self.device_tracker_evidence: DeviceTrackerEvidenceSnapshot | None = None
+        # Normalized tables from the last published refresh, retained only as non-current
+        # evidence while a later lookup fails.
+        self._retained_neighbor_tables: dict[str, OPNsenseClient.ArpNdpTable] = {}
         self._device_tracker_coordinator: bool = device_tracker_coordinator
         self._mismatched_count = 0
         self._device_unique_id: str | None = device_unique_id
@@ -190,7 +191,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                                     info_type=cat.get("info_type", "A"),
                                 )
                         state[cat.get("state_key")] = smart_info
-                    elif method_name == "get_arp_table":
+                    elif method_name == "get_arp_entries":
                         state[cat.get("state_key")] = await method(
                             resolve_hostnames=bool(cat.get("resolve_hostnames", False))
                         )
@@ -457,26 +458,39 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             },
             {"function": "get_system_info", "state_key": "system_info"},
             {
-                "function": "get_arp_table",
+                "function": "get_arp_entries",
                 "state_key": "arp_table",
                 "resolve_hostnames": self._resolve_arp_hostnames(),
             },
-            {"function": "get_ndp_table", "state_key": "ndp_table"},
+            {"function": "get_ndp_entries", "state_key": "ndp_table"},
         ]
-        prior_state = self._state.get("previous_state")
-        if not isinstance(prior_state, Mapping):
-            prior_state = self._state.copy()
         fetched_state = await self._get_states(categories)
+        # Normalized tables stay out of coordinator data, which holds JSON-friendly raw rows
+        # for diagnostics.
+        current_tables = {
+            table_key: table
+            for table_key in ("arp_table", "ndp_table")
+            if isinstance(table := fetched_state.pop(table_key, None), OPNsenseClient.ArpNdpTable)
+        }
         self._state.update(fetched_state)
+        effective_tables: dict[str, OPNsenseClient.ArpNdpTable | None] = {}
         unavailable_tables: list[str] = []
         for table_key in ("arp_table", "ndp_table"):
-            if isinstance(fetched_state.get(table_key), list):
-                continue
-            unavailable_tables.append(table_key)
-            previous_table = prior_state.get(table_key)
-            self._state[table_key] = previous_table if isinstance(previous_table, list) else None
+            effective = current_tables.get(table_key)
+            if effective is None:
+                unavailable_tables.append(table_key)
+                effective = self._retained_neighbor_tables.get(table_key)
+            effective_tables[table_key] = effective
+            self._state[table_key] = (
+                copy.deepcopy(list(effective.raw_rows)) if effective is not None else None
+            )
         self._state["unavailable_device_tracker_tables"] = unavailable_tables
-        device_tracker_evidence = DeviceTrackerEvidenceSnapshot.from_state(self._state)
+        device_tracker_evidence = DeviceTrackerEvidenceSnapshot.from_tables(
+            arp=effective_tables["arp_table"],
+            ndp=effective_tables["ndp_table"],
+            arp_current="arp_table" in current_tables,
+            ndp_current="ndp_table" in current_tables,
+        )
         if self._ndp_table_needs_observations(device_tracker_evidence):
             observation_state = await self._get_states(
                 [{"function": "get_host_observations", "state_key": "host_observations"}]
@@ -489,6 +503,9 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             return {}
         restapi_count = await self._client.get_query_counts()
         self.device_tracker_evidence = device_tracker_evidence
+        self._retained_neighbor_tables = {
+            table_key: table for table_key, table in effective_tables.items() if table is not None
+        }
         _LOGGER.debug(
             "DT Update Complete. REST API Queries: %s",
             restapi_count,

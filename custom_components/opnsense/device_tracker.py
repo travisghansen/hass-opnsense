@@ -230,7 +230,7 @@ async def async_setup_entry(
     if snapshot is None:
         # A failed initial refresh can leave no current snapshot. Continue with persisted tracker
         # identities, but do not use the previous coordinator payload as fresh discovery data.
-        snapshot = DeviceTrackerEvidenceSnapshot.from_state({})
+        snapshot = DeviceTrackerEvidenceSnapshot.from_tables()
     reconciliation_complete = True
     entities: list = []
 

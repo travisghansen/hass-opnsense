@@ -34,8 +34,6 @@ from custom_components.opnsense.helpers import (
     firewall_nat_switch_unique_ids_from_payload,
     firewall_rule_id_from_payload,
     firewall_rule_switch_unique_ids_from_payload,
-    get_arp_ip,
-    get_arp_mac,
     get_smart_device_name,
     has_configured_tracker_macs,
     is_carp_entry,
@@ -455,66 +453,6 @@ def test_tracked_ndp_macs_merges_normalized_inventories_and_configured_devices(
         "aa:bb:cc:dd:ee:03",
     }
     assert tracked_ndp_macs(make_config_entry(data={CONF_DEVICE_UNIQUE_ID: "dev1"})) == set()
-
-
-@pytest.mark.parametrize(
-    ("entry", "expected"),
-    [
-        pytest.param({"mac": "AA:BB:CC"}, "aa:bb:cc", id="normalized-key"),
-        pytest.param({"mac-address": "AA-BB-CC"}, "aa:bb:cc", id="raw-key"),
-        pytest.param(
-            {"mac": 1, "mac-address": "AA-BB-CC"},
-            "aa:bb:cc",
-            id="fallback-key",
-        ),
-        pytest.param(
-            {"mac": "  ", "mac-address": "AA-BB-CC"},
-            "aa:bb:cc",
-            id="blank-normalized-key-fallback",
-        ),
-        pytest.param(
-            {"mac": "  ", "mac-address": " \t"},
-            "",
-            id="both-keys-blank",
-        ),
-    ],
-)
-def test_get_arp_mac(entry: dict[str, Any], expected: str) -> None:
-    """Read normalized and raw ARP MAC keys through one helper.
-
-    Args:
-        entry (dict[str, Any]): Registry or payload entry being formatted.
-        expected (str): Outcome asserted by the parameterized scenario.
-    """
-    assert get_arp_mac(entry) == expected
-
-
-@pytest.mark.parametrize(
-    ("entry", "expected"),
-    [
-        pytest.param({"ip": " 192.0.2.1 "}, "192.0.2.1", id="normalized-key"),
-        pytest.param({"ip-address": " 192.0.2.2 "}, "192.0.2.2", id="raw-key"),
-        pytest.param({"ip": 1}, "", id="invalid-value"),
-        pytest.param(
-            {"ip": "  ", "ip-address": " 192.0.2.3 "},
-            "192.0.2.3",
-            id="blank-normalized-key-fallback",
-        ),
-        pytest.param(
-            {"ip": " \t", "ip-address": "  "},
-            "",
-            id="both-keys-blank",
-        ),
-    ],
-)
-def test_get_arp_ip(entry: dict[str, Any], expected: str) -> None:
-    """Read and strip normalized and raw ARP IP keys through one helper.
-
-    Args:
-        entry (dict[str, Any]): Registry or payload entry being formatted.
-        expected (str): Outcome asserted by the parameterized scenario.
-    """
-    assert get_arp_ip(entry) == expected
 
 
 @pytest.mark.parametrize(

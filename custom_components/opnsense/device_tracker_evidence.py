@@ -33,8 +33,7 @@ class ArpNdpTableEvidence:
             dict.fromkeys(
                 mac
                 for entry in self.entries
-                if entry.usable
-                and (mac := entry.valid_mac if self.is_ndp else entry.mac)
+                if (mac := entry.valid_mac if self.is_ndp else entry.mac)
                 and (not self.is_ndp or entry.ipv6_address is not None)
             )
         )
@@ -81,40 +80,33 @@ class DeviceTrackerEvidenceSnapshot:
     observation_times: Mapping[str, datetime] | None
 
     @classmethod
-    def from_state(
+    def from_tables(
         cls,
-        state: object,
         *,
+        arp: OPNsenseClient.ArpNdpTable | None = None,
+        ndp: OPNsenseClient.ArpNdpTable | None = None,
+        arp_current: bool = False,
+        ndp_current: bool = False,
         observations: object = None,
     ) -> DeviceTrackerEvidenceSnapshot:
-        """Build an immutable snapshot from the coordinator's effective state.
+        """Build an immutable snapshot from the effective normalized tables.
 
         Args:
-            state (object): Effective coordinator state, including retained rows and the
-                ``unavailable_device_tracker_tables`` marker for failed lookups.
+            arp (OPNsenseClient.ArpNdpTable | None): Effective ARP table, either fetched by the
+                current refresh or retained from an earlier one.
+            ndp (OPNsenseClient.ArpNdpTable | None): Effective NDP table, either fetched by the
+                current refresh or retained from an earlier one.
+            arp_current (bool): Whether ``arp`` was fetched by the current refresh.
+            ndp_current (bool): Whether ``ndp`` was fetched by the current refresh.
             observations (object): Raw host-observation response from the current refresh.
 
         Returns:
-            DeviceTrackerEvidenceSnapshot: Normalized family rows and timestamped observations.
+            DeviceTrackerEvidenceSnapshot: Family evidence and timestamped observations. A
+                retained table keeps its entries but is never current evidence.
         """
-        state_mapping = state if isinstance(state, Mapping) else {}
-        unavailable = state_mapping.get("unavailable_device_tracker_tables", [])
-        unavailable_tables = (
-            [item for item in unavailable if isinstance(item, str)]
-            if isinstance(unavailable, list)
-            else []
-        )
         return cls(
-            arp=_arp_ndp_table_evidence(
-                state_mapping.get("arp_table"),
-                failed="arp_table" in unavailable_tables,
-                ndp=False,
-            ),
-            ndp=_arp_ndp_table_evidence(
-                state_mapping.get("ndp_table"),
-                failed="ndp_table" in unavailable_tables,
-                ndp=True,
-            ),
+            arp=_arp_ndp_table_evidence(arp, current=arp_current, ndp=False),
+            ndp=_arp_ndp_table_evidence(ndp, current=ndp_current, ndp=True),
             observation_times=_index_discovery_observations(observations),
         )
 
@@ -143,8 +135,6 @@ class DeviceTrackerEvidenceSnapshot:
         table = self.arp if family == "arp" else self.ndp
         matching: list[OPNsenseClient.ArpNdpEntry] = []
         for entry in table.entries:
-            if not entry.usable:
-                continue
             entry_mac = entry.valid_mac if require_valid_mac else entry.mac
             if entry_mac != normalized_mac:
                 continue
@@ -306,8 +296,6 @@ class DeviceTrackerEvidenceSnapshot:
         devices: dict[str, TrackedDevice] = {}
         for family, entries in (("arp", self.arp.entries), ("ndp", self.ndp.entries)):
             for entry in entries:
-                if not entry.usable:
-                    continue
                 mac = entry.mac if family == "arp" else entry.valid_mac
                 if mac is None or (family == "ndp" and entry.ipv6_address is None):
                     continue
@@ -472,32 +460,32 @@ def poll_arp_ndp_provenance(
     return ArpNdpProvenance(tuple(updated_arp), tuple(updated_ndp))
 
 
-def _arp_ndp_table_evidence(value: object, *, failed: bool, ndp: bool) -> ArpNdpTableEvidence:
-    """Normalize current or cached table rows and classify authority.
+def _arp_ndp_table_evidence(
+    table: OPNsenseClient.ArpNdpTable | None, *, current: bool, ndp: bool
+) -> ArpNdpTableEvidence:
+    """Classify one effective table and its authority.
 
     Args:
-        value (object): Effective state value for one ARP or NDP table.
-        failed (bool): Whether the current lookup failed despite retained rows.
-        ndp (bool): Whether the rows belong to the IPv6 NDP table.
+        table (OPNsenseClient.ArpNdpTable | None): Current or retained normalized table.
+        current (bool): Whether the table was fetched by the current refresh.
+        ndp (bool): Whether the table belongs to the IPv6 NDP family.
 
     Returns:
-        ArpNdpTableEvidence: Normalized rows and their availability classification.
+        ArpNdpTableEvidence: Entries and their availability classification. Only a current table
+            with no unparsed rows is authoritative, and every NDP entry must also carry a valid
+            MAC and IPv6 address. ARP keeps its permissive identity policy.
     """
-    rows = value if isinstance(value, list) else []
-    entries = tuple(
-        OPNsenseClient.normalize_arp_ndp_entry(row) for row in rows if isinstance(row, Mapping)
-    )
-    rows_complete = len(entries) == len(rows) and all(entry.usable for entry in entries)
+    entries = table.entries if table is not None else ()
+    successful = current and table is not None
+    rows_complete = table is not None and table.unparsed_row_count == 0
     if ndp:
         rows_complete = rows_complete and all(
             entry.valid_mac is not None and entry.ipv6_address is not None for entry in entries
         )
-    successful = not failed and isinstance(value, list)
-    authoritative = successful and rows_complete
     return ArpNdpTableEvidence(
         successful=successful,
-        authoritative=authoritative,
-        has_payload=isinstance(value, list),
+        authoritative=successful and rows_complete,
+        has_payload=table is not None,
         is_ndp=ndp,
         current_entries=entries if successful else None,
         entries=entries,

@@ -50,7 +50,7 @@ from custom_components.opnsense.const import (
     DOMAIN,
     SHOULD_RELOAD,
 )
-from tests.utilities import patch_opnsense_client
+from tests.utilities import arp_ndp_entry, arp_ndp_table, patch_opnsense_client
 
 homeassistant = pytest.importorskip("homeassistant")
 
@@ -104,20 +104,30 @@ class _FakeFlowClient:
         """
         return self._device_id
 
-    async def get_arp_table(self, resolve_hostnames: bool = False) -> list[dict[str, Any]]:
+    async def get_arp_entries(self, resolve_hostnames: bool = False) -> Any:
         # Used by options flow device tracker step
-        """Return two static ARP entries for device-tracker options tests.
+        """Return two static normalized ARP entries for device-tracker options tests.
 
         Returns:
-            list[dict[str, Any]]: Synthetic API records returned by the fake client.
+            Any: Normalized ARP table returned by the fake client.
 
         Args:
             resolve_hostnames (bool): Whether the simulated query requests hostname resolution.
         """
-        return [
-            {"mac": "aa:bb:cc:dd:ee:ff", "hostname": "host1", "ip": "192.168.1.10"},
-            {"mac": "11:22:33:44:55:66", "hostname": "", "ip": "192.168.1.11"},
-        ]
+        return arp_ndp_table(
+            [
+                arp_ndp_entry("aa:bb:cc:dd:ee:ff", ipv4_address="192.168.1.10", hostname="host1"),
+                arp_ndp_entry("11:22:33:44:55:66", ipv4_address="192.168.1.11"),
+            ]
+        )
+
+    async def get_ndp_entries(self) -> Any:
+        """Return an empty normalized NDP table.
+
+        Returns:
+            Any: Normalized NDP table returned by the fake client.
+        """
+        return arp_ndp_table()
 
     async def async_close(self) -> None:
         """Satisfy client close calls from flow validation paths."""
