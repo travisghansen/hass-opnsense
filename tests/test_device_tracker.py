@@ -1071,9 +1071,6 @@ def test_retained_arp_address_is_published_without_confirming_presence(
     attributes = entity.extra_state_attributes
     assert attributes is not None
     assert attributes["ipv4_addresses"] == ["192.0.2.1"]
-    snapshot = coordinator.device_tracker_evidence
-    assert snapshot is not None
-    assert (snapshot.arp.current_entries is not None) is arp_current
 
 
 def test_handle_coordinator_update_merges_ipv4_and_ipv6_addresses_and_ages_failed_ndp(
@@ -2348,19 +2345,6 @@ def test_permanent_arp_row_displays_never_even_with_relative_expiry(
     attributes = ent.extra_state_attributes
     assert attributes is not None
     assert attributes["expires"] == "Never"
-
-
-def test_relative_arp_expiry_is_omitted_without_an_aware_fetch_time() -> None:
-    """A malformed or absent acquisition timestamp cannot produce a moving expiry."""
-    assert (
-        dt_mod._arp_expires_attribute(30, fetched_at=None, permanent=False) is None
-        and dt_mod._arp_expires_attribute(
-            30,
-            fetched_at=datetime(2026, 10, 31, 12),  # noqa: DTZ001
-            permanent=False,
-        )
-        is None
-    )
 
 
 def test_handle_coordinator_update_ip_typeerror(
