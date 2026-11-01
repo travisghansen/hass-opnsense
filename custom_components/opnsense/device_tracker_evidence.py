@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 from types import MappingProxyType
 from typing import Literal
 
-from aiopnsense.dhcp import ArpNdpEntry, normalize_arp_ndp_entry
+from aiopnsense import OPNsenseClient
+from aiopnsense.dhcp import ArpNdpEntry
 
 from .const import TRACKED_ARP_MACS, TRACKED_MACS, TRACKED_NDP_MACS
 from .helpers import normalize_arp_mac, normalize_mac_address
@@ -484,7 +485,9 @@ def _arp_ndp_table_evidence(value: object, *, failed: bool, ndp: bool) -> ArpNdp
         ArpNdpTableEvidence: Normalized rows and their availability classification.
     """
     rows = value if isinstance(value, list) else []
-    entries = tuple(normalize_arp_ndp_entry(row) for row in rows if isinstance(row, Mapping))
+    entries = tuple(
+        OPNsenseClient.normalize_arp_ndp_entry(row) for row in rows if isinstance(row, Mapping)
+    )
     rows_complete = len(entries) == len(rows) and all(entry.usable for entry in entries)
     if ndp:
         rows_complete = rows_complete and all(
