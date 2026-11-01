@@ -142,7 +142,6 @@ class TrackerEvidenceSnapshot:
         *,
         require_valid_mac: bool = False,
         require_ipv6: bool = False,
-        current_only: bool = False,
     ) -> tuple[TrackerEntry, ...]:
         """Return normalized rows matching one tracker MAC.
 
@@ -151,7 +150,6 @@ class TrackerEvidenceSnapshot:
             mac (str): Tracker MAC address.
             require_valid_mac (bool): Whether to reject permissively normalized MACs.
             require_ipv6 (bool): Whether NDP rows must contain a valid IPv6 address.
-            current_only (bool): Whether to exclude cached rows from a failed lookup.
 
         Returns:
             tuple[TrackerEntry, ...]: Matching normalized rows in table order.
@@ -160,11 +158,8 @@ class TrackerEvidenceSnapshot:
         if not normalized_mac:
             return ()
         table = self.arp if family == "arp" else self.ndp
-        entries = table.current_entries if current_only else table.entries
-        if entries is None:
-            return ()
         matching: list[TrackerEntry] = []
-        for entry in entries:
+        for entry in table.entries:
             if not entry.usable:
                 continue
             entry_mac = entry.valid_mac if require_valid_mac else entry.mac
@@ -555,9 +550,9 @@ def _normalize_entry(row: Mapping[str, object]) -> TrackerEntry:
         hostname=hostname,
         manufacturer=manufacturer,
         expired=bool(copied.get("expired", False)),
-        interface=copy.deepcopy(interface),
-        expires=copy.deepcopy(expires),
-        arp_type=copy.deepcopy(arp_type),
+        interface=interface,
+        expires=expires,
+        arp_type=arp_type,
         usable=isinstance(row, MutableMapping),
     )
 
