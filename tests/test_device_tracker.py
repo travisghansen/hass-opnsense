@@ -3313,7 +3313,7 @@ async def test_coordinator_observation_index_confirms_restored_ndp_tracker(
     assert entity.is_connected is True
 
 
-@pytest.mark.parametrize("saved_state_kind", ["brand_new", "legacy_home"])
+@pytest.mark.parametrize("saved_state_kind", ["brand_new", "restored_home"])
 @pytest.mark.parametrize(
     "observation_case",
     ["unavailable_index", "empty_index", "unobserved_mac", "invalid_index"],
@@ -3328,7 +3328,7 @@ async def test_first_ndp_sighting_requires_current_same_mac_observation(
     """A matching NDP row cannot establish home without a usable same-MAC timestamp.
 
     Args:
-        saved_state_kind (str): Whether the tracker is new or restores legacy home state.
+        saved_state_kind (str): Whether the tracker is new or restores a previously saved home state.
         observation_case (str): Unavailable, empty, malformed, or nonmatching observation index.
         coordinator (MagicMock): Coordinator supplying API boundary state.
         make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
@@ -3350,12 +3350,11 @@ async def test_first_ndp_sighting_requires_current_same_mac_observation(
     setattr(entry.runtime_data, DEVICE_TRACKER_COORDINATOR, coordinator)
     entity = OPNsenseScannerEntity(entry, coordinator, True, mac, None, None)
     object.__setattr__(entity, "async_write_ha_state", MagicMock())
-    if saved_state_kind == "legacy_home":
+    if saved_state_kind == "restored_home":
         saved_state = State(
             "device_tracker.phone",
             "home",
             {
-                "ndp_presence_source": "neighbor_table",
                 "ipv6_addresses": ["2001:db8::1"],
                 "last_known_connected_time": datetime.now(UTC).isoformat(),
             },
