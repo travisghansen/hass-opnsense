@@ -5,13 +5,16 @@ category building, state fetching, device ID mismatch handling, speed
 calculations, and update flow.
 """
 
+import asyncio
 from collections.abc import Callable, MutableMapping
 from datetime import UTC, datetime, timedelta
+import json
 import logging
 import time
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call
 
+from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import OPNsenseError, OPNsensePrivilegeMissing, OPNsenseTimeoutError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -50,6 +53,7 @@ from custom_components.opnsense.const import (
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
+from tests.utilities import arp_ndp_entry, arp_ndp_table, host_observation, host_observations
 
 
 @pytest.mark.asyncio
@@ -1735,7 +1739,7 @@ async def test_device_tracker_refresh_requires_matching_device_id(
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
-    coordinator = _dt_observation_coordinator(entry, [], AsyncMock(return_value=None))
+    coordinator = _dt_observation_coordinator(entry, arp_ndp_table(), AsyncMock(return_value=None))
     client = cast("MagicMock", coordinator._client)
     client.get_device_unique_id = AsyncMock(return_value=returned_device_id)
 
@@ -1762,7 +1766,7 @@ async def test_device_tracker_refresh_uses_shared_device_id_mismatch_policy(
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
-    coordinator = _dt_observation_coordinator(entry, [], AsyncMock(return_value=None))
+    coordinator = _dt_observation_coordinator(entry, arp_ndp_table(), AsyncMock(return_value=None))
     client = cast("MagicMock", coordinator._client)
     client.get_device_unique_id = AsyncMock(return_value="other")
     shutdown = AsyncMock()
@@ -1939,17 +1943,27 @@ async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     client = MagicMock()
     arp_rows = [{"mac": "00:11:22:33:44:55", "ip": "192.0.2.2"}]
+    arp_table = arp_ndp_table(
+        [arp_ndp_entry("00:11:22:33:44:55", ipv4_address="192.0.2.2")], raw_rows=arp_rows
+    )
     previous_ndp_rows = [{"mac": "00:11:22:33:44:55", "ip": "2001:db8::1"}]
+    previous_ndp_table = arp_ndp_table(
+        [arp_ndp_entry("00:11:22:33:44:55", ipv6_address="2001:db8::1")],
+        raw_rows=previous_ndp_rows,
+    )
     client.get_device_unique_id = AsyncMock(return_value="id")
     client.get_host_firmware_version = AsyncMock(return_value="26.1")
     client.get_system_info = AsyncMock(return_value={})
-    client.get_arp_table = AsyncMock(side_effect=[[], arp_rows])
-    host_observations = {"source": "discovery", "rows": []}
-    client.get_host_observations = AsyncMock(
-        side_effect=[host_observations, OPNsensePrivilegeMissing("Host discovery permission")]
+    client.get_arp_entries = AsyncMock(side_effect=[arp_ndp_table(), arp_table])
+    host_observation_result = host_observations("discovery")
+    client.get_host_observation_entries = AsyncMock(
+        side_effect=[
+            host_observation_result,
+            OPNsensePrivilegeMissing("Host discovery permission"),
+        ]
     )
-    client.get_ndp_table = AsyncMock(
-        side_effect=[previous_ndp_rows, OPNsensePrivilegeMissing("NDP permission")]
+    client.get_ndp_entries = AsyncMock(
+        side_effect=[previous_ndp_table, OPNsensePrivilegeMissing("NDP permission")]
     )
     client.get_query_counts = AsyncMock(return_value=0)
     client.reset_query_counts = AsyncMock()
@@ -1965,7 +1979,7 @@ async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
 
     await coordinator.async_refresh()
     assert coordinator.data["ndp_table"] == previous_ndp_rows
-    assert coordinator.host_observation_times == {}
+    assert getattr(coordinator.device_tracker_evidence, "observation_times", None) == {}
     assert "host_observations" not in coordinator.data
     assert coordinator.data["unavailable_device_tracker_tables"] == []
 
@@ -1975,9 +1989,15 @@ async def test_dt_refresh_retains_cached_ndp_rows_on_permission_failure(
     assert coordinator.data["arp_table"] == arp_rows
     assert coordinator.data["ndp_table"] == previous_ndp_rows
     assert coordinator.data["unavailable_device_tracker_tables"] == ["ndp_table"]
-    assert coordinator.host_observation_times is None
-    client.get_arp_table.assert_awaited_with(resolve_hostnames=False)
-    client.get_ndp_table.assert_awaited_with()
+    evidence = coordinator.device_tracker_evidence
+    assert evidence is not None
+    # Retained NDP entries remain visible but are never current evidence.
+    assert evidence.ndp.current_entries is None
+    assert evidence.addresses_for_mac("ndp", "00:11:22:33:44:55") == ("2001:db8::1",)
+    assert evidence.arp.current_entries is not None
+    assert getattr(coordinator.device_tracker_evidence, "observation_times", None) is None
+    client.get_arp_entries.assert_awaited_with(resolve_hostnames=False)
+    client.get_ndp_entries.assert_awaited_with()
 
 
 @pytest.mark.asyncio
@@ -1993,28 +2013,27 @@ async def test_dt_refresh_indexes_latest_discovery_time_and_clears_unavailable_s
     older = datetime(2026, 10, 15, 12, tzinfo=UTC)
     latest = datetime(2026, 10, 15, 13, tzinfo=UTC)
     refreshed = datetime(2026, 10, 15, 14, tzinfo=UTC)
-    discovery_rows = {
-        "source": "discovery",
-        "rows": [
-            {"mac": "AA-BB-CC-DD-EE-FF", "ip": "192.0.2.1", "last_seen": older},
-            {"mac": mac, "ip": "2001:db8::1", "last_seen": latest},
+    discovery_rows = host_observations(
+        "discovery",
+        [
+            host_observation(mac, "192.0.2.1", older),
+            host_observation(mac, "2001:db8::1", latest),
         ],
-    }
+    )
     client = MagicMock()
     client.get_device_unique_id = AsyncMock(return_value="id")
     client.get_host_firmware_version = AsyncMock(return_value="26.1")
     client.get_system_info = AsyncMock(return_value={})
-    client.get_arp_table = AsyncMock(return_value=[])
-    client.get_ndp_table = AsyncMock(return_value=[{"mac": mac, "ip": "2001:db8::1"}])
-    client.get_host_observations = AsyncMock(
+    client.get_arp_entries = AsyncMock(return_value=arp_ndp_table())
+    client.get_ndp_entries = AsyncMock(
+        return_value=arp_ndp_table([arp_ndp_entry(mac, ipv6_address="2001:db8::1")])
+    )
+    client.get_host_observation_entries = AsyncMock(
         side_effect=[
             discovery_rows,
-            {
-                "source": "discovery",
-                "rows": [{"mac": mac, "ip": "192.0.2.2", "last_seen": refreshed}],
-            },
+            host_observations("discovery", [host_observation(mac, "192.0.2.2", refreshed)]),
             None,
-            {"source": "arp-ndp", "rows": []},
+            host_observations("arp-ndp"),
         ]
     )
     client.get_query_counts = AsyncMock(return_value=0)
@@ -2030,18 +2049,24 @@ async def test_dt_refresh_indexes_latest_discovery_time_and_clears_unavailable_s
     )
 
     first_state = await coordinator._async_update_data()
-    assert coordinator.host_observation_times == {mac: latest}
+    assert getattr(coordinator.device_tracker_evidence, "observation_times", None) == {mac: latest}
     assert "host_observations" not in first_state
     assert "host_observation_times" not in first_state
 
     await coordinator._async_update_data()
-    assert coordinator.host_observation_times == {mac: refreshed}
+    assert getattr(coordinator.device_tracker_evidence, "observation_times", None) == {
+        mac: refreshed
+    }
 
     await coordinator._async_update_data()
-    assert coordinator.host_observation_times is None
+    evidence = coordinator.device_tracker_evidence
+    assert evidence is not None
+    assert evidence.observation_times is None
 
     await coordinator._async_update_data()
-    assert coordinator.host_observation_times is None
+    evidence = coordinator.device_tracker_evidence
+    assert evidence is not None
+    assert evidence.observation_times is None
 
 
 @pytest.mark.asyncio
@@ -2057,12 +2082,15 @@ async def test_device_tracker_refresh_tolerates_client_without_ndp_method(
     """
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"})
     arp_rows = [{"mac": "00:11:22:33:44:55", "ip": "192.0.2.2"}]
+    arp_table = arp_ndp_table(
+        [arp_ndp_entry("00:11:22:33:44:55", ipv4_address="192.0.2.2")], raw_rows=arp_rows
+    )
     client = MagicMock(
         spec=[
             "get_device_unique_id",
             "get_host_firmware_version",
             "get_system_info",
-            "get_arp_table",
+            "get_arp_entries",
             "get_query_counts",
             "reset_query_counts",
         ]
@@ -2070,7 +2098,7 @@ async def test_device_tracker_refresh_tolerates_client_without_ndp_method(
     client.get_device_unique_id = AsyncMock(return_value="id")
     client.get_host_firmware_version = AsyncMock(return_value="26.1")
     client.get_system_info = AsyncMock(return_value={})
-    client.get_arp_table = AsyncMock(return_value=arp_rows)
+    client.get_arp_entries = AsyncMock(return_value=arp_table)
     client.get_query_counts = AsyncMock(return_value=0)
     client.reset_query_counts = AsyncMock()
     coordinator = OPNsenseDataUpdateCoordinator(
@@ -2116,9 +2144,9 @@ async def test_dt_refresh_requests_arp_resolution_from_options(
     client.get_device_unique_id = AsyncMock(return_value="id")
     client.get_host_firmware_version = AsyncMock(return_value="26.1")
     client.get_system_info = AsyncMock(return_value={})
-    client.get_arp_table = AsyncMock(return_value=[])
-    client.get_host_observations = AsyncMock(return_value=None)
-    client.get_ndp_table = AsyncMock(return_value=[])
+    client.get_arp_entries = AsyncMock(return_value=arp_ndp_table())
+    client.get_host_observation_entries = AsyncMock(return_value=None)
+    client.get_ndp_entries = AsyncMock(return_value=arp_ndp_table())
     client.get_query_counts = AsyncMock(return_value=0)
     client.reset_query_counts = AsyncMock()
     entry = make_config_entry(
@@ -2129,7 +2157,7 @@ async def test_dt_refresh_requests_arp_resolution_from_options(
 
     await coordinator._async_update_dt_data()
 
-    client.get_arp_table.assert_awaited_once_with(resolve_hostnames=expected)
+    client.get_arp_entries.assert_awaited_once_with(resolve_hostnames=expected)
 
 
 @pytest.mark.asyncio
@@ -2244,14 +2272,14 @@ async def test_calculate_vpn_speeds_covers_ipsec_connections(
 
 def _dt_observation_coordinator(
     entry: MockConfigEntry,
-    ndp_rows: list[dict[str, str]],
+    ndp_table: OPNsenseClient.ArpNdpTable,
     observations: AsyncMock,
 ) -> OPNsenseDataUpdateCoordinator:
     """Build a device-tracker coordinator around a mocked client.
 
     Args:
         entry (MockConfigEntry): Config entry owning the coordinator.
-        ndp_rows (list[dict[str, str]]): Rows returned by the NDP lookup.
+        ndp_table (OPNsenseClient.ArpNdpTable): Normalized NDP table returned by the lookup.
         observations (AsyncMock): Mock used for the host-observation lookup.
 
     Returns:
@@ -2261,9 +2289,9 @@ def _dt_observation_coordinator(
     client.get_device_unique_id = AsyncMock(return_value="id")
     client.get_host_firmware_version = AsyncMock(return_value="26.1")
     client.get_system_info = AsyncMock(return_value={})
-    client.get_arp_table = AsyncMock(return_value=[])
-    client.get_ndp_table = AsyncMock(return_value=ndp_rows)
-    client.get_host_observations = observations
+    client.get_arp_entries = AsyncMock(return_value=arp_ndp_table())
+    client.get_ndp_entries = AsyncMock(return_value=ndp_table)
+    client.get_host_observation_entries = observations
     client.get_query_counts = AsyncMock(return_value=0)
     client.reset_query_counts = AsyncMock()
     return OPNsenseDataUpdateCoordinator(
@@ -2277,32 +2305,69 @@ def _dt_observation_coordinator(
     )
 
 
+@pytest.mark.parametrize("failure", [OPNsenseTimeoutError, asyncio.CancelledError])
+async def test_failed_tracker_refresh_does_not_publish_evidence(
+    failure: type[BaseException],
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late failure or cancellation must discard the attempted scan's evidence.
+
+    Args:
+        failure (type[BaseException]): Failure raised after observations have been fetched.
+        ph_hass (HomeAssistant): Home Assistant runtime driving coordinator refreshes.
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+        monkeypatch (pytest.MonkeyPatch): Fixture replacing the final client read.
+    """
+    coordinator = _dt_observation_coordinator(
+        make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"}),
+        arp_ndp_table(),
+        AsyncMock(return_value=None),
+    )
+    coordinator.hass = ph_hass
+    await coordinator.async_refresh()
+    assert coordinator.device_tracker_evidence is not None
+    monkeypatch.setattr(
+        coordinator._client,
+        "get_query_counts",
+        AsyncMock(side_effect=failure("Query-count read aborted")),
+    )
+
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success is False
+    assert coordinator.device_tracker_evidence is None
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("track_all", "ndp_rows", "expect_call"),
+    ("track_all", "ndp_table", "expect_call"),
     [
-        pytest.param(False, [], False, id="manual-no-ndp-rows"),
+        pytest.param(False, arp_ndp_table(), False, id="manual-no-ndp-rows"),
         pytest.param(
             False,
-            [{"mac": "11:22:33:44:55:66", "ip": "2001:db8::9"}],
+            arp_ndp_table([arp_ndp_entry("11:22:33:44:55:66", ipv6_address="2001:db8::9")]),
             False,
             id="manual-untracked-mac",
         ),
         pytest.param(
             False,
-            [{"mac": "AA-BB-CC-DD-EE-FF", "ip": "2001:db8::1"}],
+            arp_ndp_table([arp_ndp_entry("aa:bb:cc:dd:ee:ff", ipv6_address="2001:db8::1")]),
             True,
             id="manual-tracked-mac",
         ),
         pytest.param(
             True,
-            [{"mac": "11:22:33:44:55:66", "ip": "2001:db8::9"}],
+            arp_ndp_table([arp_ndp_entry("11:22:33:44:55:66", ipv6_address="2001:db8::9")]),
             True,
             id="track-all-new-mac",
         ),
         pytest.param(
             True,
-            ["not-a-row", {"mac": "11:22:33:44:55:66", "ip": "2001:db8::9"}],
+            arp_ndp_table(
+                [arp_ndp_entry("11:22:33:44:55:66", ipv6_address="2001:db8::9")],
+                unparsed_row_count=1,
+            ),
             True,
             id="track-all-skips-non-mapping-rows",
         ),
@@ -2311,7 +2376,7 @@ def _dt_observation_coordinator(
 async def test_dt_refresh_fetches_observations_only_when_ndp_rows_need_them(
     make_config_entry: Callable[..., MockConfigEntry],
     track_all: bool,
-    ndp_rows: list[Any],
+    ndp_table: OPNsenseClient.ArpNdpTable,
     expect_call: bool,
 ) -> None:
     """Host observations are requested only for NDP rows that can affect tracker presence.
@@ -2319,16 +2384,18 @@ async def test_dt_refresh_fetches_observations_only_when_ndp_rows_need_them(
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
         track_all (bool): Whether no devices are configured, so every NDP MAC is tracked.
-        ndp_rows (list[Any]): Rows returned by the NDP lookup.
+        ndp_table (OPNsenseClient.ArpNdpTable): Normalized NDP table returned by the lookup.
         expect_call (bool): Whether the observation lookup should run.
     """
     mac = "aa:bb:cc:dd:ee:ff"
     seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
     observed_mac = next(
-        (row["mac"].lower().replace("-", ":") for row in ndp_rows if isinstance(row, dict)), mac
+        (entry.valid_mac for entry in ndp_table.entries if entry.valid_mac is not None), mac
     )
     observations = AsyncMock(
-        return_value={"source": "discovery", "rows": [{"mac": observed_mac, "last_seen": seen}]}
+        return_value=host_observations(
+            "discovery", [host_observation(observed_mac, "2001:db8::1", seen)]
+        )
     )
     entry = (
         make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
@@ -2337,46 +2404,14 @@ async def test_dt_refresh_fetches_observations_only_when_ndp_rows_need_them(
             {CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]}, options={CONF_DEVICES: [mac]}
         )
     )
-    coordinator = _dt_observation_coordinator(entry, ndp_rows, observations)
+    coordinator = _dt_observation_coordinator(entry, ndp_table, observations)
 
     await coordinator._async_update_data()
 
     assert observations.await_count == (1 if expect_call else 0)
-    assert coordinator.host_observation_times == ({observed_mac: seen} if expect_call else None)
-
-
-@pytest.mark.asyncio
-async def test_dt_refresh_indexes_only_usable_observation_rows(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Malformed, timezone-naive and unidentifiable observation rows never reach the index.
-
-    Args:
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
-    """
-    mac = "aa:bb:cc:dd:ee:ff"
-    seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
-    observations = AsyncMock(
-        return_value={
-            "source": "discovery",
-            "rows": [
-                "not-a-row",
-                {"mac": 1, "last_seen": seen},
-                {"mac": mac, "last_seen": "2026-10-15T13:00:00+00:00"},
-                {"mac": mac, "last_seen": datetime(2026, 10, 15, 13)},  # noqa: DTZ001
-                {"mac": "not-a-mac", "last_seen": seen},
-                {"mac": mac, "last_seen": seen},
-            ],
-        }
-    )
-    entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
-    coordinator = _dt_observation_coordinator(
-        entry, [{"mac": mac, "ip": "2001:db8::1"}], observations
-    )
-
-    await coordinator._async_update_data()
-
-    assert coordinator.host_observation_times == {mac: seen}
+    evidence = coordinator.device_tracker_evidence
+    assert evidence is not None
+    assert evidence.observation_times == ({observed_mac: seen} if expect_call else None)
 
 
 @pytest.mark.asyncio
@@ -2391,11 +2426,11 @@ async def test_dt_refresh_without_config_entry_treats_every_valid_ndp_mac_as_tra
     mac = "aa:bb:cc:dd:ee:ff"
     seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
     observations = AsyncMock(
-        return_value={"source": "discovery", "rows": [{"mac": mac, "last_seen": seen}]}
+        return_value=host_observations("discovery", [host_observation(mac, "2001:db8::1", seen)])
     )
     coordinator = _dt_observation_coordinator(
         make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"}),
-        [{"mac": mac, "ip": "2001:db8::1"}],
+        arp_ndp_table([arp_ndp_entry(mac, ipv6_address="2001:db8::1")]),
         observations,
     )
     object.__setattr__(coordinator, "config_entry", None)
@@ -2403,7 +2438,7 @@ async def test_dt_refresh_without_config_entry_treats_every_valid_ndp_mac_as_tra
     await coordinator._async_update_data()
 
     observations.assert_awaited_once()
-    assert coordinator.host_observation_times == {mac: seen}
+    assert getattr(coordinator.device_tracker_evidence, "observation_times", None) == {mac: seen}
 
 
 @pytest.mark.asyncio
@@ -2418,19 +2453,21 @@ async def test_dt_refresh_resets_observation_index_when_next_poll_needs_none(
     mac = "aa:bb:cc:dd:ee:ff"
     seen = datetime(2026, 10, 15, 13, tzinfo=UTC)
     observations = AsyncMock(
-        return_value={"source": "discovery", "rows": [{"mac": mac, "last_seen": seen}]}
+        return_value=host_observations("discovery", [host_observation(mac, "2001:db8::1", seen)])
     )
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
     coordinator = _dt_observation_coordinator(
-        entry, [{"mac": mac, "ip": "2001:db8::1"}], observations
+        entry, arp_ndp_table([arp_ndp_entry(mac, ipv6_address="2001:db8::1")]), observations
     )
     await coordinator._async_update_data()
-    assert coordinator.host_observation_times == {mac: seen}
+    assert getattr(coordinator.device_tracker_evidence, "observation_times", None) == {mac: seen}
 
-    cast("MagicMock", coordinator._client).get_ndp_table = AsyncMock(return_value=[])
+    cast("MagicMock", coordinator._client).get_ndp_entries = AsyncMock(return_value=arp_ndp_table())
     await coordinator._async_update_data()
 
-    assert coordinator.host_observation_times is None
+    evidence = coordinator.device_tracker_evidence
+    assert evidence is not None
+    assert evidence.observation_times is None
     assert observations.await_count == 1
 
 
@@ -2439,9 +2476,9 @@ async def test_dt_refresh_resets_observation_index_when_next_poll_needs_none(
 @pytest.mark.parametrize(
     ("method_name", "label", "recovered_payload"),
     [
-        ("get_arp_table", "ARP", []),
-        ("get_ndp_table", "NDP", []),
-        ("get_host_observations", "Host observation", {"source": "discovery", "rows": []}),
+        ("get_arp_entries", "ARP", arp_ndp_table()),
+        ("get_ndp_entries", "NDP", arp_ndp_table()),
+        ("get_host_observation_entries", "Host observation", host_observations("discovery")),
     ],
 )
 async def test_optional_lookup_failure_warns_once_then_debug_then_recovers(
@@ -2474,8 +2511,8 @@ async def test_optional_lookup_failure_warns_once_then_debug_then_recovers(
     entry = make_config_entry({CONF_DEVICE_UNIQUE_ID: "id", TRACKED_MACS: [mac]})
     coordinator = _dt_observation_coordinator(
         entry,
-        [{"mac": mac, "ip": "2001:db8::1"}],
-        AsyncMock(return_value={"source": "discovery", "rows": []}),
+        arp_ndp_table([arp_ndp_entry(mac, ipv6_address="2001:db8::1")]),
+        AsyncMock(return_value=host_observations("discovery")),
     )
     setattr(coordinator._client, method_name, lookup)
     caplog.set_level(logging.DEBUG, logger="custom_components.opnsense.coordinator")
@@ -2507,3 +2544,87 @@ async def test_optional_lookup_failure_warns_once_then_debug_then_recovers(
 
     await coordinator._async_update_data()
     assert len(lookup_records(logging.WARNING)) == 2
+
+
+@pytest.mark.asyncio
+async def test_dt_refresh_publishes_normalized_evidence_and_json_friendly_diagnostics(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Tracker polling fetches each table once and keeps coordinator data raw and serializable.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+    """
+    arp_rows = ["not a row", {"mac": "AA-BB-CC-DD-EE-01", "ip": "192.0.2.1", "expired": False}]
+    ndp_rows = [{"mac": "aa:bb:cc:dd:ee:01", "ip": "2001:db8::1"}]
+    coordinator = _dt_observation_coordinator(
+        make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"}),
+        arp_ndp_table(
+            [arp_ndp_entry("aa:bb:cc:dd:ee:01", ipv6_address="2001:db8::1")], raw_rows=ndp_rows
+        ),
+        AsyncMock(return_value=None),
+    )
+    client = cast("MagicMock", coordinator._client)
+    client.get_arp_entries = AsyncMock(
+        return_value=arp_ndp_table(
+            [arp_ndp_entry("aa:bb:cc:dd:ee:01", ipv4_address="192.0.2.1", expired=False)],
+            unparsed_row_count=1,
+            raw_rows=arp_rows,
+        )
+    )
+
+    data = await coordinator._async_update_data()
+
+    client.get_arp_entries.assert_awaited_once_with(resolve_hostnames=False)
+    client.get_ndp_entries.assert_awaited_once_with()
+    assert json.loads(json.dumps(data["arp_table"])) == arp_rows
+    assert data["ndp_table"] == ndp_rows
+    evidence = coordinator.device_tracker_evidence
+    assert evidence is not None
+    assert evidence.arp.successful
+    assert not evidence.arp.authoritative
+    assert evidence.ndp.authoritative
+    assert evidence.addresses_for_mac("arp", "aa:bb:cc:dd:ee:01") == ("192.0.2.1",)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure",
+    [OPNsenseTimeoutError("aborted"), asyncio.CancelledError()],
+    ids=["timeout", "cancellation"],
+)
+async def test_failed_refresh_does_not_advance_retained_neighbor_tables(
+    make_config_entry: Callable[..., MockConfigEntry],
+    failure: OPNsenseTimeoutError | asyncio.CancelledError,
+) -> None:
+    """Only a published refresh updates the rows retained for later lookup outages.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the config entry under test.
+        failure (OPNsenseTimeoutError | asyncio.CancelledError): Late refresh failure.
+    """
+    mac = "aa:bb:cc:dd:ee:01"
+    coordinator = _dt_observation_coordinator(
+        make_config_entry({CONF_DEVICE_UNIQUE_ID: "id"}),
+        arp_ndp_table([arp_ndp_entry(mac, ipv6_address="2001:db8::1")]),
+        AsyncMock(return_value=None),
+    )
+    client = cast("MagicMock", coordinator._client)
+    await coordinator._async_update_data()
+
+    client.get_ndp_entries = AsyncMock(
+        return_value=arp_ndp_table([arp_ndp_entry(mac, ipv6_address="2001:db8::2")])
+    )
+    client.get_query_counts = AsyncMock(side_effect=failure)
+    with pytest.raises(type(failure)):
+        await coordinator._async_update_data()
+    assert coordinator.device_tracker_evidence is None
+
+    client.get_ndp_entries = AsyncMock(return_value=None)
+    client.get_query_counts = AsyncMock(return_value=0)
+    await coordinator._async_update_data()
+
+    evidence = coordinator.device_tracker_evidence
+    assert evidence is not None
+    assert evidence.ndp.current_entries is None
+    assert evidence.addresses_for_mac("ndp", mac) == ("2001:db8::1",)

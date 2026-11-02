@@ -9,7 +9,7 @@ import ipaddress
 from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
-from aiopnsense import exceptions as aiopnsense_exceptions
+from aiopnsense import OPNsenseClient, exceptions as aiopnsense_exceptions
 from aiopnsense.exceptions import (
     OPNsenseError,
     OPNsenseInvalidURL,
@@ -59,7 +59,7 @@ from custom_components.opnsense.const import (
     ENTRY_TYPE_DEVICE,
     GRANULAR_SYNC_ITEMS,
 )
-from tests.utilities import patch_opnsense_client
+from tests.utilities import arp_ndp_entry, arp_ndp_table, patch_opnsense_client
 
 
 def _make_options_flow(config_entry: Any) -> Any:
@@ -1134,10 +1134,10 @@ async def test_get_dt_entries_sorts_and_includes_selected(
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
         fake_client (Any): Mock OPNsense client used at the integration boundary.
     """
-    # Create a client class via fixture and attach a get_arp_table implementation
+    # Create a client class via fixture and attach a get_arp_entries implementation
     client_cls = fake_client()
 
-    async def _get_arp_table(self: Any, resolve_hostnames: bool = True) -> Any:
+    async def _get_arp_entries(self: Any, resolve_hostnames: bool = True) -> Any:
         """Return arp table.
 
         Returns:
@@ -1147,14 +1147,28 @@ async def test_get_dt_entries_sorts_and_includes_selected(
             self (Any): Flow instance receiving the patched method call.
             resolve_hostnames (bool): Resolve hostnames provided by pytest or the test case.
         """
-        return [
-            {"mac": "aa:bb:cc:00:00:01", "hostname": "hostb", "ip": "192.168.1.20"},
-            {"mac": "aa:bb:cc:00:00:03", "hostname": "hostc", "ip": "192.168.1.100"},
-            {"mac": "11:22:33:44:55:66", "hostname": "", "ip": "10.0.0.5"},
-            {"mac": "bb:cc:dd:00:00:02", "hostname": "hosta", "ip": "192.168.1.10"},
-        ]
+        return arp_ndp_table(
+            [
+                arp_ndp_entry("aa:bb:cc:00:00:01", ipv4_address="192.168.1.20", hostname="hostb"),
+                arp_ndp_entry("aa:bb:cc:00:00:03", ipv4_address="192.168.1.100", hostname="hostc"),
+                arp_ndp_entry("11:22:33:44:55:66", ipv4_address="10.0.0.5"),
+                arp_ndp_entry("bb:cc:dd:00:00:02", ipv4_address="192.168.1.10", hostname="hosta"),
+            ]
+        )
 
-    client_cls.get_arp_table = _get_arp_table
+    async def _get_ndp_entries(self: Any) -> Any:
+        """Return an empty NDP table.
+
+        Returns:
+            Any: Normalized empty table.
+
+        Args:
+            self (Any): Flow instance receiving the patched method call.
+        """
+        return arp_ndp_table()
+
+    client_cls.get_arp_entries = _get_arp_entries
+    client_cls.get_ndp_entries = _get_ndp_entries
     patch_opnsense_client(monkeypatch, cf_mod, client_cls)
 
     hass = MagicMock()
@@ -1181,10 +1195,10 @@ async def test_get_dt_entries_sorts_and_includes_selected(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("arp_rows", "selected_devices", "expected"),
+    ("arp_table", "selected_devices", "expected"),
     [
         pytest.param(
-            [{"mac": "11:22:33:44:55:66", "hostname": "", "ip": "10.0.0.5"}],
+            arp_ndp_table([arp_ndp_entry("11:22:33:44:55:66", ipv4_address="10.0.0.5")]),
             ["AA-BB-CC-DD-EE-FF"],
             {
                 "11:22:33:44:55:66": "10.0.0.5 [11:22:33:44:55:66]",
@@ -1193,17 +1207,27 @@ async def test_get_dt_entries_sorts_and_includes_selected(
             id="selected-device-missing-from-arp-keeps-fallback-label",
         ),
         pytest.param(
-            [{"mac-address": "AA-BB-CC-00-00-01", "ip-address": "10.0.0.10"}],
+            arp_ndp_table([arp_ndp_entry("aa:bb:cc:00:00:01", ipv4_address="10.0.0.10")]),
             [],
             {"aa:bb:cc:00:00:01": "10.0.0.10 [aa:bb:cc:00:00:01]"},
-            id="raw-aiopnsense-arp-keys",
+            id="normalized-arp-entry-without-hostname",
         ),
         pytest.param(
-            [
-                "invalid row",
-                {"mac": "aa:bb:cc:00:00:02", "hostname": "hostb", "ip": "10.0.0.10"},
-                None,
-            ],
+            arp_ndp_table(
+                [
+                    arp_ndp_entry("aa:bb:cc:dd:ee", valid_mac=None, ipv4_address="192.0.2.20"),
+                    arp_ndp_entry("11:22:33:44:55:66", ipv4_address="192.0.2.10"),
+                ]
+            ),
+            [],
+            {"11:22:33:44:55:66": "192.0.2.10 [11:22:33:44:55:66]"},
+            id="malformed-arp-mac-skipped-while-valid-entry-remains",
+        ),
+        pytest.param(
+            arp_ndp_table(
+                [arp_ndp_entry("aa:bb:cc:00:00:02", ipv4_address="10.0.0.10", hostname="hostb")],
+                unparsed_row_count=2,
+            ),
             ["AA-BB-CC-DD-EE-FF"],
             {
                 "aa:bb:cc:dd:ee:ff": "Not currently detected [aa:bb:cc:dd:ee:ff]",
@@ -1212,22 +1236,21 @@ async def test_get_dt_entries_sorts_and_includes_selected(
             id="non-mapping-rows-ignored",
         ),
         pytest.param(
-            [{"mac": "11:22:33:44:55:66"}],
+            arp_ndp_table([arp_ndp_entry("11:22:33:44:55:66")]),
             [],
             {"11:22:33:44:55:66": "11:22:33:44:55:66 [11:22:33:44:55:66]"},
             id="mac-only-device",
         ),
         *(
             pytest.param(
-                [row, {"mac": "aa-bb-cc-00-00-01", "ip": "10.0.0.10"}],
+                arp_ndp_table([row, arp_ndp_entry("aa:bb:cc:00:00:01", ipv4_address="10.0.0.10")]),
                 [],
                 {"aa:bb:cc:00:00:01": "10.0.0.10 [aa:bb:cc:00:00:01]"},
                 id=row_id,
             )
             for row_id, row in (
-                ("row-missing-mac-key-skipped", {"ip": "10.0.0.9"}),
-                ("row-blank-mac-skipped", {"mac": "", "ip": "10.0.0.9"}),
-                ("row-hostname-only-skipped", {"hostname": "ghost"}),
+                ("row-without-mac-skipped", arp_ndp_entry(None, ipv4_address="10.0.0.9")),
+                ("row-hostname-only-skipped", arp_ndp_entry(None, hostname="ghost")),
             )
         ),
     ],
@@ -1235,7 +1258,7 @@ async def test_get_dt_entries_sorts_and_includes_selected(
 async def test_get_dt_entries_builds_device_choices_from_arp_rows(
     monkeypatch: pytest.MonkeyPatch,
     fake_client: Any,
-    arp_rows: list[Any],
+    arp_table: OPNsenseClient.ArpNdpTable,
     selected_devices: list[str],
     expected: dict[str, str],
 ) -> None:
@@ -1244,13 +1267,13 @@ async def test_get_dt_entries_builds_device_choices_from_arp_rows(
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
         fake_client (Any): Mock OPNsense client used at the integration boundary.
-        arp_rows (list[Any]): Rows returned by the ARP lookup.
+        arp_table (OPNsenseClient.ArpNdpTable): Normalized ARP table returned by the lookup.
         selected_devices (list[str]): Previously selected MAC addresses.
         expected (dict[str, str]): Expected device choices and labels.
     """
     client = fake_client()()
-    client.get_arp_table = AsyncMock(return_value=arp_rows)
-    client.get_ndp_table = AsyncMock(return_value=[])
+    client.get_arp_entries = AsyncMock(return_value=arp_table)
+    client.get_ndp_entries = AsyncMock(return_value=arp_ndp_table())
     monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     res = await cf_mod._get_dt_entries(
@@ -1286,16 +1309,24 @@ async def test_get_dt_entries_closes_client(monkeypatch: pytest.MonkeyPatch) -> 
             self.throw_errors = kwargs.get("throw_errors")
             self.async_close = AsyncMock()
 
-        async def get_arp_table(self, resolve_hostnames: bool = True) -> Any:
+        async def get_arp_entries(self, resolve_hostnames: bool = True) -> Any:
             """Return an empty ARP table for close-path testing.
 
             Args:
                 resolve_hostnames (bool): Hostname-resolution flag passed by caller and ignored.
 
             Returns:
-                Any: Empty ARP-table payload.
+                Any: Empty normalized ARP table.
             """
-            return []
+            return arp_ndp_table()
+
+        async def get_ndp_entries(self) -> Any:
+            """Return an empty NDP table for close-path testing.
+
+            Returns:
+                Any: Empty normalized NDP table.
+            """
+            return arp_ndp_table()
 
     patch_opnsense_client(monkeypatch, cf_mod, _Client)
 
@@ -1843,8 +1874,8 @@ async def test_device_tracker_handles_both_neighbor_lookup_failures(
         options={CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
     )
     client = fake_client()()
-    client.get_arp_table = AsyncMock(side_effect=exception_factory("ARP lookup failed"))
-    client.get_ndp_table = AsyncMock(
+    client.get_arp_entries = AsyncMock(side_effect=exception_factory("ARP lookup failed"))
+    client.get_ndp_entries = AsyncMock(
         side_effect=aiopnsense_exceptions.OPNsenseConnectionError("NDP lookup failed")
     )
     client.async_close = AsyncMock()
@@ -1860,20 +1891,32 @@ async def test_device_tracker_handles_both_neighbor_lookup_failures(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("arp_rows", "ndp_rows", "expected_label_parts"),
+    ("arp_table", "ndp_table", "expected_label_parts"),
     [
         pytest.param(
-            [],
-            [{"mac": "AA-BB-CC-DD-EE-FF", "ip": "fe80::1%em0", "manufacturer": "vendor"}],
+            arp_ndp_table(),
+            arp_ndp_table(
+                [
+                    arp_ndp_entry(
+                        "aa:bb:cc:dd:ee:ff", ipv6_address="fe80::1%em0", manufacturer="vendor"
+                    )
+                ]
+            ),
             ["fe80::1%em0", "vendor"],
             id="ipv6-only",
         ),
         pytest.param(
-            [{"mac": "AA-BB-CC-DD-EE-FF", "hostname": "phone", "ip": "192.0.2.10"}],
-            [
-                {"mac": "aa:bb:cc:dd:ee:ff", "ip": "2001:db8::1", "manufacturer": "vendor"},
-                {"mac": "AA-BB-CC-DD-EE-FF", "ip": "2001:db8::2"},
-            ],
+            arp_ndp_table(
+                [arp_ndp_entry("aa:bb:cc:dd:ee:ff", ipv4_address="192.0.2.10", hostname="phone")]
+            ),
+            arp_ndp_table(
+                [
+                    arp_ndp_entry(
+                        "aa:bb:cc:dd:ee:ff", ipv6_address="2001:db8::1", manufacturer="vendor"
+                    ),
+                    arp_ndp_entry("aa:bb:cc:dd:ee:ff", ipv6_address="2001:db8::2"),
+                ]
+            ),
             ["phone", "192.0.2.10", "2001:db8::1", "2001:db8::2", "vendor"],
             id="dual-stack-multiple-addresses",
         ),
@@ -1883,8 +1926,8 @@ async def test_device_tracker_picker_groups_neighbor_addresses_by_mac(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
-    arp_rows: list[dict[str, str]],
-    ndp_rows: list[dict[str, str]],
+    arp_table: OPNsenseClient.ArpNdpTable,
+    ndp_table: OPNsenseClient.ArpNdpTable,
     expected_label_parts: list[str],
 ) -> None:
     """The picker exposes one normalized MAC choice containing all observed addresses.
@@ -1893,8 +1936,8 @@ async def test_device_tracker_picker_groups_neighbor_addresses_by_mac(
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
         fake_client (Any): Factory for a fake OPNsense client.
-        arp_rows (list[dict[str, str]]): Observed IPv4 neighbors.
-        ndp_rows (list[dict[str, str]]): Observed IPv6 neighbors.
+        arp_table (OPNsenseClient.ArpNdpTable): Normalized observed IPv4 neighbors.
+        ndp_table (OPNsenseClient.ArpNdpTable): Normalized observed IPv6 neighbors.
         expected_label_parts (list[str]): Meaningful device details displayed in the picker.
     """
     cfg = make_config_entry(
@@ -1902,8 +1945,8 @@ async def test_device_tracker_picker_groups_neighbor_addresses_by_mac(
         options={},
     )
     client = fake_client()()
-    client.get_arp_table = AsyncMock(return_value=arp_rows)
-    client.get_ndp_table = AsyncMock(return_value=ndp_rows)
+    client.get_arp_entries = AsyncMock(return_value=arp_table)
+    client.get_ndp_entries = AsyncMock(return_value=ndp_table)
     monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
@@ -1933,15 +1976,17 @@ async def test_device_tracker_picker_filters_malformed_ndp_rows(
         options={},
     )
     client = fake_client()()
-    client.get_arp_table = AsyncMock(return_value=[])
-    client.get_ndp_table = AsyncMock(
-        return_value=[
-            "not a row",
-            {"mac": "not-a-mac", "ip": "2001:db8::1"},
-            {"mac": "aa:bb:cc:dd:ee", "ip": "2001:db8::2"},
-            {"mac": "aa:bb:cc:dd:ee:01", "ip": "not-an-ipv6-address"},
-            {"mac": "aa:bb:cc:dd:ee:02", "ip": "192.0.2.2"},
-        ]
+    client.get_arp_entries = AsyncMock(return_value=arp_ndp_table())
+    client.get_ndp_entries = AsyncMock(
+        return_value=arp_ndp_table(
+            [
+                arp_ndp_entry("not-a-mac", valid_mac=None, ipv6_address="2001:db8::1"),
+                arp_ndp_entry("aa:bb:cc:dd:ee", valid_mac=None, ipv6_address="2001:db8::2"),
+                arp_ndp_entry("aa:bb:cc:dd:ee:01", ipv6_address=None),
+                arp_ndp_entry("aa:bb:cc:dd:ee:02", ipv4_address="192.0.2.2"),
+            ],
+            unparsed_row_count=1,
+        )
     )
     monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
@@ -1952,11 +1997,11 @@ async def test_device_tracker_picker_filters_malformed_ndp_rows(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("failed_family", "other_family_rows", "selected_devices", "expected_mac", "expected_label"),
+    ("failed_family", "other_family_table", "selected_devices", "expected_mac", "expected_label"),
     [
         pytest.param(
             "arp",
-            [{"mac": "aa:bb:cc:dd:ee:ff", "ip": "2001:db8::1"}],
+            arp_ndp_table([arp_ndp_entry("aa:bb:cc:dd:ee:ff", ipv6_address="2001:db8::1")]),
             [],
             "aa:bb:cc:dd:ee:ff",
             "2001:db8::1",
@@ -1964,7 +2009,7 @@ async def test_device_tracker_picker_filters_malformed_ndp_rows(
         ),
         pytest.param(
             "ndp",
-            [{"mac": "11:22:33:44:55:66", "ip": "192.0.2.20"}],
+            arp_ndp_table([arp_ndp_entry("11:22:33:44:55:66", ipv4_address="192.0.2.20")]),
             [],
             "11:22:33:44:55:66",
             "192.0.2.20",
@@ -1972,7 +2017,7 @@ async def test_device_tracker_picker_filters_malformed_ndp_rows(
         ),
         pytest.param(
             "arp",
-            [],
+            arp_ndp_table(),
             ["AA-BB-CC-DD-EE-FF"],
             "aa:bb:cc:dd:ee:ff",
             "aa:bb:cc:dd:ee:ff",
@@ -1980,7 +2025,7 @@ async def test_device_tracker_picker_filters_malformed_ndp_rows(
         ),
         pytest.param(
             "ndp",
-            [],
+            arp_ndp_table(),
             ["AA-BB-CC-DD-EE-FF"],
             "aa:bb:cc:dd:ee:ff",
             "aa:bb:cc:dd:ee:ff",
@@ -1993,7 +2038,7 @@ async def test_device_tracker_picker_keeps_successful_family_on_lookup_failure(
     make_config_entry: Callable[..., MockConfigEntry],
     fake_client: Any,
     failed_family: str,
-    other_family_rows: list[dict[str, str]],
+    other_family_table: OPNsenseClient.ArpNdpTable,
     selected_devices: list[str],
     expected_mac: str,
     expected_label: str,
@@ -2005,7 +2050,8 @@ async def test_device_tracker_picker_keeps_successful_family_on_lookup_failure(
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
         fake_client (Any): Factory for a fake OPNsense client.
         failed_family (str): Neighbor-table family configured to fail.
-        other_family_rows (list[dict[str, str]]): Rows returned by the successful neighbor lookup.
+        other_family_table (OPNsenseClient.ArpNdpTable): Normalized table returned by the
+            successful neighbor lookup.
         selected_devices (list[str]): Previously selected MAC addresses.
         expected_mac (str): Expected selectable device value.
         expected_label (str): Expected address or selected MAC in the rendered label.
@@ -2016,13 +2062,13 @@ async def test_device_tracker_picker_keeps_successful_family_on_lookup_failure(
     )
     client = fake_client()()
     if failed_family == "arp":
-        client.get_arp_table = AsyncMock(
+        client.get_arp_entries = AsyncMock(
             side_effect=aiopnsense_exceptions.OPNsenseConnectionError("ARP unavailable")
         )
-        client.get_ndp_table = AsyncMock(return_value=other_family_rows)
+        client.get_ndp_entries = AsyncMock(return_value=other_family_table)
     else:
-        client.get_arp_table = AsyncMock(return_value=other_family_rows)
-        client.get_ndp_table = AsyncMock(
+        client.get_arp_entries = AsyncMock(return_value=other_family_table)
+        client.get_ndp_entries = AsyncMock(
             side_effect=aiopnsense_exceptions.OPNsenseConnectionError("NDP unavailable")
         )
     client.async_close = AsyncMock()
@@ -2036,69 +2082,6 @@ async def test_device_tracker_picker_keeps_successful_family_on_lookup_failure(
     assert set(choices) == {expected_mac}
     assert expected_label in choices[expected_mac]
     client.async_close.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_device_tracker_handles_arp_failure_without_ndp_support(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-    fake_client: Any,
-) -> None:
-    """An older client without NDP support should surface an ARP lookup failure.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
-        fake_client (Any): Factory for a fake OPNsense client without NDP support.
-    """
-    cfg = make_config_entry(
-        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        options={CONF_DEVICES: ["AA-BB-CC-DD-EE-FF"]},
-    )
-    client = fake_client()()
-    client.get_arp_table = AsyncMock(
-        side_effect=aiopnsense_exceptions.OPNsenseConnectionError("ARP unavailable")
-    )
-    client.async_close = AsyncMock()
-    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
-
-    result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
-
-    assert result["type"] == "form"
-    assert result["errors"]["base"] == "cannot_connect"
-    validated = result["data_schema"]({})
-    assert validated[CONF_DEVICES] == ["aa:bb:cc:dd:ee:ff"]
-    client.async_close.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_device_tracker_picker_supports_client_without_ndp_method(
-    monkeypatch: pytest.MonkeyPatch,
-    make_config_entry: Callable[..., MockConfigEntry],
-    fake_client: Any,
-) -> None:
-    """Older API clients without NDP support should still render ARP choices.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace client construction.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock entry.
-        fake_client (Any): Factory for a fake OPNsense client.
-    """
-    cfg = make_config_entry(
-        data={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        options={},
-    )
-    client = fake_client()()
-    client.get_arp_table = AsyncMock(
-        return_value=[{"mac": "11:22:33:44:55:66", "ip": "192.0.2.20"}]
-    )
-    monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
-
-    result = await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
-
-    choices = _device_tracker_selector_options(result)
-    assert set(choices) == {"11:22:33:44:55:66"}
-    assert "192.0.2.20" in choices["11:22:33:44:55:66"]
 
 
 @pytest.mark.asyncio
@@ -2897,63 +2880,10 @@ async def test_device_tracker_picker_honours_resolve_hostnames_option(
         options=stored_options,
     )
     client = fake_client()()
-    client.get_arp_table = AsyncMock(return_value=[])
-    client.get_ndp_table = AsyncMock(return_value=[])
+    client.get_arp_entries = AsyncMock(return_value=arp_ndp_table())
+    client.get_ndp_entries = AsyncMock(return_value=arp_ndp_table())
     monkeypatch.setattr(cf_mod, "create_opnsense_client", lambda **_kwargs: client)
 
     await _make_device_tracker_options_flow(cfg).async_step_device_tracker()
 
-    client.get_arp_table.assert_awaited_once_with(resolve_hostnames=expected)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("resolve_hostnames", [True, False])
-async def test_get_dt_entries_forwards_resolve_hostnames_to_client(
-    monkeypatch: pytest.MonkeyPatch, fake_client: Any, resolve_hostnames: bool
-) -> None:
-    """_get_dt_entries should pass the resolution choice through to the ARP request.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        fake_client (Any): Mock OPNsense client used at the integration boundary.
-        resolve_hostnames (bool): Resolution choice supplied to _get_dt_entries.
-    """
-    captured: dict[str, Any] = {}
-    client_cls = fake_client()
-
-    async def _get_arp_table(self: Any, resolve_hostnames: bool = False) -> list[dict[str, str]]:
-        """Record the resolution flag and return no ARP rows.
-
-        Args:
-            self (Any): Client instance receiving the patched method call.
-            resolve_hostnames (bool): Whether the simulated query requests hostname resolution.
-
-        Returns:
-            list[dict[str, str]]: An empty ARP table.
-        """
-        captured["resolve_hostnames"] = resolve_hostnames
-        return []
-
-    client_cls.get_arp_table = _get_arp_table
-
-    def _init_client(**kwargs: Any) -> Any:
-        """Return the fake client for any create_opnsense_client call.
-
-        Args:
-            kwargs (Any): Keyword arguments accepted by the test double.
-
-        Returns:
-            Any: Configured fake client instance.
-        """
-        return client_cls(**kwargs)
-
-    monkeypatch.setattr(cf_mod, "create_opnsense_client", _init_client)
-
-    await cf_mod._get_dt_entries(
-        hass=MagicMock(),
-        config={CONF_URL: "https://x", CONF_USERNAME: "u", CONF_PASSWORD: "p"},
-        selected_devices=[],
-        resolve_hostnames=resolve_hostnames,
-    )
-
-    assert captured["resolve_hostnames"] is resolve_hostnames
+    client.get_arp_entries.assert_awaited_once_with(resolve_hostnames=expected)

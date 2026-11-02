@@ -2,11 +2,12 @@
 
 from collections.abc import Callable, Mapping, MutableMapping
 import copy
-from datetime import datetime, timedelta
+from datetime import timedelta
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import OPNsenseError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -36,13 +37,12 @@ from .const import (
     DEFAULT_SYNC_OPTION_VALUE,
     DOMAIN,
 )
+from .device_tracker_evidence import DeviceTrackerEvidenceSnapshot
 from .helpers import (
     dict_get,
-    get_arp_mac,
     get_smart_device_name,
     has_configured_tracker_macs,
     is_carp_entry,
-    normalize_mac_address,
     tracked_ndp_macs,
 )
 from .repair_reconciliation import has_repair_marker
@@ -51,9 +51,6 @@ from .repairs import (
     build_device_id_mismatch_issue_id,
     is_valid_device_id,
 )
-
-if TYPE_CHECKING:
-    from aiopnsense import OPNsenseClient
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -73,49 +70,10 @@ _VPN_COUNTER_GROUPS: dict[str, tuple[str, ...]] = {
 }
 # Device-tracker lookups that may fail without failing the whole poll.
 _OPTIONAL_TRACKER_METHODS: dict[str, str] = {
-    "get_arp_table": "ARP",
-    "get_ndp_table": "NDP",
-    "get_host_observations": "Host observation",
+    "get_arp_entries": "ARP",
+    "get_ndp_entries": "NDP",
+    "get_host_observation_entries": "Host observation",
 }
-
-
-def _index_host_observation_times(observations: object) -> dict[str, datetime] | None:
-    """Index the newest timestamped discovery observation for each normalized MAC.
-
-    Args:
-        observations (object): Raw host-observation payload returned by the client.
-
-    Returns:
-        dict[str, datetime] | None: Latest aware timestamp per normalized MAC for an
-            available discovery source, or ``None`` when that source is unavailable.
-    """
-    if (
-        not isinstance(observations, Mapping)
-        or observations.get("source") != "discovery"
-        or not isinstance(observations.get("rows"), list)
-    ):
-        return None
-
-    latest_by_mac: dict[str, datetime] = {}
-    for row in observations["rows"]:
-        if not isinstance(row, Mapping):
-            continue
-        mac = row.get("mac")
-        last_seen = row.get("last_seen")
-        if (
-            not isinstance(mac, str)
-            or not isinstance(last_seen, datetime)
-            or last_seen.tzinfo is None
-            or last_seen.utcoffset() is None
-        ):
-            continue
-        normalized_mac = normalize_mac_address(mac)
-        if normalized_mac is None:
-            continue
-        previous = latest_by_mac.get(normalized_mac)
-        if previous is None or last_seen > previous:
-            latest_by_mac[normalized_mac] = last_seen
-    return latest_by_mac
 
 
 class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
@@ -153,7 +111,10 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             raise ValueError("config_entry is required for OPNsenseDataUpdateCoordinator")
         self._client: OPNsenseClient = client
         self._state: dict[str, Any] = {}
-        self.host_observation_times: dict[str, datetime] | None = None
+        self.device_tracker_evidence: DeviceTrackerEvidenceSnapshot | None = None
+        # Normalized tables from the last published refresh, retained only as non-current
+        # evidence while a later lookup fails.
+        self._retained_neighbor_tables: dict[str, OPNsenseClient.ArpNdpTable] = {}
         self._device_tracker_coordinator: bool = device_tracker_coordinator
         self._mismatched_count = 0
         self._device_unique_id: str | None = device_unique_id
@@ -230,7 +191,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
                                     info_type=cat.get("info_type", "A"),
                                 )
                         state[cat.get("state_key")] = smart_info
-                    elif method_name == "get_arp_table":
+                    elif method_name == "get_arp_entries":
                         state[cat.get("state_key")] = await method(
                             resolve_hostnames=bool(cat.get("resolve_hostnames", False))
                         )
@@ -302,29 +263,21 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             self._failing_optional_methods.discard(method_name)
             _LOGGER.info("%s lookup recovered", _OPTIONAL_TRACKER_METHODS[method_name])
 
-    def _ndp_table_needs_observations(self, ndp_table: object) -> bool:
+    def _ndp_table_needs_observations(self, snapshot: DeviceTrackerEvidenceSnapshot) -> bool:
         """Return whether the NDP table has a row that needs timestamped evidence.
 
         Args:
-            ndp_table (object): NDP rows from the current scan, or ``None`` when unavailable.
+            snapshot (DeviceTrackerEvidenceSnapshot): Normalized evidence from the current scan.
 
         Returns:
             bool: ``True`` when a row belongs to a tracked MAC. In track-all mode (no manually
                 selected devices) or while no MACs are tracked yet, any row with a valid MAC
                 qualifies so newly seen devices get timestamp evidence on first sight.
         """
-        if not isinstance(ndp_table, list):
-            return False
         tracked_macs: set[str] = set()
         if self.config_entry is not None and has_configured_tracker_macs(self.config_entry):
             tracked_macs = tracked_ndp_macs(self.config_entry)
-        for row in ndp_table:
-            if not isinstance(row, Mapping):
-                continue
-            row_mac = normalize_mac_address(get_arp_mac(row))
-            if row_mac is not None and (not tracked_macs or row_mac in tracked_macs):
-                return True
-        return False
+        return snapshot.needs_host_observations(tracked_macs)
 
     def _build_categories(self) -> list[dict[str, str]]:
         """Build API call categories based on integration sync options.
@@ -505,36 +458,59 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             },
             {"function": "get_system_info", "state_key": "system_info"},
             {
-                "function": "get_arp_table",
+                "function": "get_arp_entries",
                 "state_key": "arp_table",
                 "resolve_hostnames": self._resolve_arp_hostnames(),
             },
-            {"function": "get_ndp_table", "state_key": "ndp_table"},
+            {"function": "get_ndp_entries", "state_key": "ndp_table"},
         ]
-        prior_state = self._state.get("previous_state")
-        if not isinstance(prior_state, Mapping):
-            prior_state = self._state.copy()
-        self.host_observation_times = None
         fetched_state = await self._get_states(categories)
-        if self._ndp_table_needs_observations(fetched_state.get("ndp_table")):
-            observation_state = await self._get_states(
-                [{"function": "get_host_observations", "state_key": "host_observations"}]
-            )
-            self.host_observation_times = _index_host_observation_times(
-                observation_state.get("host_observations")
-            )
+        # Normalized tables stay out of coordinator data, which holds JSON-friendly raw rows
+        # for diagnostics.
+        current_tables = {
+            table_key: table
+            for table_key in ("arp_table", "ndp_table")
+            if isinstance(table := fetched_state.pop(table_key, None), OPNsenseClient.ArpNdpTable)
+        }
         self._state.update(fetched_state)
+        effective_tables: dict[str, OPNsenseClient.ArpNdpTable | None] = {}
         unavailable_tables: list[str] = []
         for table_key in ("arp_table", "ndp_table"):
-            if isinstance(fetched_state.get(table_key), list):
-                continue
-            unavailable_tables.append(table_key)
-            previous_table = prior_state.get(table_key)
-            self._state[table_key] = previous_table if isinstance(previous_table, list) else None
+            effective = current_tables.get(table_key)
+            if effective is None:
+                unavailable_tables.append(table_key)
+                effective = self._retained_neighbor_tables.get(table_key)
+            effective_tables[table_key] = effective
+            self._state[table_key] = (
+                copy.deepcopy(list(effective.raw_rows)) if effective is not None else None
+            )
         self._state["unavailable_device_tracker_tables"] = unavailable_tables
+        device_tracker_evidence = DeviceTrackerEvidenceSnapshot.from_tables(
+            arp=effective_tables["arp_table"],
+            ndp=effective_tables["ndp_table"],
+            arp_current="arp_table" in current_tables,
+            ndp_current="ndp_table" in current_tables,
+        )
+        if self._ndp_table_needs_observations(device_tracker_evidence):
+            observation_state = await self._get_states(
+                [
+                    {
+                        "function": "get_host_observation_entries",
+                        "state_key": "host_observations",
+                    }
+                ]
+            )
+            device_tracker_evidence = device_tracker_evidence.with_observations(
+                observation_state.get("host_observations")
+            )
         if not await self._check_device_unique_id():
+            self.device_tracker_evidence = None
             return {}
         restapi_count = await self._client.get_query_counts()
+        self.device_tracker_evidence = device_tracker_evidence
+        self._retained_neighbor_tables = {
+            table_key: table for table_key, table in effective_tables.items() if table is not None
+        }
         _LOGGER.debug(
             "DT Update Complete. REST API Queries: %s",
             restapi_count,
@@ -656,7 +632,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
         try:
             if self._device_tracker_coordinator:
-                self.host_observation_times = None
+                self.device_tracker_evidence = None
             _LOGGER.info(
                 "%sUpdating Data",
                 "DT " if self._device_tracker_coordinator else "",

@@ -10,6 +10,7 @@ import re
 from typing import Any
 from urllib.parse import quote_plus, urlparse
 
+from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
@@ -63,8 +64,6 @@ from .const import (
 )
 from .helpers import (
     create_opnsense_client,
-    get_arp_ip,
-    get_arp_mac,
     is_carp_entry,
     is_usable_carp_vip,
     normalize_mac_address,
@@ -243,26 +242,26 @@ def _build_selected_device_entries(selected_devices: Iterable[str]) -> DeviceEnt
 
 
 def _format_detected_device_label(
-    entry: Mapping[str, Any],
-    ip_addresses: Iterable[str] | None = None,
+    mac: str,
+    ip_addresses: Iterable[str],
+    hostname: str | None,
+    manufacturer: str | None,
 ) -> str:
-    """Format a device label from one or more neighbor-table entries.
+    """Format a device label from the metadata of one or more neighbor-table entries.
 
     Args:
-        entry (Mapping[str, Any]): ARP or NDP entry returned by the OPNsense client.
-        ip_addresses (Iterable[str] | None): All known addresses for the entry's MAC.
+        mac (str): Selector MAC address.
+        ip_addresses (Iterable[str]): All known addresses for the MAC.
+        hostname (str | None): Preferred hostname, if any entry supplies one.
+        manufacturer (str | None): Preferred manufacturer, if any entry supplies one.
 
     Returns:
         str: Human-readable device label for the options form.
     """
-    arp_mac = get_arp_mac(entry)
-    normalized_mac = normalize_mac_address(arp_mac)
-    mac = normalized_mac or arp_mac
-    addresses = list(dict.fromkeys(ip_addresses or [get_arp_ip(entry)]))
-    addresses = [address for address in addresses if address]
+    addresses = list(dict.fromkeys(ip_addresses))
     ip: str = addresses[0] if addresses else ""
-    hostname: str = str(entry.get("hostname", "")).strip("?").strip()
-    manufacturer: str = str(entry.get("manufacturer", "")).strip()
+    hostname = (hostname or "").strip()
+    manufacturer = (manufacturer or "").strip()
 
     label_parts: list[str] = []
     if hostname:
@@ -936,81 +935,50 @@ async def _get_dt_entries(
     try:
         # dicts are ordered so put all previously selected items at the top
         entries: DeviceEntries = _build_selected_device_entries(selected_devices)
-        arp_table: list[Any] | None = None
-        ndp_table: list[Any] | None = None
+        arp_table: OPNsenseClient.ArpNdpTable | None = None
+        ndp_table: OPNsenseClient.ArpNdpTable | None = None
         lookup_error: OPNsenseError | None = None
         try:
-            arp_table = await client.get_arp_table(resolve_hostnames=resolve_hostnames)
+            arp_table = await client.get_arp_entries(resolve_hostnames=resolve_hostnames)
         except OPNsenseError as err:
             lookup_error = err
             _LOGGER.warning("Unable to load the OPNsense ARP table for device selection: %s", err)
 
-        get_ndp_table = getattr(client, "get_ndp_table", None)
-        if get_ndp_table is not None:
-            try:
-                ndp_table = await get_ndp_table()
-            except OPNsenseError as err:
-                if lookup_error is None:
-                    lookup_error = err
-                _LOGGER.warning(
-                    "Unable to load the OPNsense NDP table for device selection: %s", err
-                )
-        else:
-            _LOGGER.debug("The installed aiopnsense client does not provide NDP table support")
+        try:
+            ndp_table = await client.get_ndp_entries()
+        except OPNsenseError as err:
+            if lookup_error is None:
+                lookup_error = err
+            _LOGGER.warning("Unable to load the OPNsense NDP table for device selection: %s", err)
 
-        if (
-            not isinstance(arp_table, list)
-            and not isinstance(ndp_table, list)
-            and lookup_error is not None
-        ):
+        if arp_table is None and ndp_table is None and lookup_error is not None:
             raise lookup_error
 
-        rows_by_mac: dict[str, list[Mapping[str, Any]]] = {}
+        entries_by_mac: dict[str, list[OPNsenseClient.ArpNdpEntry]] = {}
         addresses_by_mac: dict[str, list[str]] = {}
         for table, is_ndp in ((arp_table, False), (ndp_table, True)):
-            if not isinstance(table, list):
+            if table is None:
                 continue
-            for entry in table:
-                if not isinstance(entry, Mapping):
+            for entry in table.entries:
+                mac = entry.valid_mac
+                address = entry.ipv6_address if is_ndp else entry.ipv4_address
+                if not mac or (is_ndp and address is None):
                     continue
-                raw_mac = get_arp_mac(entry)
-                normalized_mac = normalize_mac_address(raw_mac)
-                if is_ndp and normalized_mac is None:
-                    continue
-                mac = normalized_mac or raw_mac
-                if not mac:
-                    continue
-                address = get_arp_ip(entry)
-                if is_ndp:
-                    try:
-                        ip_address = ipaddress.ip_address(address)
-                    except ValueError:
-                        continue
-                    if ip_address.version != 6:
-                        continue
-                    address = ip_address.compressed
-                rows_by_mac.setdefault(mac, []).append(entry)
+                entries_by_mac.setdefault(mac, []).append(entry)
                 if address and address not in addresses_by_mac.setdefault(mac, []):
                     addresses_by_mac[mac].append(address)
 
-        for mac, rows in rows_by_mac.items():
-            arp_row = next((row for row in rows if row.get("hostname")), None)
-            representative = arp_row or rows[0]
-            representative_data = dict(representative)
+        for mac, mac_entries in entries_by_mac.items():
+            hostname = next((entry.hostname for entry in mac_entries if entry.hostname), None)
             manufacturer = next(
-                (
-                    value.strip()
-                    for row in rows
-                    if isinstance((value := row.get("manufacturer")), str) and value.strip()
-                ),
+                (entry.manufacturer for entry in mac_entries if entry.manufacturer),
                 None,
             )
-            if manufacturer:
-                representative_data["manufacturer"] = manufacturer
-            representative_data["mac"] = mac
             entries[mac] = _format_detected_device_label(
-                representative_data,
+                mac,
                 addresses_by_mac.get(mac, []),
+                hostname,
+                manufacturer,
             )
 
         # Sort entries: fallback labels first, then by numeric IP address.

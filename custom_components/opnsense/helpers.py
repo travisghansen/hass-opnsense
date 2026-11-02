@@ -244,36 +244,6 @@ def normalize_arp_mac(mac: object) -> str:
     return mac.strip().lower().replace("-", ":")
 
 
-def get_arp_mac(entry: Mapping[str, Any]) -> str:
-    """Return a normalized MAC address from an ARP payload.
-
-    Returns:
-        str: Retrieved arp mac data.
-
-    Args:
-        entry (Mapping[str, Any]): OPNsense config entry participating in the operation.
-    """
-    mac: object = entry.get("mac")
-    if not isinstance(mac, str) or not mac.strip():
-        mac = entry.get("mac-address")
-    return normalize_arp_mac(mac)
-
-
-def get_arp_ip(entry: Mapping[str, Any]) -> str:
-    """Return an IP address from an ARP payload.
-
-    Returns:
-        str: Retrieved arp ip data.
-
-    Args:
-        entry (Mapping[str, Any]): OPNsense config entry participating in the operation.
-    """
-    ip: object = entry.get("ip")
-    if not isinstance(ip, str) or not ip.strip():
-        ip = entry.get("ip-address")
-    return ip.strip() if isinstance(ip, str) else ""
-
-
 def get_smart_device_name(smart_device: Mapping[str, Any]) -> str:
     """Return a SMART device identifier, preferring ``device`` over ``ident``.
 
