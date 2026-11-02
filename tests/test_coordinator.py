@@ -2059,10 +2059,14 @@ async def test_dt_refresh_indexes_latest_discovery_time_and_clears_unavailable_s
     }
 
     await coordinator._async_update_data()
-    assert getattr(coordinator.device_tracker_evidence, "observation_times", None) is None
+    evidence = coordinator.device_tracker_evidence
+    assert evidence is not None
+    assert evidence.observation_times is None
 
     await coordinator._async_update_data()
-    assert getattr(coordinator.device_tracker_evidence, "observation_times", None) is None
+    evidence = coordinator.device_tracker_evidence
+    assert evidence is not None
+    assert evidence.observation_times is None
 
 
 @pytest.mark.asyncio
@@ -2405,9 +2409,9 @@ async def test_dt_refresh_fetches_observations_only_when_ndp_rows_need_them(
     await coordinator._async_update_data()
 
     assert observations.await_count == (1 if expect_call else 0)
-    assert getattr(coordinator.device_tracker_evidence, "observation_times", None) == (
-        {observed_mac: seen} if expect_call else None
-    )
+    evidence = coordinator.device_tracker_evidence
+    assert evidence is not None
+    assert evidence.observation_times == ({observed_mac: seen} if expect_call else None)
 
 
 @pytest.mark.asyncio
@@ -2461,7 +2465,9 @@ async def test_dt_refresh_resets_observation_index_when_next_poll_needs_none(
     cast("MagicMock", coordinator._client).get_ndp_entries = AsyncMock(return_value=arp_ndp_table())
     await coordinator._async_update_data()
 
-    assert getattr(coordinator.device_tracker_evidence, "observation_times", None) is None
+    evidence = coordinator.device_tracker_evidence
+    assert evidence is not None
+    assert evidence.observation_times is None
     assert observations.await_count == 1
 
 

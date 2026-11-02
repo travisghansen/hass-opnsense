@@ -1214,6 +1214,17 @@ async def test_get_dt_entries_sorts_and_includes_selected(
         ),
         pytest.param(
             arp_ndp_table(
+                [
+                    arp_ndp_entry("aa:bb:cc:dd:ee", valid_mac=None, ipv4_address="192.0.2.20"),
+                    arp_ndp_entry("11:22:33:44:55:66", ipv4_address="192.0.2.10"),
+                ]
+            ),
+            [],
+            {"11:22:33:44:55:66": "192.0.2.10 [11:22:33:44:55:66]"},
+            id="malformed-arp-mac-skipped-while-valid-entry-remains",
+        ),
+        pytest.param(
+            arp_ndp_table(
                 [arp_ndp_entry("aa:bb:cc:00:00:02", ipv4_address="10.0.0.10", hostname="hostb")],
                 unparsed_row_count=2,
             ),

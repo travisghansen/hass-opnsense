@@ -960,7 +960,7 @@ async def _get_dt_entries(
             if table is None:
                 continue
             for entry in table.entries:
-                mac = entry.valid_mac if is_ndp else entry.mac
+                mac = entry.valid_mac
                 address = entry.ipv6_address if is_ndp else entry.ipv4_address
                 if not mac or (is_ndp and address is None):
                     continue
