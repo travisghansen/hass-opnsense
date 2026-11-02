@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.2](https://github.com/travisghansen/hass-opnsense/compare/v1.3.1...v1.3.2) (2026-11-02)
+
+
+### Dependencies
+
+* **aiopnsense:** bump to 1.4.0 ([#794](https://github.com/travisghansen/hass-opnsense/issues/794)) ([19f4dfe](https://github.com/travisghansen/hass-opnsense/commit/19f4dfea7a8a0b4d38b9b1263c44778483d71ed4))
+
+
+### Code Refactoring
+
+* centralize device tracker evidence from normalized neighbor tables ([#796](https://github.com/travisghansen/hass-opnsense/issues/796)) ([e8120c9](https://github.com/travisghansen/hass-opnsense/commit/e8120c913fbfbe20d081dbeee69df3696bc1aef4))
+
 ## [1.3.1](https://github.com/travisghansen/hass-opnsense/compare/v1.3.0...v1.3.1) (2026-10-30)
 
 
