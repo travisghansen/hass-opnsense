@@ -40,7 +40,7 @@ id = "codespell"
 
 [[repos]]
 repo = "https://github.com/streetsidesoftware/cspell-cli"
-rev = "v10.3.0"
+rev = "v10.4.0"
 
 [[repos.hooks]]
 id = "cspell"
@@ -66,7 +66,7 @@ require_serial = true
 
 [[repos]]
 repo = "https://github.com/jsh9/pydoclint"
-rev = "0.11.1"
+rev = "0.12.0"
 
 [[repos.hooks]]
 id = "pydoclint"
@@ -74,7 +74,7 @@ language_version = "python3.14"
 
 [[repos]]
 repo = "https://github.com/astral-sh/ruff-pre-commit"
-rev = "v0.17.1"
+rev = "v0.17.3"
 
 [[repos.hooks]]
 id = "ruff-check"
