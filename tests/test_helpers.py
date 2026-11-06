@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import aiohttp
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense import helpers as helpers_mod
 from custom_components.opnsense.const import (

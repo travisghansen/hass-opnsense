@@ -27,7 +27,7 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import AbortFlow
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 import voluptuous as vol
 
 import custom_components.opnsense.config_flow as cf_mod

@@ -8,7 +8,7 @@ deterministic while validating control flow, data propagation and side
 effects.
 
 NOTE: A lightweight MagicMock-based Home Assistant stand‑in is used instead
-of the full pytest-homeassistant-custom-component hass fixture so that we do
+of the full pytest-homeassistant hass fixture so that we do
 not interfere with existing unit tests which purposely employ a simplified
 mock hass. If desired in the future these tests could be migrated to use the
 real hass fixture for deeper integration, but that would require adapting
@@ -25,7 +25,7 @@ from unittest.mock import AsyncMock, MagicMock
 from homeassistant.const import CONF_NAME, CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 import custom_components.opnsense as init_mod
 from custom_components.opnsense import (

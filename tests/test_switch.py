@@ -14,7 +14,7 @@ from homeassistant.components.switch import SwitchEntityDescription
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense import switch as switch_mod
 from custom_components.opnsense.const import (
