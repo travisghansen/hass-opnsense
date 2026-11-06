@@ -14,7 +14,7 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 import custom_components.opnsense.binary_sensor as binary_sensor_module
 from custom_components.opnsense.binary_sensor import (

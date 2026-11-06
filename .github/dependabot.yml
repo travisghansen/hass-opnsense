@@ -20,7 +20,7 @@ updates:
           - "version-update:semver-major"
           - "version-update:semver-minor"
           - "version-update:semver-patch"
-      # pytest-homeassistant-custom-component pins the compatible pytest version.
+      # pytest-homeassistant pins the compatible pytest version.
       - dependency-name: "pytest"
         update-types:
           - "version-update:semver-major"
