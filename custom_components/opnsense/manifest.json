@@ -17,5 +17,5 @@
     "python-dateutil",
     "aiopnsense==1.4.1"
   ],
-  "version": "v1.3.2"
+  "version": "v1.3.3"
 }
