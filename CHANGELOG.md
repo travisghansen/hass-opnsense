@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.3.3](https://github.com/travisghansen/hass-opnsense/compare/v1.3.2...v1.3.3) (2026-11-07)
+
+
+### Dependencies
+
+* **aiopnsense:** bump to 1.4.1 ([#802](https://github.com/travisghansen/hass-opnsense/issues/802)) ([c5c4333](https://github.com/travisghansen/hass-opnsense/commit/c5c433369dd877566788aea13315bd5586b45526))
+* update prek hooks ([#797](https://github.com/travisghansen/hass-opnsense/issues/797)) ([ad9f7ee](https://github.com/travisghansen/hass-opnsense/commit/ad9f7eed66bd85ef6fa8eccf8b36fed815e90355))
+
+
+### Tests
+
+* migrate to pytest-homeassistant ([#798](https://github.com/travisghansen/hass-opnsense/issues/798)) ([de8c364](https://github.com/travisghansen/hass-opnsense/commit/de8c364ec6a170dba5220b8afb7e57d5955c2ac1))
+
+
+### Build System
+
+* **deps-dev:** bump the python-dependencies group with 7 updates ([#801](https://github.com/travisghansen/hass-opnsense/issues/801)) ([fd6b6aa](https://github.com/travisghansen/hass-opnsense/commit/fd6b6aacd7134d03c176546890140a9ad693634c))
+* **deps:** bump astral-sh/setup-uv ([#800](https://github.com/travisghansen/hass-opnsense/issues/800)) ([50929a3](https://github.com/travisghansen/hass-opnsense/commit/50929a30329795b3ac80972b3c563c66120be81c))
+
 ## [1.3.2](https://github.com/travisghansen/hass-opnsense/compare/v1.3.1...v1.3.2) (2026-11-02)
 
 
