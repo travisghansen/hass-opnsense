@@ -15,7 +15,7 @@
   ],
   "requirements": [
     "python-dateutil",
-    "aiopnsense==1.4.0"
+    "aiopnsense==1.4.1"
   ],
   "version": "v1.3.2"
 }
