@@ -41,7 +41,7 @@ jobs:
 
       - name: Post coverage Comment to PR
         if: steps.comment_artifact.outputs.exists == 'true'
-        uses: py-cov-action/python-coverage-comment-action@v4.5
+        uses: py-cov-action/python-coverage-comment-action@v4.6
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTIVITY: post_comment
@@ -84,7 +84,7 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
 
       - name: Publish coverage report
-        uses: py-cov-action/python-coverage-comment-action@v4.5
+        uses: py-cov-action/python-coverage-comment-action@v4.6
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ACTIVITY: save_coverage_data_files
