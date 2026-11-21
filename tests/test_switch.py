@@ -2187,8 +2187,19 @@ async def test_vpn_turn_on_off_calls_client_and_sets_delay(
 
     # turn on -> should call client and set is_on and delay_update
     await ent.async_turn_on()
-    ent._client.toggle_vpn_instance.assert_awaited_once_with("openvpn", "clients", "c1")
+    ent._client.toggle_vpn_instance.assert_awaited_once_with(
+        "openvpn", "clients", "c1", toggle_on_off="on"
+    )
     assert ent.is_on is True
+    assert ent.delay_update is True
+
+    # turn off -> should send the explicit off target
+    ent._client.toggle_vpn_instance.reset_mock()
+    await ent.async_turn_off()
+    ent._client.toggle_vpn_instance.assert_awaited_once_with(
+        "openvpn", "clients", "c1", toggle_on_off="off"
+    )
+    assert ent.is_on is False
     assert ent.delay_update is True
 
 
@@ -2345,18 +2356,43 @@ async def test_async_setup_entry_marks_empty_unbound_rows_incomplete(
 
 
 @pytest.mark.asyncio
-async def test_vpn_turn_on_off_noops_when_preconditions_fail(
+@pytest.mark.parametrize(
+    ("service", "target", "cached_is_on", "client_result", "expected_is_on", "expected_delay"),
+    [
+        pytest.param("async_turn_on", "on", True, True, True, True, id="on-stale-success"),
+        pytest.param("async_turn_off", "off", False, True, False, True, id="off-stale-success"),
+        pytest.param("async_turn_on", "on", True, False, True, False, id="on-stale-failure"),
+        pytest.param("async_turn_off", "off", False, False, False, False, id="off-stale-failure"),
+        pytest.param("async_turn_on", "on", False, False, False, False, id="on-failure"),
+        pytest.param("async_turn_off", "off", True, False, True, False, id="off-failure"),
+        pytest.param("async_turn_on", "on", False, None, False, False, id="on-missing-client"),
+        pytest.param("async_turn_off", "off", True, None, True, False, id="off-missing-client"),
+    ],
+)
+async def test_vpn_turn_on_off_sends_target_despite_cached_state(
     monkeypatch: pytest.MonkeyPatch,
     coordinator: MagicMock,
     ph_hass: Any,
+    service: str,
+    target: str,
+    cached_is_on: bool,
+    client_result: bool | None,
+    expected_is_on: bool,
+    expected_delay: bool,
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """VPN async_turn_on/async_turn_off should be no-ops when preconditions are not met.
+    """VPN commands send their explicit target whatever the cached state says.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
         coordinator (MagicMock): Mock coordinator supplying entity data and client behavior.
         ph_hass (Any): Home Assistant test instance used to register and inspect entities.
+        service (str): Name of the entity turn-on or turn-off method to call.
+        target (str): Explicit state expected to be sent to the client.
+        cached_is_on (bool): Cached entity state before the command.
+        client_result (bool | None): Client result, or None when no client is available.
+        expected_is_on (bool): Expected entity state after the command.
+        expected_delay (bool): Whether coordinator updates should be delayed afterward.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
     """
     # replace async_call_later to avoid scheduling
@@ -2380,15 +2416,22 @@ async def test_vpn_turn_on_off_noops_when_preconditions_fail(
     ent.entity_id = f"switch.{ent.entity_description.key}"
     stub_async_write_ha_state(ent)
 
-    # client that would raise if called -- we assert it's not awaited
-    ent._client = MagicMock()
-    ent._client.toggle_vpn_instance = AsyncMock(return_value=True)
+    toggle = AsyncMock(return_value=client_result)
+    if client_result is None:
+        ent._client = None
+    else:
+        ent._client = MagicMock()
+        ent._client.toggle_vpn_instance = toggle
 
-    # If already on, async_turn_on should do nothing
-    ent._attr_is_on = True
-    await ent.async_turn_on()
-    # ensure client was not awaited
-    assert ent._client.toggle_vpn_instance.await_count == 0
+    ent._attr_is_on = cached_is_on
+    await getattr(ent, service)()
+
+    if client_result is None:
+        toggle.assert_not_awaited()
+    else:
+        toggle.assert_awaited_once_with("openvpn", "clients", "c2", toggle_on_off=target)
+    assert ent.is_on is expected_is_on
+    assert ent.delay_update is expected_delay
 
 
 @pytest.mark.asyncio
@@ -2455,17 +2498,10 @@ async def test_vpn_async_turn_off_variations(
     assert ent.is_on is expected_is_on
     assert ent.delay_update is expected_delay
 
-    # If already off, async_turn_off should do nothing (no additional client calls)
-    ent._attr_is_on = False
-    if getattr(ent, "_client", None) is None:
-        # ensure calling with no client does not raise
-        await ent.async_turn_off()
-    else:
-        client = ent._client
-        assert client is not None
-        before = client.toggle_vpn_instance.await_count
-        await ent.async_turn_off()
-        assert client.toggle_vpn_instance.await_count == before
+    if ent._client is not None:
+        ent._client.toggle_vpn_instance.assert_awaited_once_with(
+            "openvpn", "clients", "cx", toggle_on_off="off"
+        )
 
 
 @pytest.mark.asyncio
@@ -3270,20 +3306,12 @@ async def test_vpn_toggle_parametrized(
     if expect_name:
         assert ent.extra_state_attributes.get("name") == expect_name
 
-    # try toggle
-    # capture whether the entity was already on (in which case async_turn_on
-    # should early-return and not call the client), then invoke the turn on
-    # behavior and assert the client was awaited only when appropriate.
-    already_on = ent.is_on
+    # try toggle: the explicit target is sent regardless of the cached state
     await ent.async_turn_on()
     assert ent.is_on is expect_on
-
-    if already_on:
-        # when already on, the client should not be invoked
-        ent._client.toggle_vpn_instance.assert_not_awaited()
-    else:
-        # when not already on, the client should have been awaited once
-        ent._client.toggle_vpn_instance.assert_awaited_once()
+    ent._client.toggle_vpn_instance.assert_awaited_once_with(
+        ent._vpn_type, ent._clients_servers, ent._uuid, toggle_on_off="on"
+    )
 
 
 @pytest.mark.asyncio
@@ -3728,11 +3756,16 @@ async def test_vpn_servers_properties_and_toggle(
     await server_ent.async_turn_on()
     assert server_ent.is_on is True
 
-    # test when already on, async_turn_on should early return (client not called)
-    server_ent._client.toggle_vpn_instance = AsyncMock()
+    # a cached on state must not suppress the explicit command
+    server_ent._client.toggle_vpn_instance = AsyncMock(return_value=True)
     server_ent._attr_is_on = True
     await server_ent.async_turn_on()
-    server_ent._client.toggle_vpn_instance.assert_not_awaited()
+    server_ent._client.toggle_vpn_instance.assert_awaited_once_with(
+        server_ent._vpn_type,
+        server_ent._clients_servers,
+        server_ent._uuid,
+        toggle_on_off="on",
+    )
 
 
 @pytest.mark.asyncio
