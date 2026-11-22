@@ -9,7 +9,12 @@ import ipaddress
 from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
-from aiopnsense import OPNsenseClient, exceptions as aiopnsense_exceptions
+from aiopnsense import (
+    FirmwareRequirements,
+    OPNsenseClient,
+    exceptions as aiopnsense_exceptions,
+    get_firmware_requirements,
+)
 from aiopnsense.exceptions import (
     OPNsenseError,
     OPNsenseInvalidURL,
@@ -1000,6 +1005,82 @@ def test_validation_error_details_maps_carp_responder_unavailable() -> None:
     assert result is not None
     assert result[0] == "carp_responder_unavailable"
     assert result[1] == "Unable to determine the active CARP responder"
+
+
+def test_validation_error_details_below_min_firmware_reports_aiopnsense_minimum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Below-minimum errors should name the minimum firmware reported by aiopnsense.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+    """
+    requirements = FirmwareRequirements(minimum="30.1", recommended="30.4.2")
+    monkeypatch.setattr(cf_mod, "get_firmware_requirements", lambda: requirements)
+    user_input = {**_make_basic_carp_input(), CONF_FIRMWARE_VERSION: "30.0"}
+
+    result = cf_mod._get_validation_error_details(
+        aiopnsense_exceptions.OPNsenseBelowMinFirmware("too old"), user_input
+    )
+
+    assert result == (
+        "below_min_firmware",
+        f"OPNsense Firmware of 30.0 is below the minimum supported version of {requirements.minimum}",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("step", ["device", "carp", "reconfigure_device", "reconfigure_carp"])
+async def test_config_flow_forms_expose_aiopnsense_minimum_firmware(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    step: str,
+) -> None:
+    """Config-flow forms should pass aiopnsense's minimum firmware to their descriptions.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        step (str): Config-flow step whose form is rendered.
+    """
+    requirements = FirmwareRequirements(minimum="30.1", recommended="30.4.2")
+    monkeypatch.setattr(cf_mod, "get_firmware_requirements", lambda: requirements)
+    flow = cf_mod.OPNsenseConfigFlow()
+    flow.hass = MagicMock()
+
+    if step == "device":
+        result = await flow.async_step_device(None)
+    elif step == "carp":
+        result = await flow.async_step_carp(None)
+    else:
+        config_entry = make_config_entry(
+            data={
+                CONF_URL: "https://x",
+                CONF_USERNAME: "u",
+                CONF_PASSWORD: "p",
+                CONF_DEVICE_UNIQUE_ID: "device-1",
+                **({CONF_ENTRY_TYPE: ENTRY_TYPE_CARP} if step == "reconfigure_carp" else {}),
+            },
+            options={},
+            unique_id="device-1",
+        )
+        object.__setattr__(flow, "_get_reconfigure_entry", lambda: config_entry)
+        result = await flow.async_step_reconfigure(None)
+
+    assert result["type"] == "form"
+    assert result["description_placeholders"] is not None
+    assert result["description_placeholders"]["min_firmware"] == requirements.minimum
+
+
+def test_config_flow_uses_installed_aiopnsense_minimum_firmware() -> None:
+    """Without patching, the error text should use the installed aiopnsense minimum."""
+    result = cf_mod._get_validation_error_details(
+        aiopnsense_exceptions.OPNsenseBelowMinFirmware("too old"),
+        {**_make_basic_carp_input(), CONF_FIRMWARE_VERSION: "1.0"},
+    )
+
+    assert result is not None
+    assert result[1].endswith(get_firmware_requirements().minimum)
 
 
 @pytest.mark.asyncio

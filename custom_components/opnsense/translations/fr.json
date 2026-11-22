@@ -165,9 +165,9 @@
       "title": "Micrologiciel OPNsense inférieur à la version minimale",
       "description": "hass-opnsense {version} nécessite le micrologiciel OPNsense {min_firmware} ou version ultérieure. "
     },
-    "below_ltd_firmware": {
+    "below_recommended_firmware": {
       "title": "Micrologiciel OPNsense inférieur à la version recommandée",
-      "description": "Certaines fonctions hass-opnsense {version} nécessitent le micrologiciel OPNsense {ltd_firmware} ou version ultérieure. Avec le micrologiciel {firmware}, certaines fonctions peuvent ne pas fonctionner et des erreurs peuvent apparaître dans les journaux."
+      "description": "Certaines fonctions hass-opnsense {version} nécessitent le micrologiciel OPNsense {recommended_firmware} ou version ultérieure. Avec le micrologiciel {firmware}, certaines fonctions peuvent ne pas fonctionner et des erreurs peuvent apparaître dans les journaux."
     },
     "device_id_mismatched": {
       "title": "Matériel de remplacement détecté",

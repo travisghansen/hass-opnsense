@@ -10,7 +10,7 @@ import logging
 from typing import Any, Never, cast
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 
-from aiopnsense import OPNsenseClient
+from aiopnsense import FirmwareRequirements, OPNsenseClient, get_firmware_requirements
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
@@ -51,8 +51,6 @@ from custom_components.opnsense.const import (
     GRANULAR_SYNC_PREFIX,
     LOADED_PLATFORMS,
     OPNSENSE_CLIENT,
-    OPNSENSE_LTD_FIRMWARE,
-    OPNSENSE_MIN_FIRMWARE,
     SHOULD_RELOAD,
 )
 from custom_components.opnsense.migrate import (
@@ -91,6 +89,44 @@ def _make_valid_setup_client() -> MagicMock:
     client.get_host_firmware_version = AsyncMock(return_value="99.0")
     client.async_close = AsyncMock(return_value=True)
     return client
+
+
+# Synthetic thresholds injected at the aiopnsense boundary so firmware-band tests do not depend
+# on the thresholds of the installed aiopnsense release.
+TEST_FIRMWARE_REQUIREMENTS = FirmwareRequirements(minimum="30.1", recommended="30.4.2")
+FIRMWARE_BELOW_MIN = "30.0"
+FIRMWARE_BETWEEN_MIN_AND_RECOMMENDED = "30.3"
+FIRMWARE_ABOVE_RECOMMENDED = "99.9"
+
+
+@pytest.fixture
+def firmware_requirements(monkeypatch: pytest.MonkeyPatch) -> FirmwareRequirements:
+    """Patch the firmware requirements aiopnsense reports to the integration.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+
+    Returns:
+        FirmwareRequirements: Requirements the integration receives from aiopnsense.
+    """
+    monkeypatch.setattr(init_mod, "get_firmware_requirements", lambda: TEST_FIRMWARE_REQUIREMENTS)
+    return TEST_FIRMWARE_REQUIREMENTS
+
+
+def _firmware_issue_ids(device_id: str, requirements: FirmwareRequirements) -> tuple[str, str]:
+    """Return the minimum and recommended firmware repair issue ids for a device.
+
+    Args:
+        device_id (str): Device unique id used as the issue id prefix.
+        requirements (FirmwareRequirements): Requirements reported by aiopnsense.
+
+    Returns:
+        tuple[str, str]: Below-minimum and below-recommended issue ids.
+    """
+    return (
+        f"{device_id}_opnsense_below_min_firmware_{requirements.minimum}",
+        f"{device_id}_opnsense_below_recommended_firmware_{requirements.recommended}",
+    )
 
 
 def _make_setup_coordinator() -> MagicMock:
@@ -3823,6 +3859,9 @@ async def test_async_update_listener_reparents_tracker_link_to_remaining_opnsens
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "patch_requirements", [True, False], ids=["patched", "installed-aiopnsense"]
+)
 async def test_async_setup_entry_firmware_below_min(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
@@ -3830,8 +3869,9 @@ async def test_async_setup_entry_firmware_below_min(
     fake_client: Any,
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    patch_requirements: bool,
 ) -> None:
-    """async_setup_entry returns False for devices with firmware below minimum supported.
+    """Firmware below the aiopnsense minimum creates an error issue and aborts setup.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
@@ -3840,12 +3880,22 @@ async def test_async_setup_entry_firmware_below_min(
         fake_client (Any): Mock OPNsense client used at the integration boundary.
         fake_coordinator (Any): Mock coordinator installed for the scenario.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        patch_requirements (bool): Whether to inject synthetic requirements instead of using the
+            installed aiopnsense thresholds.
     """
-    # fake client where Device ID matches but firmware is below min
-    patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version="1.0"))
+    if patch_requirements:
+        requirements = TEST_FIRMWARE_REQUIREMENTS
+        monkeypatch.setattr(init_mod, "get_firmware_requirements", lambda: requirements)
+        firmware = FIRMWARE_BELOW_MIN
+    else:
+        requirements = get_firmware_requirements()
+        firmware = "1.0"
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version=firmware))
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
+    create_issue_mock = MagicMock()
+    monkeypatch.setattr(ir, "async_create_issue", create_issue_mock)
 
     entry = make_config_entry(
         data={
@@ -3864,17 +3914,35 @@ async def test_async_setup_entry_firmware_below_min(
     res = await init_mod.async_setup_entry(hass, entry)
     assert res is False
 
+    min_issue_id, _ = _firmware_issue_ids("dev1", requirements)
+    create_issue_mock.assert_called_once()
+    call_args = create_issue_mock.call_args
+    assert call_args.args[1:3] == (DOMAIN, min_issue_id)
+    assert call_args.kwargs["severity"] == ir.IssueSeverity.ERROR
+    assert call_args.kwargs["translation_key"] == "below_min_firmware"
+    assert call_args.kwargs["translation_placeholders"]["min_firmware"] == requirements.minimum
+    assert call_args.kwargs["translation_placeholders"]["firmware"] == firmware
+
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_firmware_between_min_and_ltd(
+@pytest.mark.parametrize(
+    "firmware_version",
+    [
+        pytest.param(TEST_FIRMWARE_REQUIREMENTS.minimum, id="at-minimum"),
+        pytest.param(FIRMWARE_BETWEEN_MIN_AND_RECOMMENDED, id="between-minimum-and-recommended"),
+    ],
+)
+async def test_async_setup_entry_firmware_below_recommended(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     coordinator_capture: Any,
     fake_client: Any,
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    firmware_requirements: FirmwareRequirements,
+    firmware_version: str,
 ) -> None:
-    """async_setup_entry logs a warning issue for firmware between min and LTD but continues.
+    """Firmware below the recommended version creates a warning issue, keeps both issues, and continues.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
@@ -3883,14 +3951,17 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
         fake_client (Any): Mock OPNsense client used at the integration boundary.
         fake_coordinator (Any): Mock coordinator installed for the scenario.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        firmware_requirements (FirmwareRequirements): Requirements reported by aiopnsense.
+        firmware_version (str): Firmware reported by the mocked client.
     """
-    patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version="25.1"))
+    patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version=firmware_version))
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
-    # capture calls to the issue registry to assert a warning issue is created
     create_issue_mock = MagicMock()
     monkeypatch.setattr(ir, "async_create_issue", create_issue_mock)
+    delete_issue_mock = MagicMock()
+    monkeypatch.setattr(ir, "async_delete_issue", delete_issue_mock)
 
     entry = make_config_entry(
         data={
@@ -3907,18 +3978,21 @@ async def test_async_setup_entry_firmware_between_min_and_ltd(
 
     res = await init_mod.async_setup_entry(hass, entry)
     assert res is True
-    # verify the LTD deprecation/warning issue was created
-    assert create_issue_mock.called, (
-        "async_create_issue should have been called for firmware between min and LTD"
-    )
+
+    min_issue_id, recommended_issue_id = _firmware_issue_ids("dev1", firmware_requirements)
+    create_issue_mock.assert_called_once()
     call_args = create_issue_mock.call_args
-    # args: (hass, domain, issue_id, ...)
-    assert call_args[0][1] == DOMAIN
-    expected_issue_id = (
-        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}"
+    assert call_args.args[1:3] == (DOMAIN, recommended_issue_id)
+    assert call_args.kwargs["severity"] == ir.IssueSeverity.WARNING
+    assert call_args.kwargs["translation_key"] == "below_recommended_firmware"
+    assert (
+        call_args.kwargs["translation_placeholders"]["recommended_firmware"]
+        == firmware_requirements.recommended
     )
-    assert call_args[0][2] == expected_issue_id
-    assert call_args[1].get("severity") == ir.IssueSeverity.WARNING
+    assert call_args.kwargs["translation_placeholders"]["firmware"] == firmware_version
+    deleted_issue_ids = [c.args[2] for c in delete_issue_mock.call_args_list if len(c.args) > 2]
+    assert min_issue_id not in deleted_issue_ids
+    assert recommended_issue_id not in deleted_issue_ids
 
 
 @pytest.mark.asyncio
@@ -4898,20 +4972,21 @@ async def test_async_migrate_entry_returns_false_when_migration_client_missing(
 @pytest.mark.parametrize(
     "firmware_version",
     [
-        pytest.param(OPNSENSE_LTD_FIRMWARE, id="ltd-threshold"),
-        pytest.param("99.9", id="newer-version"),
+        pytest.param(TEST_FIRMWARE_REQUIREMENTS.recommended, id="at-recommended"),
+        pytest.param(FIRMWARE_ABOVE_RECOMMENDED, id="above-recommended"),
     ],
 )
-async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_threshold_issues(
+async def test_async_setup_entry_firmware_at_or_above_recommended_deletes_threshold_issues(
     monkeypatch: pytest.MonkeyPatch,
     ph_hass: Any,
     coordinator_capture: Any,
     fake_client: Any,
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
+    firmware_requirements: FirmwareRequirements,
     firmware_version: str,
 ) -> None:
-    """async_setup_entry cleans up previous firmware-related issues for LTD and min thresholds.
+    """Firmware at or above the recommended version deletes both firmware issues and creates none.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
@@ -4920,14 +4995,15 @@ async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_threshold_issu
         fake_client (Any): Mock OPNsense client used at the integration boundary.
         fake_coordinator (Any): Mock coordinator installed for the scenario.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        firmware_requirements (FirmwareRequirements): Requirements reported by aiopnsense.
         firmware_version (str): Firmware reported by the mocked client.
     """
     patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version=firmware_version))
     monkeypatch.setattr(
         init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
     )
-
-    # capture delete_issue calls
+    create_issue_mock = MagicMock()
+    monkeypatch.setattr(ir, "async_create_issue", create_issue_mock)
     delete_issue_mock = MagicMock()
     monkeypatch.setattr(ir, "async_delete_issue", delete_issue_mock)
 
@@ -4945,73 +5021,11 @@ async def test_async_setup_entry_firmware_at_or_above_ltd_deletes_threshold_issu
     res = await init_mod.async_setup_entry(hass, entry)
     assert res is True
 
-    # Expect delete_issue to be called for the previous below-min and below-ltd issue ids
-    assert delete_issue_mock.called, "async_delete_issue should have been called"
-    called_issue_ids = [call[0][2] for call in delete_issue_mock.call_args_list if len(call[0]) > 2]
-    expected_min = (
-        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}"
-    )
-    expected_ltd = (
-        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}"
-    )
-    assert expected_min in called_issue_ids
-    assert expected_ltd in called_issue_ids
-
-
-@pytest.mark.asyncio
-async def test_async_setup_entry_delete_not_called_for_between_min_and_ltd(
-    monkeypatch: pytest.MonkeyPatch,
-    ph_hass: Any,
-    coordinator_capture: Any,
-    fake_client: Any,
-    fake_coordinator: Any,
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """async_setup_entry should not call delete_issue for firmware between min and LTD.
-
-    Args:
-        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
-        ph_hass (Any): Patched Home Assistant test instance.
-        coordinator_capture (Any): Capture object recording constructed coordinators.
-        fake_client (Any): Mock OPNsense client used at the integration boundary.
-        fake_coordinator (Any): Mock coordinator installed for the scenario.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-    """
-    patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version="25.1"))
-    monkeypatch.setattr(
-        init_mod, "OPNsenseDataUpdateCoordinator", coordinator_capture.factory(fake_coordinator)
-    )
-
-    delete_issue_mock = MagicMock()
-    monkeypatch.setattr(ir, "async_delete_issue", delete_issue_mock)
-
-    entry = make_config_entry(
-        data={
-            CONF_URL: "http://1.2.3.4",
-            CONF_USERNAME: "u",
-            CONF_PASSWORD: "p",
-            CONF_DEVICE_UNIQUE_ID: "dev1",
-        }
-    )
-    hass = ph_hass
-    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    hass.config_entries.async_reload = AsyncMock()
-    hass.data.setdefault("aiohttp_connector", {})
-
-    res = await init_mod.async_setup_entry(hass, entry)
-    assert res is True
-    # delete should not be called for firmware between min and LTD
-    issue_ids = [call[0][2] for call in delete_issue_mock.call_args_list if len(call[0]) > 2]
-    assert issue_ids
-    assert f"{entry.entry_id}_device_id_mismatched" in issue_ids
-    assert (
-        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_"
-        f"{OPNSENSE_MIN_FIRMWARE}" not in issue_ids
-    )
-    assert (
-        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_"
-        f"{OPNSENSE_LTD_FIRMWARE}" not in issue_ids
-    )
+    min_issue_id, recommended_issue_id = _firmware_issue_ids("dev1", firmware_requirements)
+    deleted_issue_ids = [c.args[2] for c in delete_issue_mock.call_args_list if len(c.args) > 2]
+    assert min_issue_id in deleted_issue_ids
+    assert recommended_issue_id in deleted_issue_ids
+    create_issue_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -5876,14 +5890,11 @@ async def test_async_setup_entry_preserves_marker_and_skips_stale_issue_delete(
     assert result is True
     delete_issue_ids = [call[0][2] for call in delete_issue.call_args_list if len(call[0]) > 2]
     assert f"{entry.entry_id}_device_id_mismatched" not in delete_issue_ids
-    assert (
-        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_min_firmware_"
-        f"{OPNSENSE_MIN_FIRMWARE}" in delete_issue_ids
+    min_issue_id, recommended_issue_id = _firmware_issue_ids(
+        entry.data[CONF_DEVICE_UNIQUE_ID], get_firmware_requirements()
     )
-    assert (
-        f"{entry.data[CONF_DEVICE_UNIQUE_ID]}_opnsense_below_ltd_firmware_"
-        f"{OPNSENSE_LTD_FIRMWARE}" in delete_issue_ids
-    )
+    assert min_issue_id in delete_issue_ids
+    assert recommended_issue_id in delete_issue_ids
     ph_hass.config_entries.async_forward_entry_setups.assert_awaited_once()
     ph_hass.config_entries.async_update_entry.assert_called_once()
     reconciliation.require_platforms_complete.assert_called_once()
