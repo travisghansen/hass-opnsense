@@ -35,6 +35,7 @@
 - Do not reintroduce `pyopnsense`, `client_factory.py`, `client_protocol.py`, or tests under `tests/pyopnsense`. Backend API behavior belongs in `aiopnsense`; this repository should consume it through `aiopnsense.OPNsenseClient` and `aiopnsense.exceptions`.
 - Create configured clients through `custom_components/opnsense/helpers.py:create_opnsense_client` so Home Assistant aiohttp session handling, TLS options, logging names, and `throw_errors` behavior stay consistent.
 - Keep the pinned `aiopnsense` version in `custom_components/opnsense/manifest.json` and `pyproject.toml` in sync.
+- Reach OPNsense firmware only through `get_firmware_update_info`, `get_host_firmware_version`, and `install_firmware`. Other firmware endpoints can make the Router contact its package mirrors on every poll; `tests/test_firmware_endpoint_guard.py` enforces this.
 - OPNsense Firmware 25.1+ remains supported, but Firewall and NAT rule switches are available only when the aiopnsense firewall payload supports them, currently OPNsense Firmware 26.1.1+.
 - The deprecated OPNsense Home Assistant plugin is no longer supported or used. Handle legacy plugin-era entities only as migration or cleanup concerns; do not add new plugin-backed behavior.
 - Config-entry migrations live in `custom_components/opnsense/migrate.py`. Be careful with entity registry and device registry changes, especially legacy firewall/NAT entity cleanup, because they affect existing user installations.
