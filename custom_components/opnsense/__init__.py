@@ -12,7 +12,7 @@ from functools import partial
 import logging
 from typing import Any
 
-from aiopnsense import OPNsenseClient, get_firmware_requirements
+from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
@@ -726,7 +726,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not identity_matches:
             return False
         _LOGGER.info("OPNsense Firmware %s", firmware)
-        firmware_requirements = get_firmware_requirements()
+        firmware_requirements = OPNsenseClient.get_firmware_requirements()
         min_firmware = firmware_requirements.minimum
         recommended_firmware = firmware_requirements.recommended
         min_firmware_issue_id = f"{config_device_id}_opnsense_below_min_firmware_{min_firmware}"

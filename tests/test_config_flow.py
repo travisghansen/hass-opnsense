@@ -9,12 +9,7 @@ import ipaddress
 from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
-from aiopnsense import (
-    FirmwareRequirements,
-    OPNsenseClient,
-    exceptions as aiopnsense_exceptions,
-    get_firmware_requirements,
-)
+from aiopnsense import OPNsenseClient, exceptions as aiopnsense_exceptions
 from aiopnsense.exceptions import (
     OPNsenseError,
     OPNsenseInvalidURL,
@@ -1015,8 +1010,10 @@ def test_validation_error_details_below_min_firmware_reports_aiopnsense_minimum(
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
     """
-    requirements = FirmwareRequirements(minimum="30.1", recommended="30.4.2")
-    monkeypatch.setattr(cf_mod, "get_firmware_requirements", lambda: requirements)
+    requirements = OPNsenseClient.FirmwareRequirements(minimum="30.1", recommended="30.4.2")
+    monkeypatch.setattr(
+        OPNsenseClient, "get_firmware_requirements", staticmethod(lambda: requirements)
+    )
     user_input = {**_make_basic_carp_input(), CONF_FIRMWARE_VERSION: "30.0"}
 
     result = cf_mod._get_validation_error_details(
@@ -1043,8 +1040,10 @@ async def test_config_flow_forms_expose_aiopnsense_minimum_firmware(
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
         step (str): Config-flow step whose form is rendered.
     """
-    requirements = FirmwareRequirements(minimum="30.1", recommended="30.4.2")
-    monkeypatch.setattr(cf_mod, "get_firmware_requirements", lambda: requirements)
+    requirements = OPNsenseClient.FirmwareRequirements(minimum="30.1", recommended="30.4.2")
+    monkeypatch.setattr(
+        OPNsenseClient, "get_firmware_requirements", staticmethod(lambda: requirements)
+    )
     flow = cf_mod.OPNsenseConfigFlow()
     flow.hass = MagicMock()
 
@@ -1080,7 +1079,7 @@ def test_config_flow_uses_installed_aiopnsense_minimum_firmware() -> None:
     )
 
     assert result is not None
-    assert result[1].endswith(get_firmware_requirements().minimum)
+    assert result[1].endswith(OPNsenseClient.get_firmware_requirements().minimum)
 
 
 @pytest.mark.asyncio

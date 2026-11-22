@@ -71,7 +71,7 @@ jobs:
           if [[ "$release_body" != *"opnsense-firmware-compatibility"* ]]; then
             # Firmware requirements come from the aiopnsense version pinned by the released tag.
             aiopnsense_pin="$(python3 -c 'import json, sys; print(next(r for r in json.load(open(sys.argv[1]))["requirements"] if r.startswith("aiopnsense==")))' custom_components/opnsense/manifest.json)"
-            firmware_requirements="$(uv run --no-project --with "$aiopnsense_pin" python -c 'import aiopnsense; r = aiopnsense.get_firmware_requirements(); print(r.minimum, r.recommended)')"
+            firmware_requirements="$(uv run --no-project --with "$aiopnsense_pin" python -c 'from aiopnsense import OPNsenseClient; r = OPNsenseClient.get_firmware_requirements(); print(r.minimum, r.recommended)')"
             read -r opnsense_min_firmware opnsense_recommended_firmware <<< "$firmware_requirements"
             firmware_notes="<!-- opnsense-firmware-compatibility --><h3>OPNsense Minimum Firmware Required: $opnsense_min_firmware</h3><h4>OPNsense Recommended Firmware: $opnsense_recommended_firmware+</h4><p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i></p>"
             gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \

@@ -10,7 +10,7 @@ import re
 from typing import Any
 from urllib.parse import quote_plus, urlparse
 
-from aiopnsense import OPNsenseClient, get_firmware_requirements
+from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
@@ -397,7 +397,7 @@ def _get_validation_error_details(
             "below_min_firmware",
             (
                 f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the "
-                f"minimum supported version of {get_firmware_requirements().minimum}"
+                f"minimum supported version of {OPNsenseClient.get_firmware_requirements().minimum}"
             ),
         )
     if isinstance(error, OPNsenseUnknownFirmware):
@@ -1103,7 +1103,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "firmware": firmware,
-                "min_firmware": get_firmware_requirements().minimum,
+                "min_firmware": OPNsenseClient.get_firmware_requirements().minimum,
             },
         )
 
@@ -1153,7 +1153,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "firmware": firmware,
-                "min_firmware": get_firmware_requirements().minimum,
+                "min_firmware": OPNsenseClient.get_firmware_requirements().minimum,
             },
         )
 
@@ -1284,7 +1284,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "firmware": firmware,
-                "min_firmware": get_firmware_requirements().minimum,
+                "min_firmware": OPNsenseClient.get_firmware_requirements().minimum,
             },
         )
 

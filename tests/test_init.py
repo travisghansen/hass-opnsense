@@ -10,7 +10,7 @@ import logging
 from typing import Any, Never, cast
 from unittest.mock import ANY, AsyncMock, MagicMock, call
 
-from aiopnsense import FirmwareRequirements, OPNsenseClient, get_firmware_requirements
+from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import (
     OPNsenseBelowMinFirmware,
     OPNsenseConnectionError,
@@ -93,32 +93,40 @@ def _make_valid_setup_client() -> MagicMock:
 
 # Synthetic thresholds injected at the aiopnsense boundary so firmware-band tests do not depend
 # on the thresholds of the installed aiopnsense release.
-TEST_FIRMWARE_REQUIREMENTS = FirmwareRequirements(minimum="30.1", recommended="30.4.2")
+TEST_FIRMWARE_REQUIREMENTS = OPNsenseClient.FirmwareRequirements(
+    minimum="30.1", recommended="30.4.2"
+)
 FIRMWARE_BELOW_MIN = "30.0"
 FIRMWARE_BETWEEN_MIN_AND_RECOMMENDED = "30.3"
 FIRMWARE_ABOVE_RECOMMENDED = "99.9"
 
 
 @pytest.fixture
-def firmware_requirements(monkeypatch: pytest.MonkeyPatch) -> FirmwareRequirements:
+def firmware_requirements(monkeypatch: pytest.MonkeyPatch) -> OPNsenseClient.FirmwareRequirements:
     """Patch the firmware requirements aiopnsense reports to the integration.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
 
     Returns:
-        FirmwareRequirements: Requirements the integration receives from aiopnsense.
+        OPNsenseClient.FirmwareRequirements: Requirements the integration receives from aiopnsense.
     """
-    monkeypatch.setattr(init_mod, "get_firmware_requirements", lambda: TEST_FIRMWARE_REQUIREMENTS)
+    monkeypatch.setattr(
+        OPNsenseClient,
+        "get_firmware_requirements",
+        staticmethod(lambda: TEST_FIRMWARE_REQUIREMENTS),
+    )
     return TEST_FIRMWARE_REQUIREMENTS
 
 
-def _firmware_issue_ids(device_id: str, requirements: FirmwareRequirements) -> tuple[str, str]:
+def _firmware_issue_ids(
+    device_id: str, requirements: OPNsenseClient.FirmwareRequirements
+) -> tuple[str, str]:
     """Return the minimum and recommended firmware repair issue ids for a device.
 
     Args:
         device_id (str): Device unique id used as the issue id prefix.
-        requirements (FirmwareRequirements): Requirements reported by aiopnsense.
+        requirements (OPNsenseClient.FirmwareRequirements): Requirements reported by aiopnsense.
 
     Returns:
         tuple[str, str]: Below-minimum and below-recommended issue ids.
@@ -3885,10 +3893,12 @@ async def test_async_setup_entry_firmware_below_min(
     """
     if patch_requirements:
         requirements = TEST_FIRMWARE_REQUIREMENTS
-        monkeypatch.setattr(init_mod, "get_firmware_requirements", lambda: requirements)
+        monkeypatch.setattr(
+            OPNsenseClient, "get_firmware_requirements", staticmethod(lambda: requirements)
+        )
         firmware = FIRMWARE_BELOW_MIN
     else:
-        requirements = get_firmware_requirements()
+        requirements = OPNsenseClient.get_firmware_requirements()
         firmware = "1.0"
     patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version=firmware))
     monkeypatch.setattr(
@@ -3939,7 +3949,7 @@ async def test_async_setup_entry_firmware_below_recommended(
     fake_client: Any,
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
-    firmware_requirements: FirmwareRequirements,
+    firmware_requirements: OPNsenseClient.FirmwareRequirements,
     firmware_version: str,
 ) -> None:
     """Firmware below the recommended version creates a warning issue, keeps both issues, and continues.
@@ -3951,7 +3961,7 @@ async def test_async_setup_entry_firmware_below_recommended(
         fake_client (Any): Mock OPNsense client used at the integration boundary.
         fake_coordinator (Any): Mock coordinator installed for the scenario.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-        firmware_requirements (FirmwareRequirements): Requirements reported by aiopnsense.
+        firmware_requirements (OPNsenseClient.FirmwareRequirements): Requirements reported by aiopnsense.
         firmware_version (str): Firmware reported by the mocked client.
     """
     patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version=firmware_version))
@@ -4983,7 +4993,7 @@ async def test_async_setup_entry_firmware_at_or_above_recommended_deletes_thresh
     fake_client: Any,
     fake_coordinator: Any,
     make_config_entry: Callable[..., MockConfigEntry],
-    firmware_requirements: FirmwareRequirements,
+    firmware_requirements: OPNsenseClient.FirmwareRequirements,
     firmware_version: str,
 ) -> None:
     """Firmware at or above the recommended version deletes both firmware issues and creates none.
@@ -4995,7 +5005,7 @@ async def test_async_setup_entry_firmware_at_or_above_recommended_deletes_thresh
         fake_client (Any): Mock OPNsense client used at the integration boundary.
         fake_coordinator (Any): Mock coordinator installed for the scenario.
         make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-        firmware_requirements (FirmwareRequirements): Requirements reported by aiopnsense.
+        firmware_requirements (OPNsenseClient.FirmwareRequirements): Requirements reported by aiopnsense.
         firmware_version (str): Firmware reported by the mocked client.
     """
     patch_opnsense_client(monkeypatch, init_mod, fake_client(firmware_version=firmware_version))
@@ -5891,7 +5901,7 @@ async def test_async_setup_entry_preserves_marker_and_skips_stale_issue_delete(
     delete_issue_ids = [call[0][2] for call in delete_issue.call_args_list if len(call[0]) > 2]
     assert f"{entry.entry_id}_device_id_mismatched" not in delete_issue_ids
     min_issue_id, recommended_issue_id = _firmware_issue_ids(
-        entry.data[CONF_DEVICE_UNIQUE_ID], get_firmware_requirements()
+        entry.data[CONF_DEVICE_UNIQUE_ID], OPNsenseClient.get_firmware_requirements()
     )
     assert min_issue_id in delete_issue_ids
     assert recommended_issue_id in delete_issue_ids
