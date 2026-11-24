@@ -19,12 +19,22 @@ from custom_components.opnsense.const import (
     DOMAIN,
     GRANULAR_SYNC_ITEMS,
 )
+from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "response",
-    ["configuration", "status", "unavailable", "error", "legacy", "collision", "no-legacy"],
+    [
+        "configuration",
+        "status",
+        "unavailable",
+        "error",
+        "legacy",
+        "collision",
+        "no-legacy",
+        "pending-repair",
+    ],
 )
 async def test_wireguard_sensor_migration_during_setup(
     hass: HomeAssistant,
@@ -40,14 +50,17 @@ async def test_wireguard_sensor_migration_during_setup(
         monkeypatch (pytest.MonkeyPatch): Fixture used to replace the OPNsense client.
         response (str): WireGuard response available during migration.
     """
+    pending_repair = response == "pending-repair"
     entry = MockConfigEntry(
         domain=DOMAIN,
+        unique_id="AA:BB",
         data={
             CONF_URL: "https://firewall.example",
             CONF_USERNAME: "user",
             CONF_PASSWORD: "password",
             CONF_DEVICE_UNIQUE_ID: "AA:BB",
             **{option: option == CONF_SYNC_VPN for option in GRANULAR_SYNC_ITEMS},
+            **({REPAIR_MARKER_KEY: build_repair_marker("old", "AA:BB")} if pending_repair else {}),
         },
         options={CONF_DEVICE_TRACKER_ENABLED: False},
         version=5,
@@ -65,6 +78,12 @@ async def test_wireguard_sensor_migration_during_setup(
     }
     if response == "no-legacy":
         legacy_ids = {"office_server": target_ids["office_server"]}
+    elif pending_repair:
+        legacy_ids = {
+            name: unique_id.replace("aa_bb_", "old_", 1)
+            for name, unique_id in legacy_ids.items()
+            if name != "missing_server"
+        }
     entities = {
         name: entity_registry.async_get_or_create(
             "sensor", DOMAIN, unique_id, config_entry=entry, suggested_object_id=name
@@ -84,17 +103,23 @@ async def test_wireguard_sensor_migration_during_setup(
     )
 
     migration_client = MagicMock(spec=OPNsenseClient)
-    if response in {"configuration", "collision"}:
+    if response in {"configuration", "collision", "pending-repair"}:
         api = pytest.importorskip(
             "aiopnsense.access", reason="Requires aiopnsense access reporting"
         )
         migration_client.get_wireguard.return_value = api.AccessDict(
             {
                 "servers": {
-                    "AABBCCDD-1234-4321-9876-ABCDEF012345": {"key_hash": "0123456789abcdef"}
+                    "aabbccdd-1234-4321-9876-abcdef012345": {
+                        "enabled": True,
+                        "key_hash": "0123456789abcdef",
+                    }
                 },
                 "clients": {
-                    "bbccddee-1234-4321-9876-abcdef012345": {"key_hash": "123456789abcdef0"}
+                    "bbccddee-1234-4321-9876-abcdef012345": {
+                        "enabled": True,
+                        "key_hash": "123456789abcdef0",
+                    }
                 },
             },
             access=api.Access.CONFIGURATION,
@@ -125,6 +150,8 @@ async def test_wireguard_sensor_migration_during_setup(
     runtime_client.get_host_firmware_version.return_value = "26.1.1"
     runtime_client.get_system_info.return_value = {"name": "Firewall"}
     runtime_client.get_wireguard.return_value = {"servers": {}, "clients": {}}
+    if pending_repair:
+        runtime_client.get_wireguard.return_value = migration_client.get_wireguard.return_value
     runtime_client.get_openvpn.return_value = {"servers": {}, "clients": {}}
     runtime_client.get_ipsec.return_value = {"connections": {}, "children": {}}
     monkeypatch.setattr(
@@ -146,9 +173,13 @@ async def test_wireguard_sensor_migration_during_setup(
         migration_client.async_close.assert_awaited_once()
     if response == "collision":
         assert entity_registry.async_get(occupied.entity_id) == occupied
-    expected_ids = target_ids if response in {"configuration", "collision"} else legacy_ids
+    expected_ids = (
+        target_ids if response in {"configuration", "collision", "pending-repair"} else legacy_ids
+    )
     for name, entity_id in entities.items():
         assert (
             entity_registry.async_get_entity_id("sensor", DOMAIN, expected_ids[name]) == entity_id
         )
-    assert entity_registry.async_get(switch.entity_id) == switch
+    assert (
+        entity_registry.async_get_entity_id("switch", DOMAIN, switch.unique_id) == switch.entity_id
+    )

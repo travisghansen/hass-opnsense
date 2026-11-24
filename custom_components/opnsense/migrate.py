@@ -27,6 +27,7 @@ from .helpers import (
     firewall_nat_switch_unique_ids_from_payload,
     firewall_rule_switch_unique_ids_from_payload,
 )
+from .repair_reconciliation import parse_repair_marker
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 LEGACY_RULE_ENTITY_TOKENS: tuple[str, ...] = (
@@ -659,15 +660,23 @@ async def _migrate_5_to_6(
     """
     registry = er.async_get(hass)
     identity = config_entry_identity(config_entry)
-    prefix = f"{slugify(f'{identity}_wireguard')}_"
-    legacy_sensors: list[tuple[er.RegistryEntry, str, str, str]] = []
+    prefixes = {f"{slugify(f'{identity}_wireguard')}_"}
+    marker = parse_repair_marker(config_entry)
+    if marker is not None and marker.new_device_id == identity == config_entry.unique_id:
+        # A pending repair will reconcile the Hardware ID after config-entry migration.
+        prefixes.add(f"{slugify(f'{marker.old_device_id}_wireguard')}_")
+    legacy_sensors: list[tuple[er.RegistryEntry, str, str, str, str]] = []
     for entity in er.async_entries_for_config_entry(registry, config_entry.entry_id):
-        if not entity.entity_id.startswith("sensor.") or not entity.unique_id.startswith(prefix):
+        if not entity.entity_id.startswith("sensor."):
             continue
-        match = _LEGACY_WIREGUARD_SENSOR_SUFFIX.fullmatch(entity.unique_id[len(prefix) :])
-        if match is not None:
-            group, uuid, property_name = match.groups()
-            legacy_sensors.append((entity, group, uuid, property_name))
+        for prefix in prefixes:
+            if not entity.unique_id.startswith(prefix):
+                continue
+            match = _LEGACY_WIREGUARD_SENSOR_SUFFIX.fullmatch(entity.unique_id[len(prefix) :])
+            if match is not None:
+                group, uuid, property_name = match.groups()
+                legacy_sensors.append((entity, prefix, group, uuid, property_name))
+                break
 
     if (
         legacy_sensors
@@ -684,7 +693,7 @@ async def _migrate_5_to_6(
                 if isinstance(uuid, str) and isinstance(key_hash, str) and key_hash:
                     hashes[group, slugify(uuid)] = key_hash
 
-        for entity, group, uuid, property_name in legacy_sensors:
+        for entity, prefix, group, uuid, property_name in legacy_sensors:
             key_hash = hashes.get((group, uuid))
             if key_hash is None:
                 continue
@@ -694,7 +703,7 @@ async def _migrate_5_to_6(
             current_entity = registry.async_get(entity_id) if entity_id is not None else None
             if current_entity is None or current_entity.config_entry_id != config_entry.entry_id:
                 continue
-            new_unique_id = slugify(f"{identity}_wireguard.{group}.{key_hash}.{property_name}")
+            new_unique_id = slugify(f"{prefix}{group}.{key_hash}.{property_name}")
             if registry.async_get_entity_id(Platform.SENSOR, entity.platform, new_unique_id):
                 _LOGGER.warning(
                     "Skipping WireGuard sensor migration for %s: ID already in use",
