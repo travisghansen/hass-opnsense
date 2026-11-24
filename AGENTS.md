@@ -17,7 +17,7 @@
 ## Agent Permissions and Venv Policy
 
 - Agents may create and use a repository-local venv at `./.venv`. Use `./.venv/bin/python`, `./.venv/bin/pytest`, and `./.venv/bin/prek` for local commands unless using the main checkout venv for a git worktree with no dependency changes.
-- The project uses `pyproject.toml` dependency groups (`ha`, `lint`, `pytest`, `dev`). Installing packages from repo manifests into `./.venv` is allowed for running tests or local tooling after approval; avoid unrelated network operations without explicit consent.
+- The project uses `pyproject.toml` dependency groups (`ha`, `lint`, `pytest`, `dev`). Installing packages from repo manifests into `./.venv` with `uv` (for example `uv sync --group dev`) is allowed for running tests or local tooling after approval; avoid unrelated network operations without explicit consent.
 
 ## Folder Structure (Repo-Specific)
 
@@ -35,7 +35,7 @@
 
 - Use the repo's `prek` and `pytest` commands through the venv selected by the agent permissions and venv policy above. Follow existing repository style and run `prek`.
 - By default, run the full pytest suite. If running targeted tests, explain why.
-- If tests fail due to missing dev dependencies, either install them into `./.venv` (if allowed) or report exact `pip install` commands.
+- If tests fail due to missing dev dependencies, either install them into `./.venv` with `uv sync --group dev` (if allowed) or report the exact `uv` command.
 - Avoid recommending `tox`, it is not in use by this repo.
 
 ## PR & Branch Behavior

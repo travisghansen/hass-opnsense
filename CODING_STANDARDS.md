@@ -43,7 +43,6 @@ The project follows the [Home Assistant developer docs](https://developers.home-
 - Use `importlib` only in workflow script tests. Keep `cast` and `Any` to what a test boundary requires.
 - Add or update tests when they protect a meaningful behavioral contract or reproduce a bug existing coverage would miss.
 - Documentation, declarative configuration and small workflow changes need relevant validators, linters or focused runtime checks first; add automated tests only when executable logic or real operational risk warrants them.
-- Coverage target is 80% or more.
 
 ## Documentation
 
