@@ -19,9 +19,11 @@ import pytest
 
 PRODUCTION_ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "opnsense"
 DATA_FILE_SUFFIXES = frozenset({".json", ".yaml", ".yml"})
-ALLOWED_FIRMWARE_METHODS = frozenset(
+REQUIRED_FIRMWARE_METHODS = frozenset(
     {"get_firmware_update_info", "get_host_firmware_version", "install_firmware"}
 )
+# The static thresholds accessor performs no Router I/O and is absent from aiopnsense 1.4.1.
+ALLOWED_FIRMWARE_METHODS = REQUIRED_FIRMWARE_METHODS | {"get_firmware_requirements"}
 # The web UI link ``/ui/core/firmware`` is not an API request.
 FIRMWARE_API_PATH = re.compile(
     r"(?<!ui/)core/+firmware\b|\bfirmware/+(?:check|info|status)\b", re.IGNORECASE
@@ -162,7 +164,7 @@ def test_production_code_avoids_upstream_firmware_requests() -> None:
     """Fail when production code can reach firmware outside the allowed client methods."""
     python_files = sorted(PRODUCTION_ROOT.rglob("*.py"))
     assert python_files, f"No production Python files found under {PRODUCTION_ROOT}"
-    assert set(dir(OPNsenseClient)) >= ALLOWED_FIRMWARE_METHODS
+    assert set(dir(OPNsenseClient)) >= REQUIRED_FIRMWARE_METHODS
 
     violations = [
         f"{path.relative_to(PRODUCTION_ROOT)}:{violation}"
