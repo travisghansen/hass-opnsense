@@ -996,7 +996,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for OPNsense."""
 
     # bumping this is what triggers async_migrate_entry for the component
-    VERSION = 5
+    VERSION = 6
 
     def __init__(self) -> None:
         """Initialize transient config-flow storage."""

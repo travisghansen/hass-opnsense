@@ -9,6 +9,7 @@ import logging
 import re
 from typing import Any, Final, TypeIs
 
+import aiopnsense
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -48,13 +49,15 @@ from .const import (
     DEFAULT_SYNC_OPTION_VALUE,
     OPNSENSE_CLIENT,
 )
-from .coordinator import OPNsenseDataUpdateCoordinator, vpn_has_status_access
+from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity, OPNsenseEntityCoordinator
 from .helpers import coerce_bool, dict_get, get_smart_device_name, is_carp_entry
 from .repair_reconciliation import record_desired_entities
 from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+# aiopnsense 1.5.0 predates the access reporting API.
+_RESULT_ACCESS = getattr(aiopnsense, "result_access", None)
 
 
 _INTERFACE_SENSOR_PROPERTIES: tuple[str, ...] = (
@@ -254,6 +257,27 @@ def _is_valid_vpn_sensor_row(instance: Any) -> bool:
     return isinstance(instance, MutableMapping) and len(instance) > 0
 
 
+def _wireguard_sensor_id(
+    inventory_key: str, instance: Mapping[str, Any], access_reported: bool
+) -> str | None:
+    """Choose the WireGuard sensor identity for a row.
+
+    Args:
+        inventory_key (str): Key used by the API in the enclosing VPN group.
+        instance (Mapping[str, Any]): WireGuard server or client row.
+        access_reported (bool): Whether the enclosing result reports an access level.
+
+    Returns:
+        str | None: Public key hash, legacy inventory key, or no usable identity.
+    """
+    key_hash = instance.get("key_hash")
+    if isinstance(key_hash, str) and key_hash:
+        return key_hash
+    if not access_reported and "key_hash" not in instance:
+        return inventory_key
+    return None
+
+
 def _vnstat_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     """Return whether every consumed vnStat interface row is valid.
 
@@ -278,9 +302,6 @@ def _vpn_sensor_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     Args:
         state (MutableMapping[str, Any]): Simulated payload used to exercise the scenario.
     """
-    # WireGuard sensors still require UUIDs, which Status Access cannot provide.
-    if vpn_has_status_access(state.get("wireguard")):
-        return False
     for vpn_type, groups in _VPN_SENSOR_GROUPS:
         for group in groups:
             instances = dict_get(state, f"{vpn_type}.{group}", {})
@@ -980,7 +1001,7 @@ def _build_dhcp_leases_total_sensor_description() -> SensorEntityDescription:
 def _build_vpn_sensor_description(
     vpn_type: str,
     clients_servers: str,
-    uuid: str,
+    instance_id: str,
     instance_name: str,
     prop_name: str,
 ) -> SensorEntityDescription:
@@ -990,7 +1011,7 @@ def _build_vpn_sensor_description(
         vpn_type (str): VPN implementation type, such as ``openvpn``, ``wireguard``, or
             ``ipsec``.
         clients_servers (str): VPN collection type represented by the sensor.
-        uuid (str): VPN instance identifier used in the entity key.
+        instance_id (str): VPN instance identifier used in the entity key.
         instance_name (str): User-facing VPN instance name.
         prop_name (str): VPN property represented by the sensor.
 
@@ -1033,7 +1054,7 @@ def _build_vpn_sensor_description(
         icon = "mdi:gauge"
 
     return SensorEntityDescription(
-        key=f"{vpn_type}.{clients_servers}.{uuid}.{prop_name}",
+        key=f"{vpn_type}.{clients_servers}.{instance_id}.{prop_name}",
         name=(
             f"{_VPN_TYPE_DISPLAY_NAMES.get(vpn_type, vpn_type.title())} "
             f"{_VPN_GROUP_DISPLAY_NAMES.get(clients_servers, clients_servers.title().rstrip('s'))} "
@@ -1817,20 +1838,30 @@ async def _compile_vpn_sensors(
     if not isinstance(state, MutableMapping):
         return []
     entities: list = []
+    wireguard_access_reported = (
+        callable(_RESULT_ACCESS) and _RESULT_ACCESS(state.get("wireguard")) is not None
+    )
 
     for vpn_type, clients_servers_groups in _VPN_SENSOR_GROUPS:
-        if vpn_type == "wireguard" and vpn_has_status_access(state.get(vpn_type)):
-            continue
         for clients_servers in clients_servers_groups:
             vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
             if not isinstance(vpn_instances, MutableMapping):
                 continue
-            for uuid, instance in vpn_instances.items():
+            seen_ids: set[str] = set()
+            for inventory_key, instance in vpn_instances.items():
                 if not _is_valid_vpn_sensor_row(instance):
                     continue
+                instance_id = (
+                    _wireguard_sensor_id(inventory_key, instance, wireguard_access_reported)
+                    if vpn_type == "wireguard"
+                    else inventory_key
+                )
+                if instance_id is None or instance_id in seen_ids:
+                    continue
+                seen_ids.add(instance_id)
                 instance_name = OPNsenseEntity.payload_display_name(
                     instance,
-                    str(uuid),
+                    str(inventory_key),
                     "name",
                     "description",
                     allow_scalar=False,
@@ -1850,7 +1881,7 @@ async def _compile_vpn_sensors(
                         _build_vpn_sensor_description(
                             vpn_type,
                             clients_servers,
-                            uuid,
+                            instance_id,
                             instance_name,
                             prop_name,
                         ),
@@ -2811,19 +2842,27 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             return
         vpn_type = key_parts[0]
         clients_servers = key_parts[1]
-        uuid = key_parts[2]
+        instance_id = key_parts[2]
         prop_name = key_parts[3]
         instances = self._mapping_at(f"{vpn_type}.{clients_servers}")
         if instances is None:
             self._mark_unavailable()
             return
-        instance: MutableMapping[str, Any] = {}
-        for instance_uuid, ins in instances.items():
-            if not isinstance(ins, MutableMapping):
-                continue
-            if uuid == instance_uuid:
-                instance = ins
-                break
+        if vpn_type == "wireguard":
+            access_reported = (
+                callable(_RESULT_ACCESS) and _RESULT_ACCESS(self._mapping_at(vpn_type)) is not None
+            )
+            instance = next(
+                (
+                    row
+                    for inventory_key, row in instances.items()
+                    if isinstance(row, MutableMapping)
+                    and _wireguard_sensor_id(inventory_key, row, access_reported) == instance_id
+                ),
+                None,
+            )
+        else:
+            instance = instances.get(instance_id)
         if (
             not isinstance(instance, MutableMapping)
             or not instance

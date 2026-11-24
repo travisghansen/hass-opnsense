@@ -1,15 +1,18 @@
 """These tests import the integration code via relative imports and assert behavior across sensor variants using a synthesized coordinator state."""
 
 from collections.abc import Callable, Iterable
+from datetime import timedelta
 from typing import Any, Never, cast
 from unittest.mock import MagicMock
 
+from aiopnsense import OPNsenseClient
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.const import PERCENTAGE, UnitOfDataRate, UnitOfInformation, UnitOfTemperature
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 import pytest
@@ -31,6 +34,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
     COORDINATOR,
+    GRANULAR_SYNC_ITEMS,
     OPNSENSE_CLIENT,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
@@ -55,6 +59,73 @@ from custom_components.opnsense.sensor import (
     slugify_filesystem_mountpoint,
 )
 from custom_components.opnsense.traffic_coordinator import OPNsenseLiveTrafficCoordinator
+from tests.utilities import stub_async_write_ha_state
+
+
+@pytest.mark.asyncio
+async def test_wireguard_sensor_identity_and_state_survive_access_changes(
+    hass: HomeAssistant, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Keep a WireGuard sensor ID and update its state after the access level changes.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance for the coordinator.
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+    """
+    api = pytest.importorskip("aiopnsense.access", reason="Requires aiopnsense access reporting")
+    entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "AA:BB",
+            **{option: option == CONF_SYNC_VPN for option in GRANULAR_SYNC_ITEMS},
+        }
+    )
+    client = MagicMock(spec=OPNsenseClient)
+    client.get_device_unique_id.return_value = "AA:BB"
+    client.get_openvpn.return_value = {"servers": {}, "clients": {}}
+    client.get_ipsec.return_value = {"connections": {}, "children": {}}
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass, client, "Firewall", timedelta(seconds=60), "AA:BB", entry
+    )
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+    setattr(entry.runtime_data, OPNSENSE_CLIENT, client)
+    key_hash = "0123456789abcdef"
+    uuid = "aa12bc34-1234-4321-9876-abcdef012345"
+    server = {"name": "Office", "key_hash": key_hash}
+    client.get_wireguard.return_value = api.AccessDict(
+        {
+            "servers": {
+                uuid: {**server, "uuid": uuid, "enabled": True, "status": "up"},
+                "00000000-0000-0000-0000-000000000000": {"name": "Keyless", "key_hash": None},
+            },
+            "clients": {},
+        },
+        access=api.Access.CONFIGURATION,
+    )
+    added = MagicMock()
+    await coordinator.async_refresh()
+    await async_setup_entry(hass, entry, added)
+    expected_id = "aa_bb_wireguard_servers_0123456789abcdef_status"
+    configured_sensors = added.call_args.args[0]
+    assert len(configured_sensors) == 6
+    status_sensor = next(entity for entity in configured_sensors if entity.unique_id == expected_id)
+    status_sensor.hass = hass
+    status_sensor.entity_id = "sensor.office_wireguard"
+    stub_async_write_ha_state(status_sensor)
+    await status_sensor.async_added_to_hass()
+    assert status_sensor.native_value == "up"
+
+    client.get_wireguard.return_value = api.AccessDict(
+        {"servers": {key_hash: {**server, "uuid": None, "status": "down"}}, "clients": {}},
+        access=api.Access.STATUS,
+    )
+    await coordinator.async_refresh()
+    assert status_sensor.available
+    assert status_sensor.native_value == "down"
+    await async_setup_entry(hass, entry, added)
+    assert {entity.unique_id for entity in added.call_args.args[0]} == {
+        entity.unique_id for entity in configured_sensors
+    }
+    await status_sensor.async_internal_will_remove_from_hass()
 
 
 @pytest.mark.asyncio

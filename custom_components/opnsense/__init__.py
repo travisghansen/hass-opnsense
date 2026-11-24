@@ -72,6 +72,7 @@ from .migrate import (
     _migrate_2_to_3,
     _migrate_3_to_4,
     _migrate_4_to_5,
+    _migrate_5_to_6,
 )
 from .repair_reconciliation import (
     REPAIR_MARKER_KEY,
@@ -985,7 +986,7 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     """
     version = config_entry.version
 
-    if version > 5:
+    if version > 6:
         # This means the user has downgraded from a future version
         _LOGGER.error(
             "hass-opnsense downgraded and current config not compatible with earlier versions. "
@@ -1049,6 +1050,11 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
             if not v4to5:
                 return False
             version = 5
+
+        if version == 5:
+            if not await _migrate_5_to_6(hass, config_entry, migration_client):
+                return False
+            version = 6
     finally:
         if migration_client is not None:
             await migration_client.async_close()

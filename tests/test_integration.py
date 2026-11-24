@@ -919,7 +919,7 @@ async def test_e2e_full_migration_chain(
     # Run full migration
     ok = await async_migrate_entry(hass, entry)
     assert ok is True
-    assert entry.version == 5
+    assert entry.version == 6
     assert migration_clients
     assert all(client.close_calls == 1 for client in migration_clients)
     # v1->2: tls_insecure removed, verify_ssl added (inverse of True -> False)

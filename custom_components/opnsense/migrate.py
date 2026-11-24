@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 import logging
+import re
 from typing import Any
 
 from aiopnsense import OPNsenseClient
@@ -19,7 +20,10 @@ from .const import (
     DEFAULT_SYNC_OPTION_VALUE,
     DEFAULT_TLS_INSECURE,
 )
+from .coordinator import vpn_has_status_access
 from .helpers import (
+    config_entry_identity,
+    create_opnsense_client_from_config_entry,
     firewall_nat_switch_unique_ids_from_payload,
     firewall_rule_switch_unique_ids_from_payload,
 )
@@ -42,6 +46,9 @@ TELEMETRY_FILESYSTEM_ENTITY_MARKER = "_telemetry_filesystems_"
 TELEMETRY_INTERFACE_GATEWAY_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("_telemetry_interface_", "_interface_"),
     ("_telemetry_gateway_", "_gateway_"),
+)
+_LEGACY_WIREGUARD_SENSOR_SUFFIX = re.compile(
+    r"(clients|servers)_([0-9a-f]{8}(?:_[0-9a-f]{4}){3}_[0-9a-f]{12})_(.+)"
 )
 
 
@@ -226,7 +233,7 @@ def _update_migrated_entity(
         return True
 
     _LOGGER.debug(
-        "[migrate_3_to_4] ent: %s, platform: %s, unique_id: %s, new_unique_id: %s",
+        "Migrating entity %s, platform: %s, unique_id: %s, new_unique_id: %s",
         entity.entity_id,
         platform,
         entity.unique_id,
@@ -237,7 +244,7 @@ def _update_migrated_entity(
             entity.entity_id, new_unique_id=new_unique_id
         )
         _LOGGER.debug(
-            "[migrate_3_to_4] updated_entity_id: %s, updated_unique_id: %s",
+            "Migrated entity %s to unique ID %s",
             updated_entity.entity_id,
             updated_entity.unique_id,
         )
@@ -601,4 +608,102 @@ async def _migrate_4_to_5(
         return False
 
     _LOGGER.debug("[migrate_4_to_5] config_entry update successful")
+    return True
+
+
+async def _read_wireguard_for_migration(
+    hass: HomeAssistant, config_entry: ConfigEntry, migration_client: OPNsenseClient | None
+) -> Mapping[str, Any] | None:
+    """Read WireGuard configuration without blocking migration when it is unavailable.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (ConfigEntry): Config entry whose WireGuard inventory is needed.
+        migration_client (OPNsenseClient | None): Client owned by an earlier migration, if any.
+
+    Returns:
+        Mapping[str, Any] | None: WireGuard configuration inventory, if available.
+    """
+    client = migration_client
+    try:
+        if client is None:
+            client = create_opnsense_client_from_config_entry(
+                hass=hass, config_entry=config_entry, throw_errors=True
+            )
+        wireguard = await client.get_wireguard()
+    except (OPNsenseError, TimeoutError) as err:
+        _LOGGER.warning("Skipping WireGuard sensor migration: %s", type(err).__name__)
+        return None
+    finally:
+        if client is not None and migration_client is None:
+            await client.async_close()
+
+    if vpn_has_status_access(wireguard) or not isinstance(wireguard, Mapping):
+        _LOGGER.warning("Skipping WireGuard sensor migration: configuration is unavailable")
+        return None
+    return wireguard
+
+
+async def _migrate_5_to_6(
+    hass: HomeAssistant, config_entry: ConfigEntry, migration_client: OPNsenseClient | None
+) -> bool:
+    """Re-key legacy WireGuard sensors by public key hash when configuration is available.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        config_entry (ConfigEntry): Config entry being migrated.
+        migration_client (OPNsenseClient | None): Client owned by an earlier migration, if any.
+
+    Returns:
+        bool: Whether the config entry version was updated.
+    """
+    registry = er.async_get(hass)
+    identity = config_entry_identity(config_entry)
+    prefix = f"{slugify(f'{identity}_wireguard')}_"
+    legacy_sensors: list[tuple[er.RegistryEntry, str, str, str]] = []
+    for entity in er.async_entries_for_config_entry(registry, config_entry.entry_id):
+        if not entity.entity_id.startswith("sensor.") or not entity.unique_id.startswith(prefix):
+            continue
+        match = _LEGACY_WIREGUARD_SENSOR_SUFFIX.fullmatch(entity.unique_id[len(prefix) :])
+        if match is not None:
+            group, uuid, property_name = match.groups()
+            legacy_sensors.append((entity, group, uuid, property_name))
+
+    if (
+        legacy_sensors
+        and (wireguard := await _read_wireguard_for_migration(hass, config_entry, migration_client))
+        is not None
+    ):
+        hashes: dict[tuple[str, str], str] = {}
+        for group in ("clients", "servers"):
+            inventory = wireguard.get(group)
+            if not isinstance(inventory, Mapping):
+                continue
+            for uuid, row in inventory.items():
+                key_hash = row.get("key_hash") if isinstance(row, Mapping) else None
+                if isinstance(uuid, str) and isinstance(key_hash, str) and key_hash:
+                    hashes[group, slugify(uuid)] = key_hash
+
+        for entity, group, uuid, property_name in legacy_sensors:
+            key_hash = hashes.get((group, uuid))
+            if key_hash is None:
+                continue
+            entity_id = registry.async_get_entity_id(
+                Platform.SENSOR, entity.platform, entity.unique_id
+            )
+            current_entity = registry.async_get(entity_id) if entity_id is not None else None
+            if current_entity is None or current_entity.config_entry_id != config_entry.entry_id:
+                continue
+            new_unique_id = slugify(f"{identity}_wireguard.{group}.{key_hash}.{property_name}")
+            if registry.async_get_entity_id(Platform.SENSOR, entity.platform, new_unique_id):
+                _LOGGER.warning(
+                    "Skipping WireGuard sensor migration for %s: ID already in use",
+                    current_entity.entity_id,
+                )
+                continue
+            _update_migrated_entity(registry, current_entity, Platform.SENSOR, new_unique_id)
+
+    if not hass.config_entries.async_update_entry(config_entry, version=6):
+        _LOGGER.error("Migration of config_entry to version 6 unsuccessful")
+        return False
     return True
