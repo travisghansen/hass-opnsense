@@ -1814,7 +1814,7 @@ async def test_async_setup_entry_device_id_mismatch(
     if init_mod.is_valid_device_id(stored_device_id) and not init_mod.is_valid_device_id(
         router_device_id
     ):
-        with pytest.raises(ConfigEntryNotReady, match="usable Device ID"):
+        with pytest.raises(ConfigEntryNotReady, match="usable Hardware ID"):
             await init_mod.async_setup_entry(hass, entry)
         assert not issue_kwargs
         assert hass.config_entries.async_forward_entry_setups.await_count == 0
@@ -5944,7 +5944,7 @@ async def test_async_setup_entry_deletes_stale_mismatch_issue_only_on_matching_v
     if expects_delete_issue:
         assert await init_mod.async_setup_entry(ph_hass, entry) is True
     else:
-        with pytest.raises(ConfigEntryNotReady, match="usable Device ID"):
+        with pytest.raises(ConfigEntryNotReady, match="usable Hardware ID"):
             await init_mod.async_setup_entry(ph_hass, entry)
         ph_hass.config_entries.async_forward_entry_setups.assert_not_awaited()
 
@@ -6083,7 +6083,7 @@ async def test_async_setup_entry_recreates_marker_issue_on_probe_mismatch_before
     if init_mod.is_valid_device_id(router_device_id):
         assert await init_mod.async_setup_entry(ph_hass, entry) is False
     else:
-        with pytest.raises(ConfigEntryNotReady, match="usable Device ID"):
+        with pytest.raises(ConfigEntryNotReady, match="usable Hardware ID"):
             await init_mod.async_setup_entry(ph_hass, entry)
     assert ph_hass.config_entries.async_forward_entry_setups.await_count == 0
     assert ph_hass.config_entries.async_unload_platforms.await_count == 0

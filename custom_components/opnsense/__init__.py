@@ -629,7 +629,7 @@ async def _async_probe_router_for_setup(
             router_device_id,
         )
         if not is_valid_device_id(router_device_id):
-            raise ConfigEntryNotReady("OPNsense did not return a usable Device ID during setup")
+            raise ConfigEntryNotReady("OPNsense did not return a usable Hardware ID during setup")
         # Trigger repair task and shutdown if Device ID has changed
         if not _resolve_device_id_probe_state(
             hass,

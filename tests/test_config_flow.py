@@ -558,7 +558,7 @@ async def test_async_step_user_shows_menu() -> None:
     assert result["type"] == "menu"
     assert result["step_id"] == "user"
     assert result["menu_options"] == {
-        "device": "OPNsense device entry",
+        "device": "Firewall entry",
         "carp": "CARP VIP entry",
     }
     assert result["description_placeholders"] == {
