@@ -122,6 +122,8 @@ At minimum, the following permissions are required:
 
 [The list of what other permissions are needed for the Granular Sync Options and for the Actions can be reviewed here.](docs/granular_permissions.md)
 
+VPN Status Access provides sensors for instances visible in live status. Configuration Access adds the configured inventory and switches. See [VPN permissions](docs/granular_permissions.md#vpn-information-and-switches) for the privileges to grant for each VPN type.
+
 ### Basic Configuration
 
 | Option | Required | Default | Description |

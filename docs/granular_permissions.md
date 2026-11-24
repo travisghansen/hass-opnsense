@@ -109,20 +109,28 @@ Firewall and NAT rule switches are unavailable on older firmware; the deprecated
 
 ## VPN Information and Switches
 
-| OPNsense Permission | Method | API Endpoints |
-| --- | --- | --- |
-| Status: OpenVPN | GET | `/api/openvpn/service/search_sessions` (or `/api/openvpn/service/searchSessions`)<br>`/api/openvpn/service/search_routes` (or `/api/openvpn/service/searchRoutes`) |
-| Status: OpenVPN | POST | `/api/openvpn/service/reconfigure` |
-| VPN: OpenVPN: Instances | GET | `/api/openvpn/instances/search`<br>`/api/openvpn/instances/get/{uuid}` |
-| VPN: OpenVPN: Instances | POST | `/api/openvpn/instances/toggle/{uuid}` |
-| VPN: OpenVPN: Client Export Utility | GET | `/api/openvpn/export/providers` |
-| VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | GET | `/api/wireguard/service/show`<br>`/api/wireguard/client/get`<br>`/api/wireguard/server/get` |
-| VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | POST | `/api/wireguard/client/toggle_client/{uuid}` (or `/api/wireguard/client/toggleClient/{uuid}`)<br>`/api/wireguard/server/toggle_server/{uuid}` (or `/api/wireguard/server/toggleServer/{uuid}`)<br>`/api/wireguard/service/reconfigure` |
-| VPN: WireGuard: Status (25.7+, alternative for status-only access) | GET / POST | `/api/wireguard/service/show`<br>`/api/wireguard/service/reconfigure` |
-| Status: IPsec | GET | `/api/ipsec/sessions/search_phase1` (or `/api/ipsec/sessions/searchPhase1`) |
-| Status: IPsec | POST | `/api/ipsec/sessions/search_phase2` (or `/api/ipsec/sessions/searchPhase2`) |
-| VPN: IPsec: Connections | GET | `/api/ipsec/connections/search_connection` (or `/api/ipsec/connections/searchConnection`)<br>`/api/ipsec/connections/search_child` (or `/api/ipsec/connections/searchChild`) |
-| VPN: IPsec: Connections | POST | `/api/ipsec/connections/toggle_connection/{uuid}` (or `/api/ipsec/connections/toggleConnection/{uuid}`)<br>`/api/ipsec/service/reconfigure` |
+**Status Access** provides sensors for VPN Instances visible in live status. Disabled instances, IPsec connections that exist only in configuration, and IPsec children without a security association are hidden. **Configuration Access** uses the same status endpoints and adds the configured inventory and VPN switches.
+
+- **OpenVPN** requires both `Status: OpenVPN` and `VPN: OpenVPN: Instances` for Configuration Access. The optional `VPN: OpenVPN: Client Export Utility` permission enriches Configuration Access sensor data with the server address and port.
+- **WireGuard** requires only `VPN: WireGuard: Configuration` for Configuration Access because it includes the status endpoint. On 25.1, the combined permission is named `VPN: WireGuard`. From 25.7, `VPN: WireGuard: Status` on its own provides Status Access.
+- **IPsec** requires both `Status: IPsec` and `VPN: IPsec: Connections` for Configuration Access.
+
+A Toggle from a Home Assistant switch calls both the instance's toggle endpoint and the VPN service's reconfigure endpoint.
+
+| OPNsense Permission | Access Level | Method | API Endpoints |
+| --- | --- | --- | --- |
+| Status: OpenVPN | Status Access | GET | `/api/openvpn/service/search_sessions` (or `/api/openvpn/service/searchSessions`)<br>`/api/openvpn/service/search_routes` (or `/api/openvpn/service/searchRoutes`) |
+| Status: OpenVPN | Configuration Access (Toggle) | POST | `/api/openvpn/service/reconfigure` |
+| VPN: OpenVPN: Instances | Configuration Access | GET | `/api/openvpn/instances/search`<br>`/api/openvpn/instances/get/{uuid}` |
+| VPN: OpenVPN: Instances | Configuration Access (Toggle) | POST | `/api/openvpn/instances/toggle/{uuid}` |
+| VPN: OpenVPN: Client Export Utility | Configuration Access (optional) | GET | `/api/openvpn/export/providers` |
+| VPN: WireGuard: Status (25.7+) | Status Access | GET | `/api/wireguard/service/show` |
+| VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | Configuration Access | GET | `/api/wireguard/service/show`<br>`/api/wireguard/client/get`<br>`/api/wireguard/server/get` |
+| VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | Configuration Access (Toggle) | POST | `/api/wireguard/client/toggle_client/{uuid}` (or `/api/wireguard/client/toggleClient/{uuid}`)<br>`/api/wireguard/server/toggle_server/{uuid}` (or `/api/wireguard/server/toggleServer/{uuid}`)<br>`/api/wireguard/service/reconfigure` |
+| Status: IPsec | Status Access | GET | `/api/ipsec/sessions/search_phase1` (or `/api/ipsec/sessions/searchPhase1`) |
+| Status: IPsec | Status Access | POST | `/api/ipsec/sessions/search_phase2` (or `/api/ipsec/sessions/searchPhase2`) |
+| VPN: IPsec: Connections | Configuration Access | GET | `/api/ipsec/connections/search_connection` (or `/api/ipsec/connections/searchConnection`)<br>`/api/ipsec/connections/search_child` (or `/api/ipsec/connections/searchChild`) |
+| VPN: IPsec: Connections | Configuration Access (Toggle) | POST | `/api/ipsec/connections/toggle_connection/{uuid}` (or `/api/ipsec/connections/toggleConnection/{uuid}`)<br>`/api/ipsec/service/reconfigure` |
 
 ## Security Certificate Information
 
