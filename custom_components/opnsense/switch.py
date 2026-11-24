@@ -1660,11 +1660,12 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         Args:
             kwargs (Any): Additional service-call options provided by Home Assistant.
         """
-        if self.is_on or not self._client:
+        if not self._client:
             return
 
+        # Always send the explicit target: the cached state may be stale.
         result: bool = await self._client.toggle_vpn_instance(
-            self._vpn_type, self._clients_servers, self._uuid
+            self._vpn_type, self._clients_servers, self._uuid, toggle_on_off="on"
         )
         if result:
             _LOGGER.info("Turned on VPN: %s", self.name)
@@ -1680,11 +1681,12 @@ class OPNsenseVPNSwitch(OPNsenseSwitch):
         Args:
             kwargs (Any): Additional service-call options provided by Home Assistant.
         """
-        if not self.is_on or not self._client:
+        if not self._client:
             return
 
+        # Always send the explicit target: the cached state may be stale.
         result: bool = await self._client.toggle_vpn_instance(
-            self._vpn_type, self._clients_servers, self._uuid
+            self._vpn_type, self._clients_servers, self._uuid, toggle_on_off="off"
         )
         if result:
             _LOGGER.info("Turned off VPN: %s", self.name)
