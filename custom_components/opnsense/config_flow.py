@@ -74,7 +74,7 @@ DeviceEntries = dict[str, str]
 
 CONFIG_FLOW_DOCUMENTATION_URL = "https://github.com/travisghansen/hass-opnsense"
 USER_MENU_OPTIONS = {
-    "device": "OPNsense device entry",
+    "device": "Firewall entry",
     "carp": "CARP VIP entry",
 }
 

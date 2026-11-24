@@ -295,6 +295,35 @@ def test_service_metadata_fields_have_translations() -> None:
             assert field_name in translated_fields, f"{service_name}.{field_name}"
 
 
+def _flatten_translation_keys(node: dict[str, Any], prefix: str = "") -> set[str]:
+    """Return dotted paths of every leaf string in a translation file.
+
+    Args:
+        node (dict[str, Any]): Parsed translation mapping or nested sub-mapping.
+        prefix (str): Dotted path of ``node`` within the translation file.
+
+    Returns:
+        set[str]: Dotted paths of all leaf translation strings under ``node``.
+    """
+    keys: set[str] = set()
+    for key, value in node.items():
+        path = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict):
+            keys |= _flatten_translation_keys(value, path)
+        else:
+            keys.add(path)
+    return keys
+
+
+def test_french_translation_has_every_english_key() -> None:
+    """The French translation defines exactly the keys the English translation defines."""
+    translations_dir = _INTEGRATION_ROOT / "translations"
+    english = json.loads((translations_dir / "en.json").read_text())
+    french = json.loads((translations_dir / "fr.json").read_text())
+
+    assert _flatten_translation_keys(french) == _flatten_translation_keys(english)
+
+
 def test_service_validation_error_uses_translation_metadata() -> None:
     """Service validation errors should be localizable by Home Assistant."""
     error = services_mod._service_validation_error("start_service_failed", {"service": "svc"})

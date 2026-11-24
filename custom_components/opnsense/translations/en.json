@@ -2,8 +2,8 @@
   "title": "OPNsense",
   "config": {
     "abort": {
-      "already_configured": "Device is already configured",
-      "carp_device_url_conflict": "A CARP entry and a device entry cannot use the same URL. Use the actual firewall IP address or hostname for the device entry and the CARP VIP IP address or hostname for the CARP entry.",
+      "already_configured": "Firewall is already configured",
+      "carp_device_url_conflict": "A CARP VIP entry and a Firewall entry cannot use the same URL. Use the actual Firewall IP address or hostname for the Firewall entry and the CARP VIP IP address or hostname for the CARP VIP entry.",
       "reconfigure_successful": "OPNsense integration reconfigured"
     },
     "error": {
@@ -15,17 +15,17 @@
       "connect_timeout": "Connection timeout",
       "cannot_connect_ssl": "SSL Certificate Verification Error. If you are using a self-signed certificate, uncheck Verify SSL certificate",
       "url_redirect": "Incorrect URL (redirect)",
-      "missing_device_unique_id": "Unable to get MAC addresses from OPNsense to use as Device Unique ID",
+      "missing_device_unique_id": "Unable to get MAC addresses from OPNsense to use as Hardware ID",
       "below_min_firmware": "OPNsense Firmware of {firmware} is below the minimum supported version of {min_firmware}",
       "carp_not_configured": "No CARP VIP interfaces are configured on the selected OPNsense host",
-      "carp_responder_unavailable": "Unable to determine the active CARP responder from the selected OPNsense host",
+      "carp_responder_unavailable": "Unable to determine the Active responder from the selected OPNsense host",
       "unknown_firmware": "Unable to get OPNsense Firmware version"
     },
     "step": {
       "user": {
         "title": "Add a hass-opnsense instance",
         "menu_options": {
-          "device": "OPNsense device entry",
+          "device": "Firewall entry",
           "carp": "CARP VIP entry"
         }
       },
@@ -38,13 +38,13 @@
           "verify_ssl": "Verify SSL certificate",
           "granular_sync_options": "Enable Granular Sync Options"
         },
-        "title": "Connect to the OPNsense firewall / router",
+        "title": "Connect to the OPNsense Firewall",
         "data_description": {
-          "url": "Use the actual OPNsense device URL. Do not use a CARP virtual URL."
+          "url": "Use the actual OPNsense Firewall URL. Do not use a CARP virtual URL."
         }
       },
       "carp": {
-        "description": "CARP VIP entries are read-only. Configure each physical node with its own management address in a separate OPNsense device entry.",
+        "description": "CARP VIP entries are read-only. Configure each Node with its own management address in a separate Firewall entry.",
         "data": {
           "url": "URL",
           "username": "API Key",
@@ -54,7 +54,7 @@
         },
         "title": "Connect to the OPNsense CARP VIP entry",
         "data_description": {
-          "url": "Use the CARP virtual URL; individual physical nodes must also be configured separately via their management addresses."
+          "url": "Use the CARP virtual URL; each Node must also be configured separately in its own Firewall entry via its management address."
         }
       },
       "granular_sync": {
@@ -87,7 +87,7 @@
           "password": "API Secret",
           "verify_ssl": "Verify SSL certificate"
         },
-        "title": "Update connection to the OPNsense firewall / router"
+        "title": "Update connection to the OPNsense Firewall"
       }
     }
   },
@@ -108,8 +108,8 @@
         },
         "description": "This screen exposes {options_scope}.",
         "data_description": {
-          "device_tracker_resolve_hostnames": "Ask OPNsense to reverse-resolve ARP entries so device trackers are named by hostname instead of MAC address. Disable if the OPNsense host has no working reverse DNS for LAN clients.",
-          "device_tracking_mode": "For `Track only selected devices`, a next step lets you pick devices from recent ARP detections and add MAC addresses manually",
+          "device_tracker_resolve_hostnames": "Ask OPNsense to reverse-resolve Neighbor entries so device trackers are named by hostname instead of MAC address. Disable if the Firewall has no working reverse DNS for LAN clients.",
+          "device_tracking_mode": "For `Track only selected clients`, a next step lets you pick clients from recent Neighbor entries and add MAC addresses manually",
           "scan_interval": "Scan interval controls how often this entry polls its source."
         }
       },
@@ -136,13 +136,13 @@
         "title": "Choose what items to sync"
       },
       "device_tracker": {
-        "description": "Choose the devices to track. Automatically detected devices come from the current OPNsense ARP table, so only recently seen devices appear in this list. If no devices are selected or manually entered, trackers for all detected devices will be created and entities are disabled by default",
+        "description": "Choose the clients to track. Automatically detected clients come from the Firewall's current Neighbor entries (ARP and NDP tables), so only recently seen clients appear in this list. If no clients are selected or manually entered, trackers are created for all detected clients and entities are disabled by default",
         "data": {
-          "devices": "Devices to Track",
+          "devices": "Clients to Track",
           "manual_devices": "Additional MAC addresses not currently detected"
         },
         "data_description": {
-          "devices": "Only recently detected devices appear here. Previously selected devices that are not currently detected stay available in the list.",
+          "devices": "Only recently detected clients appear here. Previously selected clients that are not currently detected stay available in the list.",
           "manual_devices": "Enter MAC addresses separated by commas or new lines. Invalid MAC addresses are ignored. Example: 00:00:00:00:00:00"
         }
       }
@@ -176,15 +176,15 @@
         "step": {
           "confirm": {
             "title": "Reconcile replacement hardware inventory",
-            "description": "This repair will reconcile {entry_title} with replacement device ID {new_device_id}. Matching entities and devices retain their registry identity and customizations, entities absent from the replacement are removed, and new entities are created. A retry marker makes the repair resumable if interrupted. Dashboards and automations remain intact for preserved entity IDs; review references to removed entities. The previous device ID was {old_device_id}."
+            "description": "This repair will reconcile {entry_title} with replacement Hardware ID {new_device_id}. Matching entities and devices retain their registry identity and customizations, entities absent from the replacement are removed, and new entities are created. A retry marker makes the repair resumable if interrupted. Dashboards and automations remain intact for preserved entity IDs; review references to removed entities. The previous Hardware ID was {old_device_id}."
           }
         },
         "abort": {
-          "entry_not_found": "The OPNsense device entry no longer exists.",
-          "entry_changed": "The OPNsense device entry changed while the repair was running. No registry changes were made.",
+          "entry_not_found": "The Firewall entry no longer exists.",
+          "entry_changed": "The Firewall entry changed while the repair was running. No registry changes were made.",
           "cannot_connect": "The replacement hardware could not be confirmed. No changes were made.",
-          "already_configured": "Another OPNsense device entry already uses the replacement device ID. No changes were made.",
-          "cannot_unload": "The OPNsense device entry could not be unloaded safely. No registry changes were made.",
+          "already_configured": "Another Firewall entry already uses the replacement Hardware ID. No changes were made.",
+          "cannot_unload": "The Firewall entry could not be unloaded safely. No registry changes were made.",
           "repair_failed": "The replacement hardware repair did not finish. Retry to resume reconciliation from the saved marker."
         }
       }
@@ -192,16 +192,16 @@
   },
   "exceptions": {
     "generate_vouchers_failed": {
-      "message": "Generate vouchers failed. No selected OPNsense clients."
+      "message": "Generate vouchers failed. No selected Firewalls."
     },
     "get_vnstat_metrics_failed": {
-      "message": "Get vnStat metrics failed. No selected OPNsense clients have vnStat installed."
+      "message": "Get vnStat metrics failed. No selected Firewalls have vnStat installed."
     },
     "kill_states_failed": {
       "message": "Kill states failed: {ip_addr}"
     },
     "no_target_clients": {
-      "message": "No OPNsense clients match the selected target."
+      "message": "No Firewalls match the selected target."
     },
     "reload_interface_failed": {
       "message": "Reload interface failed: {interface}"
@@ -210,7 +210,7 @@
       "message": "Restart service failed: {service}"
     },
     "run_speedtest_failed": {
-      "message": "Run speedtest failed. No selected OPNsense clients have Speedtest installed."
+      "message": "Run speedtest failed. No selected Firewalls have Speedtest installed."
     },
     "service_identifier_required": {
       "message": "Must use service_id or service_name."
@@ -283,8 +283,8 @@
     "device_tracking_mode": {
       "options": {
         "disabled": "Disabled",
-        "all_detected": "Track all detected devices (entities are disabled by default)",
-        "selected_only": "Track only selected devices (choose devices in a next step)"
+        "all_detected": "Track all detected clients (entities are disabled by default)",
+        "selected_only": "Track only selected clients (choose clients in a next step)"
       }
     }
   },
@@ -298,17 +298,17 @@
           "description": "The notice ID to clear. Enter 'all' to clear all notices."
         },
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Only needed if there is more than one OPNsense Router"
+          "name": "Only needed if there is more than one Firewall"
         }
       }
     },
@@ -325,17 +325,17 @@
           "description": "The name of the service. Like: haproxy, dhcp, etc."
         },
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Only needed if there is more than one OPNsense Router"
+          "name": "Only needed if there is more than one Firewall"
         }
       }
     },
@@ -352,17 +352,17 @@
           "description": "The name of the service. Like: haproxy, dhcp, etc."
         },
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Only needed if there is more than one OPNsense Router"
+          "name": "Only needed if there is more than one Firewall"
         }
       }
     },
@@ -383,45 +383,45 @@
           "description": "Restart the service only if it is already running."
         },
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Only needed if there is more than one OPNsense Router"
+          "name": "Only needed if there is more than one Firewall"
         }
       }
     },
     "system_halt": {
       "name": "Halt system",
-      "description": "Halts the OPNsense Router",
+      "description": "Halts the Firewall",
       "fields": {
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Only needed if there is more than one OPNsense Router. Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Only needed if there is more than one Firewall. Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Only needed if there is more than one OPNsense Router. Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Only needed if there is more than one Firewall. Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         }
       }
     },
     "system_reboot": {
       "name": "Reboot system",
-      "description": "Reboots the OPNsense Router",
+      "description": "Reboots the Firewall",
       "fields": {
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Only needed if there is more than one OPNsense Router. Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Only needed if there is more than one Firewall. Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Only needed if there is more than one OPNsense Router. Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Only needed if there is more than one Firewall. Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         }
       }
     },
@@ -438,17 +438,17 @@
           "description": "The target mac address."
         },
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Only needed if there is more than one OPNsense Router"
+          "name": "Only needed if there is more than one Firewall"
         }
       }
     },
@@ -461,17 +461,17 @@
           "description": "The name of the interface. Like: wan|lan|opt1|opt2|.."
         },
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Only needed if there is more than one OPNsense Router"
+          "name": "Only needed if there is more than one Firewall"
         }
       }
     },
@@ -501,17 +501,17 @@
           "description": "OPTIONAL: Only needed if there is more than one Captive Portal Voucher Server"
         },
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Only needed if there is more than one OPNsense Router"
+          "name": "Only needed if there is more than one Firewall"
         }
       }
     },
@@ -524,17 +524,17 @@
           "description": "The IP Address to kill all states for. ipv4 or ipv6 accepted"
         },
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Only needed if there is more than one OPNsense Router"
+          "name": "Only needed if there is more than one Firewall"
         }
       }
     },
@@ -543,17 +543,17 @@
       "description": "Run an OPNsense speedtest and return results as action response data",
       "fields": {
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Only needed if there is more than one OPNsense Router"
+          "name": "Only needed if there is more than one Firewall"
         }
       }
     },
@@ -566,17 +566,17 @@
           "description": "The vnStat period to query"
         },
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Only needed if there is more than one OPNsense Router"
+          "name": "Only needed if there is more than one Firewall"
         }
       }
     },
@@ -593,17 +593,17 @@
           "description": "What action to take on the alias"
         },
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Only needed if there is more than one OPNsense Router"
+          "name": "Only needed if there is more than one Firewall"
         }
       }
     },
@@ -616,12 +616,12 @@
           "description": "What action to take on the interface"
         },
         "device_id": {
-          "name": "OPNsense Device",
-          "description": "Select the OPNsense Router to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "name": "OPNsense Firewall",
+          "description": "Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "entity_id": {
           "name": "OPNsense Entity",
-          "description": "Pick any sensor in the OPNsense Router you want to call the command on. If not specified, the command will be sent to all OPNsense Routers."
+          "description": "Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
         },
         "interface": {
           "name": "Interface",
@@ -630,7 +630,7 @@
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Only needed if there is more than one OPNsense Router"
+          "name": "Only needed if there is more than one Firewall"
         }
       }
     }
