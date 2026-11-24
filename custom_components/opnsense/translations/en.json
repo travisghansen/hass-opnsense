@@ -166,9 +166,9 @@
       "title": "OPNsense Firmware below Minimum Version",
       "description": "hass-opnsense {version} requires OPNsense firmware {min_firmware} or later. Please upgrade OPNsense firmware to {min_firmware} or later. hass-opnsense will not start otherwise."
     },
-    "below_ltd_firmware": {
+    "below_recommended_firmware": {
       "title": "OPNsense Firmware below Recommended Version",
-      "description": "Some hass-opnsense {version} functions require OPNsense firmware {ltd_firmware} or later. With firmware {firmware}, some functions may not work and there may be errors in the logs."
+      "description": "Some hass-opnsense {version} functions require OPNsense firmware {recommended_firmware} or later. With firmware {firmware}, some functions may not work and there may be errors in the logs."
     },
     "device_id_mismatched": {
       "title": "Replacement hardware detected",

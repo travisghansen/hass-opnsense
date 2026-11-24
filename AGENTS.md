@@ -11,7 +11,7 @@
 - For non-trivial edits, provide a short plan. For small, low-risk edits, implement and include a one-line summary.
 - Focus on a single conceptual change at a time when public APIs or multiple modules are affected.
 - Follow `CODING_STANDARDS.md`. Maintain Python 3.14+ compatibility and target latest Home Assistant core.
-- Keep compatibility with the minimum supported OPNsense firmware documented in `custom_components/opnsense/const.py` and `README.md`.
+- Keep compatibility with the minimum supported OPNsense firmware reported by `OPNsenseClient.get_firmware_requirements()` and documented in `README.md`. Do not hardcode the Minimum or Recommended Firmware in this repository; aiopnsense owns those thresholds.
 - If deviating from these guidelines, explicitly state which guideline is deviated from and why.
 
 ## Agent Permissions and Venv Policy

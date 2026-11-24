@@ -4,10 +4,6 @@ from homeassistant.const import Platform, UnitOfTime
 
 VERSION = "v1.3.3"  # x-release-please-version
 DOMAIN = "opnsense"
-# If less than this, some functions may not work but the integration in general should work.
-# Show repair warning.
-OPNSENSE_LTD_FIRMWARE = "26.1"
-OPNSENSE_MIN_FIRMWARE = "25.1"  # If less than this, don't allow install. It will not work.
 
 UNDO_UPDATE_LISTENER = "undo_update_listener"
 
