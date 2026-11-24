@@ -86,7 +86,7 @@ Configuration is managed entirely from the Home Assistant UI. Simply go to `Conf
 
 ### Firewall Entry
 
-Choose **OPNsense device entry** to add a *Firewall entry* for each physical node's own non-VIP IP address or hostname. This is the full integration: telemetry, interfaces, services, gateways, firmware, optional CARP data, actions, and switches follow the selected sync options. Existing entries remain Firewall entries automatically and require no migration.
+Choose **Firewall entry** to add a Firewall entry for each Node's own non-VIP IP address or hostname. This is the full integration: telemetry, interfaces, services, gateways, firmware, optional CARP data, actions, and switches follow the selected sync options. Existing entries remain Firewall entries automatically and require no migration.
 
 ### CARP VIP Entry
 
@@ -138,9 +138,9 @@ At minimum, the following permissions are required:
 | Option | Default | Description |
 | --- | --- | --- |
 | Scan Interval (seconds) | 30 | Scan interval to use for state polling |
-| Device Tracker Mode | Disabled | • Disabled<br>• Track all detected devices<br>• Track only selected devices |
-| Device Tracker Scan Interval (seconds) | 150 | Scan interval to use for ARP updates |
-| Device Tracker Consider Home (seconds) | 0 | Seconds to wait until marking a device as not home after not being seen:<br>• 0 : Disabled *(if device is not present during any given scan interval it is considered away)*<br>• > 0 : Should be a multiple of the Device Tracker Scan Interval |
+| Device Tracker Mode | Disabled | • Disabled<br>• Track all detected clients<br>• Track only selected clients |
+| Device Tracker Scan Interval (seconds) | 150 | Scan interval to use for Neighbor entry (ARP and NDP) updates |
+| Device Tracker Consider Home (seconds) | 0 | Seconds to wait until marking a Tracked client as Away after no Presence evidence is found:<br>• 0 : Disabled *(if a Tracked client has no Presence evidence during any given scan interval it is considered Away)*<br>• > 0 : Should be a multiple of the Device Tracker Scan Interval |
 | Enable Granular Sync Options | False | See Granular Sync Options |
 
 ## Entities
@@ -185,15 +185,15 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 
 ### Device Tracker
 
-Entities are created for tracked clients (machines on the network, identified by MAC address) to show whether they are connected to the network. This feature is disabled by default and can be enabled in the Options once the integration is installed.
+Entities are created for Tracked clients (machines on the network, identified by MAC address) to show whether they are connected to the network. This feature is disabled by default and can be enabled in the Options once the integration is installed.
 
 The options flow supports three modes:
 
 * Disabled
-* Track all detected devices
-* Track only selected devices
+* Track all detected clients
+* Track only selected clients
 
-The selectable device list is built from the current OPNsense ARP and NDP tables, so only recently seen clients appear automatically. Clients that are not currently visible can still be added manually by MAC address.
+The selectable client list is built from the Firewall's current ARP and NDP Neighbor entries, so only recently seen clients appear automatically. Clients that are not currently visible can still be added manually by MAC address.
 
 See [Device Tracker Guide](docs/device_tracker.md) for setup details, ARP and NDP behavior, and troubleshooting.
 
@@ -232,7 +232,7 @@ The persistent CARP maintenance switch remains on Firewall entries. Enabling mai
 
 Hardware replacement may change a number of OPNsense areas including interfaces, services, gateways, disks, and others.
 
-When a Firewall entry reports a Hardware ID mismatch (the repair dialog calls this the device ID), Home Assistant offers a fixable repair. Confirm it once the replacement hardware is reachable and is the intended Node. The repair selectively reconciles the registry with the replacement's entities: matching entities and devices retain their registry identity and customizations, entities absent from the replacement are removed, and new entities are created.
+When a Firewall entry reports a Hardware ID mismatch, Home Assistant offers a fixable repair (the Replacement repair). Confirm it once the replacement hardware is reachable and is the intended Node. The repair selectively reconciles the registry with the replacement's entities: matching entities and devices retain their registry identity and customizations, entities absent from the replacement are removed, and new entities are created.
 
 The repair preserves the URL, credentials, and options. A retry marker makes an interrupted repair resumable. Dashboards and automations remain intact for preserved entity IDs; review references to entities removed during reconciliation.
 
