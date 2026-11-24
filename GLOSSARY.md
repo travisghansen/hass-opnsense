@@ -1,14 +1,14 @@
 # hass-opnsense
 
-Home Assistant integration that exposes OPNsense firewalls, and the LAN clients they see, as Home Assistant entities. Terms for the OPNsense API client it is built on, such as Host, DHCP Lease, VPN Instance, Toggle, Status Access, Configuration Access and Minimum Firmware, are defined in the [aiopnsense glossary](https://github.com/Snuffy2/aiopnsense/blob/main/GLOSSARY.md) and used here with the same meaning.
+Home Assistant integration that exposes OPNsense firewalls, and the LAN clients they see, as Home Assistant entities. Terms for the OPNsense API client it is built on, such as Host, DHCP Lease, VPN Instance, Toggle and Minimum Firmware, are defined in the [aiopnsense glossary](https://github.com/Snuffy2/aiopnsense/blob/main/GLOSSARY.md) and used here with the same meaning.
 
 ## Language
 
 ### Firewalls and entries
 
 **Firewall**:
-An OPNsense machine the integration monitors and controls. In a CARP cluster, each physical machine is a **Node**. aiopnsense also calls it the Router; hass-opnsense says Firewall.
-_Avoid_: Router (in hass-opnsense's own names and text), device, box
+An OPNsense machine the integration monitors and controls. In a CARP cluster, each physical machine is a **Node**. **Router** is an equally acceptable name for it, as in aiopnsense.
+_Avoid_: Device, box
 
 **Node**:
 One physical Firewall in a CARP cluster.
@@ -33,6 +33,16 @@ _Avoid_: Device ID repair
 **Granular Sync**:
 The option that limits which categories of a Firewall's data sync to Home Assistant, so the OPNsense API user can hold narrower permissions.
 _Avoid_: Selective sync, partial sync
+
+### Access
+
+**Status Access**:
+The level at which the Firewall lets the API user read the live status of a category, or of one VPN type, but not its configured inventory. Under Status Access, items the status does not show, such as disabled VPN Instances, are not visible, and nothing can be Toggled. The Firewall's answers decide the level, not a user setting.
+_Avoid_: Read-only, status-only user
+
+**Configuration Access**:
+The level at which the API user can also read the configured inventory of a category, or of one VPN type, and Toggle its items.
+_Avoid_: Read/write, full access
 
 ### CARP clusters
 
