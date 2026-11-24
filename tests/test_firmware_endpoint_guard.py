@@ -3,8 +3,11 @@
 Some OPNsense firmware endpoints that look like reads make the Router contact its
 mirrors, and this integration polls every 30 seconds by default. aiopnsense owns
 those requests, as recorded in its
-``docs/adr/0002-firmware-reads-never-contact-upstream.md``. Production code may
-reach firmware only through the client methods in ``ALLOWED_FIRMWARE_METHODS``.
+``docs/adr/0002-firmware-reads-never-contact-upstream.md``. Since 1.5.0, aiopnsense
+blocks ``/info`` and ``POST /status`` in its own transport and sends at most one
+automatic ``/check`` per hour. Those protections hold only when production code uses
+the client's public methods, so it may use only the firmware members in
+``ALLOWED_FIRMWARE_METHODS``.
 
 This is a static check of literal text and names. It cannot resolve a path that is
 assembled entirely from runtime values.
@@ -20,7 +23,12 @@ import pytest
 PRODUCTION_ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "opnsense"
 DATA_FILE_SUFFIXES = frozenset({".json", ".yaml", ".yml"})
 ALLOWED_FIRMWARE_METHODS = frozenset(
-    {"get_firmware_update_info", "get_host_firmware_version", "install_firmware"}
+    {
+        "get_firmware_requirements",
+        "get_firmware_update_info",
+        "get_host_firmware_version",
+        "install_firmware",
+    }
 )
 # The web UI link ``/ui/core/firmware`` is not an API request.
 FIRMWARE_API_PATH = re.compile(
@@ -218,6 +226,7 @@ def test_guard_rejects_forbidden_firmware_access(source: str) -> None:
         "client.get_firmware_update_info()",
         'self._client.install_firmware("update", target_version="26.7")',
         "client.get_host_firmware_version()",
+        "OPNsenseClient.get_firmware_requirements()",
         'CATEGORY = {"function": "get_firmware_update_info"}',
         'URL = base + "/ui/core/firmware#changelog"',
         'STATE = state["firmware_update_info"]',
