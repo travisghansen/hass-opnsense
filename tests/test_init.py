@@ -3952,7 +3952,7 @@ async def test_async_setup_entry_firmware_below_recommended(
     firmware_requirements: OPNsenseClient.FirmwareRequirements,
     firmware_version: str,
 ) -> None:
-    """Firmware below the recommended version creates a warning issue, keeps both issues, and continues.
+    """Firmware below the recommended version creates a warning, clears any stale below-minimum error, and continues.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
@@ -4001,7 +4001,7 @@ async def test_async_setup_entry_firmware_below_recommended(
     )
     assert call_args.kwargs["translation_placeholders"]["firmware"] == firmware_version
     deleted_issue_ids = [c.args[2] for c in delete_issue_mock.call_args_list if len(c.args) > 2]
-    assert min_issue_id not in deleted_issue_ids
+    assert min_issue_id in deleted_issue_ids
     assert recommended_issue_id not in deleted_issue_ids
 
 

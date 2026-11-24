@@ -753,6 +753,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     },
                 )
                 return False
+            # Minimum passed: clear any below-minimum error left from an earlier, older firmware.
+            ir.async_delete_issue(hass, DOMAIN, min_firmware_issue_id)
             if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
                 recommended_firmware
             ):
@@ -772,7 +774,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     },
                 )
             else:
-                ir.async_delete_issue(hass, DOMAIN, min_firmware_issue_id)
                 ir.async_delete_issue(hass, DOMAIN, recommended_firmware_issue_id)
         except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
             _LOGGER.warning("Unable to confirm OPNsense Firmware version")
