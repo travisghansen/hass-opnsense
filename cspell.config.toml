@@ -6,6 +6,7 @@ import = [
 ]
 
 words = [
+    "actioned",
     "aiohttp",
     "aiopnsense",
     "automations",
@@ -37,6 +38,8 @@ words = [
     "vhid",
     "vnstat",
     "vouchergroup",
+    "wayfinder",
+    "wayfinding",
     "worktree",
 ]
 
