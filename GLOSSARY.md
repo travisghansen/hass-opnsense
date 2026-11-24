@@ -1,14 +1,14 @@
 # hass-opnsense
 
-Home Assistant integration that exposes OPNsense firewalls, and the LAN clients they see, as Home Assistant entities.
+Home Assistant integration that exposes OPNsense firewalls, and the LAN clients they see, as Home Assistant entities. Terms for the OPNsense API client it is built on, such as Host, DHCP Lease, VPN Instance, Toggle, Status Access, Configuration Access and Minimum Firmware, are defined in the [aiopnsense glossary](https://github.com/Snuffy2/aiopnsense/blob/main/GLOSSARY.md) and used here with the same meaning.
 
 ## Language
 
 ### Firewalls and entries
 
 **Firewall**:
-An OPNsense machine the integration monitors and controls. In a CARP cluster, each physical machine is a **Node**.
-_Avoid_: Router, device, box
+An OPNsense machine the integration monitors and controls. In a CARP cluster, each physical machine is a **Node**. aiopnsense also calls it the Router; hass-opnsense says Firewall.
+_Avoid_: Router (in hass-opnsense's own names and text), device, box
 
 **Node**:
 One physical Firewall in a CARP cluster.
@@ -51,15 +51,15 @@ _Avoid_: CARP maintenance, standby switch
 ### LAN clients
 
 **Tracked client**:
-A machine on the network, identified by MAC address, whose presence is reported through a Home Assistant device tracker entity.
+A Host (aiopnsense's term for a LAN endpoint), identified by MAC address, whose presence is reported through a Home Assistant device tracker entity.
 _Avoid_: Tracked device, detected device
 
 **Neighbor entry**:
 One row in a Firewall's ARP or NDP table linking a MAC address to an IP address; it shows an address was seen, not that the client is present.
-_Avoid_: ARP entry, ARP/NDP row
+_Avoid_: ARP entry, ARP/NDP Entry, ARP/NDP row
 
 **Presence evidence**:
-Fresh proof that a Tracked client is on the network: a current ARP Neighbor entry, or a timestamped host-discovery observation. An NDP Neighbor entry alone is not Presence evidence.
+Fresh proof that a Tracked client is on the network: a current ARP Neighbor entry, or a timestamped Host observation from the Firewall's host discovery. An NDP Neighbor entry alone is not Presence evidence.
 _Avoid_: Reachability, liveness
 
 **Away**:
