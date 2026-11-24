@@ -7,6 +7,7 @@ import logging
 import time
 from typing import Any
 
+import aiopnsense
 from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import OPNsenseError
 from homeassistant.config_entries import ConfigEntry
@@ -68,12 +69,32 @@ _VPN_COUNTER_GROUPS: dict[str, tuple[str, ...]] = {
     "wireguard": ("clients", "servers"),
     "ipsec": ("connections", "children"),
 }
+_VPN_TYPE_NAMES = {"openvpn": "OpenVPN", "wireguard": "WireGuard", "ipsec": "IPsec"}
+# aiopnsense 1.5.0 predates the access reporting API.
+_RESULT_ACCESS = getattr(aiopnsense, "result_access", None)
+_STATUS_ACCESS = getattr(getattr(aiopnsense, "Access", None), "STATUS", None)
 # Device-tracker lookups that may fail without failing the whole poll.
 _OPTIONAL_TRACKER_METHODS: dict[str, str] = {
     "get_arp_entries": "ARP",
     "get_ndp_entries": "NDP",
     "get_host_observation_entries": "Host observation",
 }
+
+
+def vpn_has_status_access(result: object) -> bool:
+    """Return whether a VPN result reports Status Access.
+
+    Args:
+        result (object): Result returned by an aiopnsense VPN getter.
+
+    Returns:
+        bool: Whether aiopnsense explicitly reported Status Access.
+    """
+    return (
+        _STATUS_ACCESS is not None
+        and callable(_RESULT_ACCESS)
+        and _RESULT_ACCESS(result) is _STATUS_ACCESS
+    )
 
 
 class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
@@ -111,6 +132,7 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
             raise ValueError("config_entry is required for OPNsenseDataUpdateCoordinator")
         self._client: OPNsenseClient = client
         self._state: dict[str, Any] = {}
+        self._logged_vpn_status_access: set[str] = set()
         self.device_tracker_evidence: DeviceTrackerEvidenceSnapshot | None = None
         # Normalized tables from the last published refresh, retained only as non-current
         # evidence while a later lookup fails.
@@ -654,6 +676,13 @@ class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):
 
             if not await self._check_device_unique_id():
                 return {}
+
+            for vpn_type, display_name in _VPN_TYPE_NAMES.items():
+                if vpn_type not in self._logged_vpn_status_access and vpn_has_status_access(
+                    self._state.get(vpn_type)
+                ):
+                    self._logged_vpn_status_access.add(vpn_type)
+                    _LOGGER.info("%s: %s reports Status Access", self.name, display_name)
 
             await self._calculate_entity_speeds()
 

@@ -48,7 +48,7 @@ from .const import (
     DEFAULT_SYNC_OPTION_VALUE,
     OPNSENSE_CLIENT,
 )
-from .coordinator import OPNsenseDataUpdateCoordinator
+from .coordinator import OPNsenseDataUpdateCoordinator, vpn_has_status_access
 from .entity import OPNsenseEntity, OPNsenseEntityCoordinator
 from .helpers import coerce_bool, dict_get, get_smart_device_name, is_carp_entry
 from .repair_reconciliation import record_desired_entities
@@ -278,6 +278,9 @@ def _vpn_sensor_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     Args:
         state (MutableMapping[str, Any]): Simulated payload used to exercise the scenario.
     """
+    # WireGuard sensors still require UUIDs, which Status Access cannot provide.
+    if vpn_has_status_access(state.get("wireguard")):
+        return False
     for vpn_type, groups in _VPN_SENSOR_GROUPS:
         for group in groups:
             instances = dict_get(state, f"{vpn_type}.{group}", {})
@@ -1816,6 +1819,8 @@ async def _compile_vpn_sensors(
     entities: list = []
 
     for vpn_type, clients_servers_groups in _VPN_SENSOR_GROUPS:
+        if vpn_type == "wireguard" and vpn_has_status_access(state.get(vpn_type)):
+            continue
         for clients_servers in clients_servers_groups:
             vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
             if not isinstance(vpn_instances, MutableMapping):
