@@ -1,14 +1,14 @@
 # hass-opnsense
 
-Home Assistant integration that exposes OPNsense firewalls, and the LAN clients they see, as Home Assistant entities.
+Home Assistant integration that exposes OPNsense firewalls, and the LAN clients they see, as Home Assistant entities. Terms for the OPNsense API client it is built on, such as Host, DHCP Lease, VPN Instance, Toggle and Minimum Firmware, are defined in the [aiopnsense glossary](https://github.com/Snuffy2/aiopnsense/blob/main/GLOSSARY.md) and used here with the same meaning.
 
 ## Language
 
 ### Firewalls and entries
 
 **Firewall**:
-An OPNsense machine the integration monitors and controls. In a CARP cluster, each physical machine is a **Node**.
-_Avoid_: Router, device, box
+An OPNsense machine the integration monitors and controls. In a CARP cluster, each physical machine is a **Node**. **Router** is an equally acceptable name for it, as in aiopnsense.
+_Avoid_: Device, box
 
 **Node**:
 One physical Firewall in a CARP cluster.
@@ -34,6 +34,16 @@ _Avoid_: Device ID repair
 The option that limits which categories of a Firewall's data sync to Home Assistant, so the OPNsense API user can hold narrower permissions.
 _Avoid_: Selective sync, partial sync
 
+### Access
+
+**Status Access**:
+The level at which the Firewall lets the API user read the live status of a category, or of one VPN type, but not its configured inventory. Under Status Access, items the status does not show, such as disabled VPN Instances, are not visible, and nothing can be Toggled. The Firewall's answers decide the level, not a user setting.
+_Avoid_: Read-only, status-only user
+
+**Configuration Access**:
+The level at which the API user can also read the configured inventory of a category, or of one VPN type, and Toggle its items.
+_Avoid_: Read/write, full access
+
 ### CARP clusters
 
 **CARP VIP entry**:
@@ -51,15 +61,15 @@ _Avoid_: CARP maintenance, standby switch
 ### LAN clients
 
 **Tracked client**:
-A machine on the network, identified by MAC address, whose presence is reported through a Home Assistant device tracker entity.
+A Host (aiopnsense's term for a LAN endpoint), identified by MAC address, whose presence is reported through a Home Assistant device tracker entity.
 _Avoid_: Tracked device, detected device
 
 **Neighbor entry**:
 One row in a Firewall's ARP or NDP table linking a MAC address to an IP address; it shows an address was seen, not that the client is present.
-_Avoid_: ARP entry, ARP/NDP row
+_Avoid_: ARP entry, ARP/NDP Entry, ARP/NDP row
 
 **Presence evidence**:
-Fresh proof that a Tracked client is on the network: a current ARP Neighbor entry, or a timestamped host-discovery observation. An NDP Neighbor entry alone is not Presence evidence.
+Fresh proof that a Tracked client is on the network: a current ARP Neighbor entry, or a timestamped Host observation from the Firewall's host discovery. An NDP Neighbor entry alone is not Presence evidence.
 _Avoid_: Reachability, liveness
 
 **Away**:
