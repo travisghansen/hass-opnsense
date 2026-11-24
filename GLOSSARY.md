@@ -30,6 +30,10 @@ _Avoid_: Hardware swap, device replacement
 The Home Assistant repair that rebuilds a Firewall entry for its replacement hardware while keeping the entry's connection settings and the identity of entities that still exist.
 _Avoid_: Device ID repair
 
+**Granular Sync**:
+The option that limits which categories of a Firewall's data sync to Home Assistant, so the OPNsense API user can hold narrower permissions.
+_Avoid_: Selective sync, partial sync
+
 ### CARP clusters
 
 **CARP VIP entry**:
@@ -57,3 +61,11 @@ _Avoid_: ARP entry, ARP/NDP row
 **Presence evidence**:
 Fresh proof that a Tracked client is on the network: a current ARP Neighbor entry, or a timestamped host-discovery observation. An NDP Neighbor entry alone is not Presence evidence.
 _Avoid_: Reachability, liveness
+
+**Away**:
+The Tracked client state meaning a successful scan found no Presence evidence and the consider-home grace period has passed.
+_Avoid_: Not home, offline
+
+**Unavailable**:
+The Tracked client state meaning presence cannot be determined, such as when a neighbor-table lookup failed or only an NDP Neighbor entry exists without timestamped evidence.
+_Avoid_: Offline, unknown
