@@ -28,3 +28,6 @@ Thumbs.db
 venv.bak/
 venv/
 *.egg-info/
+
+# Local markdown issue tracker (agent skills)
+.scratch/
