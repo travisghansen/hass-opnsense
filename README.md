@@ -31,7 +31,7 @@ A Discord server to discuss the integration is available. Click the Discord badg
 
 * [Installation](#installation)
 * [Configuration](#configuration)
-  * [OPNsense Device Entry](#opnsense-device-entry)
+  * [Firewall Entry](#firewall-entry)
   * [CARP VIP Entry](#carp-vip-entry)
   * [Recommended CARP Topology](#recommended-carp-topology)
   * [OPNsense User](#opnsense-user)
@@ -47,6 +47,7 @@ A Discord server to discuss the integration is available. Click the Discord badg
 
 * [Actions](#actions-services)
 * [Replacing OPNsense Hardware](#replacing-opnsense-hardware)
+* [Contributing](#contributing)
 
 ## Installation
 
@@ -83,25 +84,25 @@ Copy the contents of the custom_components folder to the Home Assistant config/c
 
 Configuration is managed entirely from the Home Assistant UI. Simply go to `Configuration -> Integrations -> Add Integration` and search for <ins>OPNsense</ins> in the search box.
 
-### OPNsense Device Entry
+### Firewall Entry
 
-Choose **OPNsense device entry** for each physical node's own non-VIP IP address or hostname. This is the full integration: telemetry, interfaces, services, gateways, firmware, optional CARP data, actions, and switches follow the selected sync options. Existing entries remain OPNsense device entries automatically and require no migration.
+Choose **OPNsense device entry** to add a *Firewall entry* for each physical node's own non-VIP IP address or hostname. This is the full integration: telemetry, interfaces, services, gateways, firmware, optional CARP data, actions, and switches follow the selected sync options. Existing entries remain Firewall entries automatically and require no migration.
 
 ### CARP VIP Entry
 
-Choose **CARP VIP entry** for the shared CARP VIP IP address or hostname when you want read-only CARP visibility. A CARP VIP entry follows the active responder and exposes only the CARP entities described in [CARP VIP Entities and Limitations](#carp-vip-entities-and-limitations). Configure each physical node separately with an OPNsense device entry; the VIP entry does not replace node entries.
+Choose **CARP VIP entry** for the shared CARP VIP IP address or hostname when you want read-only CARP visibility. A CARP VIP entry follows the active responder and exposes only the CARP entities described in [CARP VIP Entities and Limitations](#carp-vip-entities-and-limitations). Configure each physical node separately with a Firewall entry; the CARP VIP entry does not replace Firewall entries.
 
 ### Recommended CARP Topology
 
-Use one OPNsense device entry per physical node and add the optional CARP VIP entry for the shared endpoint:
+Use one Firewall entry per physical node and add the optional CARP VIP entry for the shared endpoint:
 
 ```text
-Node A non-VIP IP/hostname       -> full OPNsense device entry
-Node B non-VIP IP/hostname       -> full OPNsense device entry
+Node A non-VIP IP/hostname       -> full Firewall entry
+Node B non-VIP IP/hostname       -> full Firewall entry
 Shared CARP VIP IP/hostname      -> optional read-only CARP VIP entry
 ```
 
-Node entries are required for complete monitoring because a VIP endpoint cannot prove the health of a standby node.
+Firewall entries are required for complete monitoring because a VIP endpoint cannot prove the health of a standby node.
 
 ### OPNsense User
 
@@ -111,7 +112,7 @@ In <ins>OPNsense</ins>, create a new admin role user (or choose an existing admi
 
 ### Granular Sync
 
-Either at the time of install or in the integration options, Granular Sync Options can be enabled. There, choose the categories to sync with HA as desired. If enabled, the <ins>OPNsense</ins> user can have more narrow permissions.
+Either at the time of install or in the integration options, Granular Sync can be enabled. There, choose the categories to sync with HA as desired. If enabled, the <ins>OPNsense</ins> user can have more narrow permissions.
 
 At minimum, the following permissions are required:
 
@@ -184,7 +185,7 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 
 ### Device Tracker
 
-Entities are created for selected devices to track whether they are connected to the network. This feature is disabled by default and can be enabled in the Options once the integration is installed.
+Entities are created for tracked clients (machines on the network, identified by MAC address) to show whether they are connected to the network. This feature is disabled by default and can be enabled in the Options once the integration is installed.
 
 The options flow supports three modes:
 
@@ -192,7 +193,7 @@ The options flow supports three modes:
 * Track all detected devices
 * Track only selected devices
 
-The selectable device list is built from the current OPNsense ARP and NDP tables, so only recently seen devices appear automatically. Devices that are not currently visible can still be added manually by MAC address.
+The selectable device list is built from the current OPNsense ARP and NDP tables, so only recently seen clients appear automatically. Clients that are not currently visible can still be added manually by MAC address.
 
 See [Device Tracker Guide](docs/device_tracker.md) for setup details, ARP and NDP behavior, and troubleshooting.
 
@@ -200,13 +201,13 @@ See [Device Tracker Guide](docs/device_tracker.md) for setup details, ARP and ND
 
 A CARP VIP entry creates only these read-only entities:
 
-* **active responder:** the name of the node currently answering through the VIP;
+* **active responder:** the name of the Node currently answering through the VIP;
 * **CARP VIP status:** aggregate CARP status reported by that active responder;
 * **CARP VIP state:** one state sensor for each virtual IP keyed by VHID and subnet.
 
-A CARP VIP entry does not expose node hardware telemetry, firmware/update entities, general interfaces, services, gateways, VPN, DHCP, firewall/NAT, SMART, disks, temperatures, device trackers, actions, or switches. The VIP cannot prove standby-node health; configure OPNsense device entries for each node when complete monitoring is required.
+A CARP VIP entry does not expose node hardware telemetry, firmware/update entities, general interfaces, services, gateways, VPN, DHCP, firewall/NAT, SMART, disks, temperatures, device trackers, actions, or switches. The VIP cannot prove standby-node health; configure a Firewall entry for each Node when complete monitoring is required.
 
-The persistent CARP maintenance switch remains on physical-node entries. Enabling maintenance through the VIP can move the VIP; a later disable request could then reach the other node. Use the physical node's OPNsense device entry when changing maintenance mode.
+The persistent CARP maintenance switch remains on Firewall entries. Enabling maintenance through the VIP can move the VIP; a later disable request could then reach the other Node. Use the Node's own Firewall entry when changing maintenance mode.
 
 ## Actions *(Services)*
 
@@ -231,9 +232,13 @@ The persistent CARP maintenance switch remains on physical-node entries. Enablin
 
 Hardware replacement may change a number of OPNsense areas including interfaces, services, gateways, disks, and others.
 
-When an OPNsense device entry reports a Device ID mismatch, Home Assistant offers a fixable repair. Confirm it once the replacement hardware is reachable and is the intended node. The repair selectively reconciles the registry with the replacement's entities: matching entities and devices retain their registry identity and customizations, entities absent from the replacement are removed, and new entities are created.
+When a Firewall entry reports a Hardware ID mismatch (the repair dialog calls this the device ID), Home Assistant offers a fixable repair. Confirm it once the replacement hardware is reachable and is the intended Node. The repair selectively reconciles the registry with the replacement's entities: matching entities and devices retain their registry identity and customizations, entities absent from the replacement are removed, and new entities are created.
 
 The repair preserves the URL, credentials, and options. A retry marker makes an interrupted repair resumable. Dashboards and automations remain intact for preserved entity IDs; review references to entities removed during reconciliation.
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and pull request process, [CODING_STANDARDS.md](CODING_STANDARDS.md) for the code and test standards, and [GLOSSARY.md](GLOSSARY.md) for the terms used in this project.
 
 [commits-shield]: https://img.shields.io/github/last-commit/travisghansen/hass-opnsense?style=for-the-badge
 [commits]: https://github.com/travisghansen/hass-opnsense/commits/main

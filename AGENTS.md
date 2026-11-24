@@ -10,76 +10,38 @@
 - Be concise and explain coding steps briefly when making code changes; include code snippets and tests where relevant.
 - For non-trivial edits, provide a short plan. For small, low-risk edits, implement and include a one-line summary.
 - Focus on a single conceptual change at a time when public APIs or multiple modules are affected.
-- Maintain project style and Python 3.14+ compatibility. Target latest Home Assistant core.
+- Follow `CODING_STANDARDS.md`. Maintain Python 3.14+ compatibility and target latest Home Assistant core.
 - Keep compatibility with the minimum supported OPNsense firmware documented in `custom_components/opnsense/const.py` and `README.md`.
 - If deviating from these guidelines, explicitly state which guideline is deviated from and why.
 
 ## Agent Permissions and Venv Policy
 
 - Agents may create and use a repository-local venv at `./.venv`. Use `./.venv/bin/python`, `./.venv/bin/pytest`, and `./.venv/bin/prek` for local commands unless using the main checkout venv for a git worktree with no dependency changes.
-- The project uses `pyproject.toml` dependency groups (`ha`, `lint`, `pytest`, `dev`). Installing packages from repo manifests into `./.venv` is allowed for running tests or local tooling after approval; avoid unrelated network operations without explicit consent.
+- The project uses `pyproject.toml` dependency groups (`ha`, `lint`, `pytest`, `dev`). Installing packages from repo manifests into `./.venv` with `uv` (for example `uv sync --group dev`) is allowed for running tests or local tooling after approval; avoid unrelated network operations without explicit consent.
 
 ## Folder Structure (Repo-Specific)
 
 - `custom_components/opnsense`: integration code.
 - `tests`: pytest test suite and fixtures.
 - `README.md`: primary documentation.
+- `CODING_STANDARDS.md`: architecture, code, error-handling and testing standards. Read it before changing code and follow it.
+- `CONTRIBUTING.md`: contributor workflow, development setup and pull request conventions.
+- `GLOSSARY.md`: domain vocabulary. Use its terms in new names, docs and user-facing text.
+- `docs/`: user guides and agent skill configuration (`docs/agents`).
 - `.github/workflows`: GitHub Workflows
 - `.github/scripts`: scripts for GitHub Workflows
 
-## Project Structure Expectations
-
-- Keep code modular: separate files for entity types, services, and utilities.
-- Store constants in `const.py` and use a `config_flow.py` for configuration flows.
-- `hass-opnsense` now uses the external `aiopnsense` library exclusively for OPNsense API access (https://github.com/Snuffy2/aiopnsense and https://pypi.org/project/aiopnsense).
-- Do not reintroduce `pyopnsense`, `client_factory.py`, `client_protocol.py`, or tests under `tests/pyopnsense`. Backend API behavior belongs in `aiopnsense`; this repository should consume it through `aiopnsense.OPNsenseClient` and `aiopnsense.exceptions`.
-- Create configured clients through `custom_components/opnsense/helpers.py:create_opnsense_client` so Home Assistant aiohttp session handling, TLS options, logging names, and `throw_errors` behavior stay consistent.
-- Keep the pinned `aiopnsense` version in `custom_components/opnsense/manifest.json` and `pyproject.toml` in sync.
-- Reach OPNsense firmware only through `get_firmware_update_info`, `get_host_firmware_version`, and `install_firmware`; `get_firmware_requirements` is also allowed because it only reads library constants. Other firmware endpoints can make the Router contact its package mirrors on every poll, and aiopnsense's request blocking and hourly check limit apply only through its public methods. `tests/test_firmware_endpoint_guard.py` enforces this.
-- OPNsense Firmware 25.1+ remains supported, but Firewall and NAT rule switches are available only when the aiopnsense firewall payload supports them, currently OPNsense Firmware 26.1.1+.
-- The deprecated OPNsense Home Assistant plugin is no longer supported or used. Handle legacy plugin-era entities only as migration or cleanup concerns; do not add new plugin-backed behavior.
-- Config-entry migrations live in `custom_components/opnsense/migrate.py`. Be careful with entity registry and device registry changes, especially legacy firewall/NAT entity cleanup, because they affect existing user installations.
-- Any changes that require changes to both hass-opnsense and aiopnsense require coordinated branches and PRs in both repositories. Update the aiopnsense pin when dependency behavior changes.
-
-## Coding Standards
-
-- Add typing annotations to all functions and classes (including return types).
-- Add or update docstrings for all files, classes and methods, including private methods and nested methods. Method docstrings must follow the Google Style.
-- Preserve existing comments and keep imports at the top of files.
-- Do not use `assert` or `cast` in main code.
-- Follow existing repository style; run `prek`.
-- Python 3.14 syntax is allowed, including PEP 695 type parameters and PEP 758 grouped exception handlers already used in the codebase.
-
 ## Local Tooling Note
 
-- Use the repo's `prek` and `pytest` commands through the venv selected by the agent permissions and venv policy above.
+- Use the repo's `prek` and `pytest` commands through the venv selected by the agent permissions and venv policy above. Follow existing repository style and run `prek`.
 - By default, run the full pytest suite. If running targeted tests, explain why.
+- If tests fail due to missing dev dependencies, either install them into `./.venv` with `uv sync --group dev` (if allowed) or report the exact `uv` command.
 - Avoid recommending `tox`, it is not in use by this repo.
-
-## Error Handling & Logging
-
-- Use Home Assistant's logging framework.
-- Catch specific exceptions (do not catch Exception directly).
-- Add robust error handling and clear debug/info logs.
-- If tests fail due to missing dev dependencies, either install them into `./.venv` (if allowed) or report exact `pip install` commands.
-
-## Testing
-
-- Use `pytest` and Home Assistant pytest helpers (e.g., `MockConfigEntry`).
-- Add typed, well-documented tests in `tests/` and use fixtures in `conftest.py`.
-- Use `importlib` only in workflow script tests; minimize `cast` and `Any` unless the test boundary requires them.
-- One test module per integration source file; achieve high coverage (target >= 80%).
-- Parameterize tests when appropriate; avoid duplicate test functions.
-- Add or update tests when they protect a meaningful behavioral contract or reproduce a bug that existing coverage would miss. Exercise observable behavior at the relevant interface, including failure paths when material; avoid tests that merely mirror implementation details, assert configuration text, or duplicate existing checks.
-- For documentation, declarative configuration, and small workflow changes, use relevant validators, linters, or focused runtime checks when those provide sufficient confidence. Add automated tests when executable logic or material operational risk warrants them; keep workflow tests separate from unrelated integration tests.
-- Mock `aiopnsense.OPNsenseClient` behavior at the integration boundary. Do not add tests for vendored or copied backend-client internals in this repository.
-- Cover config-entry migrations, entity registry cleanup, and firmware-gated behavior when changing setup, coordinator, or switch logic.
 
 ## PR & Branch Behavior
 
 - Create branches or PRs only when explicitly requested. Do not open PRs autonomously.
-- Every pull request title must begin with a Conventional Commit prefix, such as `fix:`,
-  `feat:`, or `chore(deps):`.
+- Pull request titles follow the convention in `CONTRIBUTING.md`.
 
 ## Network / Install Consent
 
@@ -93,4 +55,18 @@
 
 - When editing code, prefer fixing root causes over surface patches.
 - Keep changes minimal and consistent with the codebase style.
-- Verify changes in proportion to their risk and update documentation if needed. Follow the Testing guidance above when deciding whether to add tests.
+- Verify changes in proportion to their risk and update documentation if needed. Follow the testing standards in `CODING_STANDARDS.md` when deciding whether to add tests.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`), recorded as a `Status:` line in each issue file. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one root `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain.md`.

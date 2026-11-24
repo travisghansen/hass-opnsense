@@ -1,7 +1,7 @@
 """Guard production code against firmware requests that can contact package mirrors.
 
-Some OPNsense firmware endpoints that look like reads make the Router contact its
-mirrors, and this integration polls every 30 seconds by default. aiopnsense owns
+Some OPNsense firmware endpoints that look like reads make the Firewall contact
+its mirrors, and this integration polls every 30 seconds by default. aiopnsense owns
 those requests, as recorded in its
 ``docs/adr/0002-firmware-reads-never-contact-upstream.md``. Since 1.5.0, aiopnsense
 blocks ``/info`` and ``POST /status`` in its own transport and sends at most one
