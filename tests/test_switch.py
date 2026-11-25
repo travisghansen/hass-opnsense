@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.components.switch import SwitchEntityDescription
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
@@ -26,8 +27,14 @@ from custom_components.opnsense.const import (
     CONF_SYNC_UNBOUND,
     CONF_SYNC_VPN,
     COORDINATOR,
+    DOMAIN,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
+from custom_components.opnsense.repair_reconciliation import (
+    RepairMarker,
+    RepairReconciliation,
+    RepairReconciliationError,
+)
 from custom_components.opnsense.switch import (
     OPNsenseCarpMaintenanceSwitch,
     OPNsenseFirewallRuleSwitch,
@@ -395,21 +402,42 @@ def test_vpn_switch_rows_are_complete_defaults_and_rejects_falsy_rows() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("unknown_group", "known_group", "unknown_inventory"),
+    [
+        ("firewall_nat_npt", "firewall_rule", None),
+        ("firewall_rule", "firewall_nat_npt", None),
+        ("firewall_nat_npt", "firewall_rule", []),
+    ],
+)
 @pytest.mark.asyncio
-async def test_async_setup_entry_records_none_for_malformed_firewall_nat_inventory(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_repair_preserves_switches_for_an_unknown_firewall_group(
+    ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
+    unknown_group: str,
+    known_group: str,
+    unknown_inventory: object,
 ) -> None:
-    """Missing NAT subsections should force incomplete firewall reconciliation.
+    """Complete repair and preserve registry entries only where inventory supports it.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (HomeAssistant): Home Assistant instance with a real entity registry.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        unknown_group (str): Registry ID segment for the group without an inventory.
+        known_group (str): Registry ID segment for the group with an inventory.
+        unknown_inventory (object): Non-mapping payload for the unknown group.
     """
+    known_inventory = {"keep": {"uuid": "keep", "%interface": "wan"}}
+    filter_rules_unknown = unknown_group == "firewall_rule"
     state = {
         "firewall": {
-            "rules": {"r1": {"uuid": "r1", "description": "Rule", "%interface": "wan"}},
-            "nat": {"source_nat": {}, "d_nat": {}, "one_to_one": {}},
+            "rules": unknown_inventory if filter_rules_unknown else known_inventory,
+            "nat": {
+                "source_nat": {},
+                "d_nat": {},
+                "one_to_one": {},
+                "npt": known_inventory if filter_rules_unknown else unknown_inventory,
+            },
         }
     }
     config_entry = setup_switch_reconciliation_entry(
@@ -417,36 +445,62 @@ async def test_async_setup_entry_records_none_for_malformed_firewall_nat_invento
         coordinator=make_coord(state),
         sync_firewall_and_nat=True,
     )
-    recorded: dict[str, Any] = {}
-    created: list[Any] = []
-
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation.
-
-        Args:
-            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
-            _platform (str): Platform name passed through the mocked loader.
-            entities (Any | None): Entities captured by the platform add callback.
-        """
-        recorded["entities"] = entities
-
-    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
-        """Capture switch entities emitted by setup.
-
-        Args:
-            ents (Iterable[Any]): Entities captured by the platform add callback.
-            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
-        """
-        created.extend(ents)
-
-    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
-
-    await switch_mod.async_setup_entry(
-        MagicMock(), config_entry, cast("AddEntitiesCallback", add_entities)
+    config_entry.add_to_hass(ph_hass)
+    registry = er.async_get(ph_hass)
+    unknown_entity = registry.async_get_or_create(
+        "switch", DOMAIN, f"old_{unknown_group}_keep", config_entry=config_entry
     )
+    known_entity = registry.async_get_or_create(
+        "switch", DOMAIN, f"old_{known_group}_keep", config_entry=config_entry
+    )
+    stale_entity = registry.async_get_or_create(
+        "switch", DOMAIN, f"old_{known_group}_stale", config_entry=config_entry
+    )
+    reconciliation = RepairReconciliation(ph_hass, config_entry, RepairMarker(1, "old", "id"))
+    config_entry.runtime_data.repair_reconciliation = reconciliation
+    reconciliation.prepare()
 
-    assert recorded.get("entities") is None
-    assert created
+    add_entities = MagicMock()
+    await switch_mod.async_setup_entry(ph_hass, config_entry, add_entities)
+    reconciliation.require_platforms_complete(("switch",))
+    reconciliation.finalize()
+
+    assert registry.async_get_entity_id("switch", DOMAIN, f"id_{unknown_group}_keep") == (
+        unknown_entity.entity_id
+    )
+    assert registry.async_get(known_entity.entity_id) is not None
+    assert registry.async_get(stale_entity.entity_id) is None
+    assert [entity.unique_id for entity in add_entities.call_args.args[0]] == [
+        f"id_{known_group}_keep"
+    ]
+
+
+@pytest.mark.parametrize(
+    "state", [{}, {"firewall": None}, {"firewall": {"rules": {}}}, {"firewall": {"nat": []}}]
+)
+@pytest.mark.asyncio
+async def test_repair_requires_firewall_and_nat_mappings(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    state: dict[str, Any],
+) -> None:
+    """Leave switch discovery incomplete when a required container is unavailable.
+
+    Args:
+        ph_hass (HomeAssistant): Home Assistant instance used for reconciliation.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        state (dict[str, Any]): Coordinator payload missing a required mapping.
+    """
+    config_entry = setup_switch_reconciliation_entry(
+        make_config_entry, coordinator=make_coord(state), sync_firewall_and_nat=True
+    )
+    reconciliation = RepairReconciliation(ph_hass, config_entry, RepairMarker(1, "old", "id"))
+    config_entry.runtime_data.repair_reconciliation = reconciliation
+
+    await switch_mod.async_setup_entry(ph_hass, config_entry, MagicMock())
+
+    with pytest.raises(RepairReconciliationError, match="platform discovery incomplete: switch"):
+        reconciliation.require_platforms_complete(("switch",))
 
 
 @pytest.mark.parametrize(

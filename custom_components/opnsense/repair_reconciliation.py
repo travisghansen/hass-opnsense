@@ -204,7 +204,7 @@ class RepairReconciliation:
         )
 
     def record_desired_entities(
-        self, platform_domain: PlatformDomain, entities: Iterable[Entity] | None
+        self, platform_domain: PlatformDomain, entities: Iterable[Entity | er.RegistryEntry] | None
     ) -> None:
         """Record a platform's complete intended entity list, including disabled rows.
 
@@ -213,7 +213,8 @@ class RepairReconciliation:
 
         Args:
             platform_domain (PlatformDomain): Platform whose desired entity IDs were compiled.
-            entities (Iterable[Entity] | None): Registry records exposed to the repair helper.
+            entities (Iterable[Entity | er.RegistryEntry] | None): Discovered entities and
+                existing registry entries to retain.
         """
         if entities is None:
             return
@@ -326,14 +327,15 @@ class RepairReconciliation:
 def record_desired_entities(
     config_entry: ConfigEntry,
     platform_domain: PlatformDomain,
-    entities: Iterable[Entity] | None,
+    entities: Iterable[Entity | er.RegistryEntry] | None,
 ) -> None:
     """Record a final platform entity list when reconciliation is active.
 
     Args:
         config_entry (ConfigEntry): OPNsense config entry participating in the operation.
         platform_domain (PlatformDomain): Platform whose desired entity IDs were compiled.
-        entities (Iterable[Entity] | None): Registry records exposed to the repair helper.
+        entities (Iterable[Entity | er.RegistryEntry] | None): Discovered entities and existing
+            registry entries to retain.
     """
     reconciliation = config_entry.runtime_data.repair_reconciliation
     if isinstance(reconciliation, RepairReconciliation) and reconciliation.active:

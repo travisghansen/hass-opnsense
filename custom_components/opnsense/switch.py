@@ -7,8 +7,10 @@ from typing import Any
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
+from homeassistant.util import slugify
 
 from .const import (
     ATTR_UNBOUND_BLOCKLIST,
@@ -19,11 +21,12 @@ from .const import (
     CONF_SYNC_VPN,
     COORDINATOR,
     DEFAULT_SYNC_OPTION_VALUE,
+    DOMAIN,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity
-from .helpers import coerce_bool, dict_get, firewall_rule_id_from_payload
-from .repair_reconciliation import record_desired_entities
+from .helpers import coerce_bool, config_entry_identity, dict_get, firewall_rule_id_from_payload
+from .repair_reconciliation import is_reconciliation_active, record_desired_entities
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -687,6 +690,7 @@ async def async_setup_entry(
     reconciliation_complete = True
 
     entities: list = []
+    unknown_rule_groups: list[str] = []
 
     if config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
         firewall = state.get("firewall")
@@ -705,28 +709,29 @@ async def async_setup_entry(
                 await _compile_nat_one_to_one_rules_switches(config_entry, coordinator, state)
             )
             entities.extend(await _compile_nat_npt_rules_switches(config_entry, coordinator, state))
-            if not (
-                isinstance(firewall.get("rules"), MutableMapping)
-                and isinstance(firewall_nat, MutableMapping)
-                and isinstance(firewall_nat.get("source_nat"), MutableMapping)
-                and isinstance(firewall_nat.get("d_nat"), MutableMapping)
-                and isinstance(firewall_nat.get("one_to_one"), MutableMapping)
-                and isinstance(firewall_nat.get("npt"), MutableMapping)
-            ):
+            if not isinstance(firewall_nat, MutableMapping):
                 reconciliation_complete = False
             else:
                 rule_inventories = (
-                    (firewall["rules"], _is_valid_firewall_rule_row),
-                    (firewall_nat["source_nat"], _is_valid_nat_rule_row),
-                    (firewall_nat["d_nat"], _is_valid_nat_rule_row),
-                    (firewall_nat["one_to_one"], _is_valid_nat_rule_row),
-                    (firewall_nat["npt"], _is_valid_nat_rule_row),
+                    ("firewall.rule", firewall.get("rules"), _is_valid_firewall_rule_row),
+                    (
+                        "firewall.nat.source_nat",
+                        firewall_nat.get("source_nat"),
+                        _is_valid_nat_rule_row,
+                    ),
+                    ("firewall.nat.d_nat", firewall_nat.get("d_nat"), _is_valid_nat_rule_row),
+                    (
+                        "firewall.nat.one_to_one",
+                        firewall_nat.get("one_to_one"),
+                        _is_valid_nat_rule_row,
+                    ),
+                    ("firewall.nat.npt", firewall_nat.get("npt"), _is_valid_nat_rule_row),
                 )
-                if not all(
-                    all(predicate(rule_key, rule) for rule_key, rule in rules.items())
-                    for rules, predicate in rule_inventories
-                ):
-                    reconciliation_complete = False
+                for group, rules, predicate in rule_inventories:
+                    if not isinstance(rules, MutableMapping):
+                        unknown_rule_groups.append(group)
+                    elif not all(predicate(rule_key, rule) for rule_key, rule in rules.items()):
+                        reconciliation_complete = False
         else:
             reconciliation_complete = False
     if config.get(CONF_SYNC_SERVICES, DEFAULT_SYNC_OPTION_VALUE):
@@ -771,11 +776,26 @@ async def async_setup_entry(
         else:
             reconciliation_complete = False
 
+    preserved_switches: list[er.RegistryEntry] = []
+    if reconciliation_complete and unknown_rule_groups and is_reconciliation_active(config_entry):
+        # Repair preparation has already migrated the registry entries to the new prefix.
+        identity = config_entry_identity(config_entry)
+        prefixes = tuple(f"{slugify(f'{identity}_{group}')}_" for group in unknown_rule_groups)
+        preserved_switches = [
+            entry
+            for entry in er.async_entries_for_config_entry(
+                er.async_get(hass), config_entry.entry_id
+            )
+            if entry.domain == "switch"
+            and entry.platform == DOMAIN
+            and entry.unique_id.startswith(prefixes)
+        ]
+
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))
     record_desired_entities(
         config_entry,
         "switch",
-        entities if reconciliation_complete else None,
+        [*entities, *preserved_switches] if reconciliation_complete else None,
     )
     async_add_entities(entities)
 
