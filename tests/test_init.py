@@ -34,15 +34,20 @@ import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
 import custom_components.opnsense as init_mod
+from custom_components.opnsense import switch as switch_mod
 from custom_components.opnsense.const import (
     CARP_PLATFORMS,
     CONF_DEVICE_TRACKER_ENABLED,
     CONF_DEVICE_UNIQUE_ID,
     CONF_ENTRY_TYPE,
     CONF_GRANULAR_SYNC_OPTIONS,
+    CONF_SYNC_CARP,
     CONF_SYNC_FIREWALL_AND_NAT,
     CONF_SYNC_INTERFACES,
     CONF_SYNC_LIVE_TRAFFIC,
+    CONF_SYNC_SERVICES,
+    CONF_SYNC_UNBOUND,
+    CONF_SYNC_VPN,
     CONF_TLS_INSECURE,
     COORDINATOR,
     DEVICE_TRACKER_COORDINATOR,
@@ -64,6 +69,7 @@ from custom_components.opnsense.repair_reconciliation import (
     REPAIR_MARKER_KEY,
     RepairMarker,
     RepairReconciliationError,
+    build_repair_marker,
     parse_repair_marker,
 )
 from tests.utilities import patch_opnsense_client
@@ -5584,6 +5590,102 @@ async def test_reconciliation_incomplete_platform_does_not_finalize_or_clear_mar
     assert ph_hass.config_entries.async_unload_platforms.await_args.args[0] is entry
     ph_hass.config_entries.async_update_entry.assert_not_called()
     assert entry.data[REPAIR_MARKER_KEY] == marker
+
+
+@pytest.mark.parametrize(
+    ("service_state", "has_service_switch", "repair_completes"),
+    [
+        pytest.param({"services": None}, False, True, id="unknown-empty-registry"),
+        pytest.param({"services": None}, True, True, id="unknown-existing-switch"),
+        pytest.param({"services": []}, True, True, id="authoritative-empty"),
+        pytest.param({}, True, False, id="missing-inventory"),
+        pytest.param({"services": {}}, True, False, id="malformed-inventory"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_replacement_repair_with_service_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    service_state: dict[str, Any],
+    has_service_switch: bool,
+    repair_completes: bool,
+) -> None:
+    """Complete replacement repair when only the service inventory is unknown.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Patch fixture for setup dependencies.
+        ph_hass (HomeAssistant): Home Assistant instance with a real entity registry.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for config entries.
+        service_state (dict[str, Any]): Service portion of the coordinator state.
+        has_service_switch (bool): Whether a service switch exists before repair.
+        repair_completes (bool): Whether setup should clear the repair marker.
+    """
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    coordinator = _make_setup_coordinator()
+    coordinator.data.update(service_state)
+    coordinator.data["firewall"] = {
+        "rules": {},
+        "nat": {"source_nat": {}, "d_nat": {}, "one_to_one": {}, "npt": {}},
+    }
+    monkeypatch.setattr(init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: coordinator)
+    monkeypatch.setattr(init_mod, "PLATFORMS", [Platform.SWITCH])
+    entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_CARP: False,
+            CONF_SYNC_FIREWALL_AND_NAT: True,
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_SERVICES: True,
+            CONF_SYNC_UNBOUND: False,
+            CONF_SYNC_VPN: False,
+            REPAIR_MARKER_KEY: build_repair_marker("old-dev", "dev1"),
+        },
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
+        unique_id="dev1",
+    )
+    entry.add_to_hass(ph_hass)
+    registry = er.async_get(ph_hass)
+    service_entity = stale_rule = None
+    if has_service_switch:
+        service_entity = registry.async_get_or_create(
+            "switch", DOMAIN, "old_dev_service_dpinger_wan_status", config_entry=entry
+        )
+        stale_rule = registry.async_get_or_create(
+            "switch", DOMAIN, "old_dev_firewall_rule_stale", config_entry=entry
+        )
+
+    add_entities = MagicMock()
+
+    async def forward(config_entry: ConfigEntry, platforms: list[Platform]) -> None:
+        """Run switch setup for the forwarded platform.
+
+        Args:
+            config_entry (ConfigEntry): Firewall entry being set up.
+            platforms (list[Platform]): Platforms forwarded by the integration.
+        """
+        assert platforms == [Platform.SWITCH]
+        await switch_mod.async_setup_entry(ph_hass, config_entry, add_entities)
+
+    monkeypatch.setattr(ph_hass.config_entries, "async_forward_entry_setups", forward)
+    unload_platforms = AsyncMock(return_value=True)
+    monkeypatch.setattr(ph_hass.config_entries, "async_unload_platforms", unload_platforms)
+
+    assert await init_mod.async_setup_entry(ph_hass, entry) is repair_completes
+    assert (REPAIR_MARKER_KEY not in entry.data) is repair_completes
+    assert unload_platforms.await_count == (0 if repair_completes else 1)
+    add_entities.assert_called_once_with([])
+    if service_entity is not None and stale_rule is not None:
+        service_id = registry.async_get_entity_id(
+            "switch", DOMAIN, "dev1_service_dpinger_wan_status"
+        )
+        assert service_id == (
+            None if service_state.get("services") == [] else service_entity.entity_id
+        )
+        assert (registry.async_get(stale_rule.entity_id) is None) is repair_completes
 
 
 async def _run_reconciliation_cleanup_unload(
