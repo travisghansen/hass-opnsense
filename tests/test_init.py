@@ -2958,6 +2958,38 @@ async def test_migrate_4_to_5_legacy_entity_remove_failure_aborts_migration(
 
 
 @pytest.mark.asyncio
+async def test_migrate_4_to_5_preserves_native_nat_switches_for_unknown_inventory(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: HomeAssistant
+) -> None:
+    """Retain NPTv6 switches when inventory is unknown and prune readable empty groups.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to supply the client response.
+        ph_hass (HomeAssistant): Home Assistant instance with a real entity registry.
+    """
+    entry = MockConfigEntry(domain=DOMAIN, data={CONF_DEVICE_UNIQUE_ID: "deviceid"}, version=4)
+    entry.add_to_hass(ph_hass)
+    client = MagicMock(spec=OPNsenseClient)
+    client.get_firewall = AsyncMock(return_value={"rules": {}, "nat": {"npt": None, "d_nat": {}}})
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", MagicMock(return_value=client)
+    )
+    registry = er.async_get(ph_hass)
+    npt = registry.async_get_or_create(
+        "switch", DOMAIN, "deviceid_firewall_nat_npt_keep", config_entry=entry
+    )
+    destination = registry.async_get_or_create(
+        "switch", DOMAIN, "deviceid_firewall_nat_d_nat_stale", config_entry=entry
+    )
+
+    assert await init_mod.async_migrate_entry(ph_hass, entry)
+
+    assert entry.version == 5
+    assert registry.async_get(npt.entity_id) is not None
+    assert registry.async_get(destination.entity_id) is None
+
+
+@pytest.mark.asyncio
 async def test_migrate_4_to_5_sync_enabled_prunes_stale_native_nat_rule_entities(
     monkeypatch: pytest.MonkeyPatch, ph_hass: HomeAssistant
 ) -> None:
