@@ -17,7 +17,7 @@
 ## Agent Permissions and Venv Policy
 
 - Agents may create and use a repository-local venv at `./.venv`. Use `./.venv/bin/python`, `./.venv/bin/pytest`, and `./.venv/bin/prek` for local commands unless using the main checkout venv for a git worktree with no dependency changes.
-- The project uses `pyproject.toml` dependency groups (`ha`, `lint`, `pytest`, `dev`). Installing packages from repo manifests into `./.venv` with `uv` (for example `uv sync --group dev`) is allowed for running tests or local tooling after approval; avoid unrelated network operations without explicit consent.
+- The project uses `pyproject.toml` dependency groups (`ha`, `lint`, `pytest`, `dev`). Installing packages from repo manifests into `./.venv` with `uv` (for example `uv sync --group dev`) is allowed for running tests or local tooling.
 
 ## Folder Structure (Repo-Specific)
 
@@ -43,9 +43,10 @@
 - Create branches or PRs only when explicitly requested. Do not open PRs autonomously.
 - Pull request titles follow the convention in `CONTRIBUTING.md`.
 
-## Network / Install Consent
+## Network access
 
-- Package installs from repo manifests for local tooling and tests are allowed after approval. Obtain explicit consent before unrelated network operations.
+- Run read-only lookups that inform the task without asking: GitHub, Home Assistant docs and core source, OPNsense docs and source, and PyPI.
+- Ask first for package installs beyond the repo manifests and for any write to an external service that this file does not already authorize.
 
 ## CI/CD
 
