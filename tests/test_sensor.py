@@ -4046,7 +4046,7 @@ async def test_async_setup_entry_ignores_unconsumed_openvpn_client_rows(
             None,
         ),
         # Speedtest
-        ({}, False, False, True, False, False, False, False, False, False, None),
+        ({}, False, False, True, False, False, False, False, False, False, []),
         ({"speedtest": {}}, False, False, True, False, False, False, False, False, False, []),
         # Telemetry
         ({}, True, False, False, False, False, False, False, False, False, None),
