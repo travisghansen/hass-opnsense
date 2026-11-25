@@ -164,7 +164,7 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 * Gateways details (status, delay, stddev, loss, address)
 * CARP VIP status (aggregate)
 * CARP Interface status
-* DHCP Leases
+* DHCP Leases. When aiopnsense reports Status Access, Device ID repair keeps previously registered DHCP lease sensors for interfaces the Router no longer reports.
 * OpenVPN and Wireguard server and client stats
 * IPsec phase 1 (IKE) connection status and traffic counters
 * IPsec phase 2 (child SA) status with configured and negotiated traffic selectors, and traffic counters

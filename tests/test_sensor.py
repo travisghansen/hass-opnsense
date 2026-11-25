@@ -1,15 +1,21 @@
 """These tests import the integration code via relative imports and assert behavior across sensor variants using a synthesized coordinator state."""
 
 from collections.abc import Callable, Iterable
+from datetime import timedelta
+from types import SimpleNamespace
 from typing import Any, Never, cast
 from unittest.mock import MagicMock
 
+import aiopnsense
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.const import PERCENTAGE, UnitOfDataRate, UnitOfInformation, UnitOfTemperature
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 import pytest
@@ -31,9 +37,12 @@ from custom_components.opnsense.const import (
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
     COORDINATOR,
+    DOMAIN,
+    GRANULAR_SYNC_ITEMS,
     OPNSENSE_CLIENT,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
+from custom_components.opnsense.repair_reconciliation import RepairMarker, RepairReconciliation
 from custom_components.opnsense.sensor import (
     OPNsenseCarpActiveResponderSensor,
     OPNsenseCarpInterfaceSensor,
@@ -55,6 +64,91 @@ from custom_components.opnsense.sensor import (
     slugify_filesystem_mountpoint,
 )
 from custom_components.opnsense.traffic_coordinator import OPNsenseLiveTrafficCoordinator
+
+
+class _TestDHCPLeaseResult(dict[str, Any]):
+    """Stand-in for AccessDict when the pinned aiopnsense lacks access reporting."""
+
+    access: object
+
+
+@pytest.mark.parametrize("access", ["status", "configuration", None])
+@pytest.mark.asyncio
+async def test_dhcp_repair_preserves_missing_interface_only_with_status_access(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    monkeypatch: pytest.MonkeyPatch,
+    access: str | None,
+) -> None:
+    """Reconcile registered DHCP sensors using a live coordinator refresh and sensor setup.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance used for setup.
+        entity_registry (er.EntityRegistry): Registry containing the pre-repair sensors.
+        monkeypatch (pytest.MonkeyPatch): Fixture for supplying unavailable aiopnsense APIs.
+        access (str | None): Access level reported by aiopnsense, if any.
+    """
+    leases: dict[str, Any] = {"lease_interfaces": {"lan": "LAN"}, "leases": {"lan": []}}
+    access_dict = getattr(aiopnsense, "AccessDict", None)
+    access_type = getattr(aiopnsense, "Access", None)
+    if access_dict is None:
+        status = object()
+        monkeypatch.setattr(sensor_module, "_STATUS_ACCESS", status)
+        monkeypatch.setattr(
+            sensor_module, "_RESULT_ACCESS", lambda result: getattr(result, "access", None)
+        )
+        if access is not None:
+            tagged = _TestDHCPLeaseResult(leases)
+            tagged.access = status if access == "status" else object()
+            leases = tagged
+    elif access is not None and access_type is not None:
+        leases = access_dict(leases, access=access_type(access))
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_DEVICE_UNIQUE_ID: "new_id",
+            **{option: option == CONF_SYNC_DHCP_LEASES for option in GRANULAR_SYNC_ITEMS},
+        },
+    )
+    entry.add_to_hass(hass)
+    client = MagicMock(spec=aiopnsense.OPNsenseClient)
+    client.get_device_unique_id.return_value = "new_id"
+    client.get_dhcp_leases.return_value = leases
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass, client, "Firewall", timedelta(seconds=60), "new_id", entry
+    )
+    reconciliation = RepairReconciliation(hass, entry, RepairMarker(1, "old_id", "new_id"))
+    entry.runtime_data = SimpleNamespace(
+        **{COORDINATOR: coordinator}, repair_reconciliation=reconciliation
+    )
+    registered = {
+        key: entity_registry.async_get_or_create(
+            "sensor", DOMAIN, f"old_id_{key}", config_entry=entry
+        ).entity_id
+        for key in ("dhcp_leases_lan", "dhcp_leases_guest", "interface_guest_status")
+    }
+    created: list[Entity] = []
+    add_entities = MagicMock(side_effect=created.extend)
+
+    await coordinator.async_refresh()
+    reconciliation.prepare()
+    await async_setup_entry(hass, entry, add_entities)
+    reconciliation.require_platforms_complete(("sensor",))
+    reconciliation.finalize()
+
+    assert {entity.unique_id for entity in created} == {
+        "new_id_dhcp_leases_lan",
+        "new_id_dhcp_leases_all",
+    }
+    assert entity_registry.async_get(registered["dhcp_leases_lan"]) is not None
+    guest = entity_registry.async_get(registered["dhcp_leases_guest"])
+    if access == "status":
+        assert guest is not None
+        assert guest.unique_id == "new_id_dhcp_leases_guest"
+    else:
+        assert guest is None
+    assert entity_registry.async_get(registered["interface_guest_status"]) is None
 
 
 @pytest.mark.asyncio
@@ -3496,6 +3590,8 @@ def capture_reconciled_desired_entities(
         _entry: MockConfigEntry,
         _platform: str,
         entities: Any | None = None,
+        *,
+        preserve_prefix: str | None = None,
     ) -> None:
         """Capture entities passed to ``record_desired_entities``.
 
@@ -3503,6 +3599,7 @@ def capture_reconciled_desired_entities(
             _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
             _platform (str): Platform name passed through the mocked loader.
             entities (Any | None): Entities captured by the platform add callback.
+            preserve_prefix (str | None): Optional prefix of retained registry entries.
         """
         captured["entities"] = entities
 
@@ -3764,13 +3861,20 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
 
     recorded: dict[str, Any] = {}
 
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+    def capture(
+        _entry: MockConfigEntry,
+        _platform: str,
+        entities: Any | None = None,
+        *,
+        preserve_prefix: str | None = None,
+    ) -> None:
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
             _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
             _platform (str): Platform name passed through the mocked loader.
             entities (Any | None): Entities captured by the platform add callback.
+            preserve_prefix (str | None): Optional prefix of retained registry entries.
         """
         recorded["entities"] = entities
 
@@ -3829,13 +3933,20 @@ async def test_async_setup_entry_records_complete_vpn_inventory(
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
     recorded: dict[str, Any] = {}
 
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+    def capture(
+        _entry: MockConfigEntry,
+        _platform: str,
+        entities: Any | None = None,
+        *,
+        preserve_prefix: str | None = None,
+    ) -> None:
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
             _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
             _platform (str): Platform name passed through the mocked loader.
             entities (Any | None): Entities captured by the platform add callback.
+            preserve_prefix (str | None): Optional prefix of retained registry entries.
         """
         recorded["entities"] = entities
 

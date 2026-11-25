@@ -9,6 +9,7 @@ import logging
 import re
 from typing import Any, Final, TypeIs
 
+import aiopnsense
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -50,11 +51,20 @@ from .const import (
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity, OPNsenseEntityCoordinator
-from .helpers import coerce_bool, dict_get, get_smart_device_name, is_carp_entry
+from .helpers import (
+    coerce_bool,
+    config_entry_identity,
+    dict_get,
+    get_smart_device_name,
+    is_carp_entry,
+)
 from .repair_reconciliation import record_desired_entities
 from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
+# aiopnsense 1.5.0 predates the access reporting API.
+_RESULT_ACCESS = getattr(aiopnsense, "result_access", None)
+_STATUS_ACCESS = getattr(getattr(aiopnsense, "Access", None), "STATUS", None)
 
 
 _INTERFACE_SENSOR_PROPERTIES: tuple[str, ...] = (
@@ -1896,6 +1906,7 @@ async def async_setup_entry(
         return
 
     reconciliation_complete = True
+    preserve_prefix = None
 
     if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
         telemetry = state.get("telemetry")
@@ -2004,9 +2015,23 @@ async def async_setup_entry(
             and isinstance(dhcp_leases.get("lease_interfaces"), MutableMapping)
         ):
             reconciliation_complete = False
+        else:
+            has_status_access = (
+                _STATUS_ACCESS is not None
+                and callable(_RESULT_ACCESS)
+                and _RESULT_ACCESS(dhcp_leases) is _STATUS_ACCESS
+            )
+            # Status Access can omit interfaces with existing DHCP sensor registrations.
+            dhcp_prefix = slugify(f"{config_entry_identity(config_entry)}_dhcp_leases")
+            preserve_prefix = f"{dhcp_prefix}_" if has_status_access else None
 
     _LOGGER.debug("[sensor async_setup_entry] entities: %s", len(entities))
-    record_desired_entities(config_entry, "sensor", entities if reconciliation_complete else None)
+    record_desired_entities(
+        config_entry,
+        "sensor",
+        entities if reconciliation_complete else None,
+        preserve_prefix=preserve_prefix,
+    )
     async_add_entities(entities)
 
 

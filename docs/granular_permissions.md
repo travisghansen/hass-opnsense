@@ -57,6 +57,8 @@ This option depends on "Interface information". If disabled, interface traffic r
 
 OPNsense does not currently assign the ISC DHCP service-status endpoints to a narrower privilege. `All pages` is therefore required only when ISC DHCP lease discovery is needed; Kea and Dnsmasq lease collection use their own granular permissions.
 
+When aiopnsense reports Status Access because Kea or Dnsmasq configuration is denied, the DHCP interface inventory can omit interfaces without visible leases. Device ID repair preserves their existing sensor registrations. On setup, only interfaces present in the current inventory get active interface sensors.
+
 ## Notice Information
 
 | OPNsense Permission | Method | API Endpoints |
