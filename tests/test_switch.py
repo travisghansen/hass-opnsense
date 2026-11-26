@@ -194,6 +194,7 @@ def setup_switch_reconciliation_entry(
     [
         ({}, False, True, False, False, None),
         ({"services": []}, False, True, False, False, []),
+        ({"services": {}}, False, True, False, False, None),
         ({}, True, False, False, False, None),
         ({"firewall": {}}, True, False, False, False, None),
         (
@@ -224,6 +225,7 @@ def setup_switch_reconciliation_entry(
     ids=[
         "missing_service",
         "empty_service",
+        "malformed_service",
         "missing_firewall",
         "empty_firewall",
         "partial_firewall-without-nat",
@@ -479,6 +481,57 @@ async def test_repair_preserves_switches_for_an_unknown_firewall_group(
     assert [entity.unique_id for entity in add_entities.call_args.args[0]] == [
         f"id_{known_group}_keep"
     ]
+
+
+@pytest.mark.parametrize(("services", "keeps_switch"), [(None, True), ([], False)])
+@pytest.mark.asyncio
+async def test_repair_preserves_service_switches_only_for_an_unknown_inventory(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    services: list[Any] | None,
+    keeps_switch: bool,
+) -> None:
+    """Complete repair and keep service switches only when their inventory is unknown.
+
+    Args:
+        ph_hass (HomeAssistant): Home Assistant instance with a real entity registry.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        services (list[Any] | None): Service inventory reported for the replacement hardware.
+        keeps_switch (bool): Whether repair should keep the existing service switch.
+    """
+    state: dict[str, Any] = {
+        "firewall": {
+            "rules": {},
+            "nat": {"source_nat": {}, "d_nat": {}, "one_to_one": {}, "npt": {}},
+        },
+        "services": services,
+    }
+    config_entry = setup_switch_reconciliation_entry(
+        make_config_entry,
+        coordinator=make_coord(state),
+        sync_firewall_and_nat=True,
+        sync_services=True,
+    )
+    config_entry.add_to_hass(ph_hass)
+    registry = er.async_get(ph_hass)
+    service_entity, stale_rule = (
+        registry.async_get_or_create("switch", DOMAIN, unique_id, config_entry=config_entry)
+        for unique_id in ("old_service_dpinger_status", "old_firewall_rule_stale")
+    )
+    reconciliation = RepairReconciliation(ph_hass, config_entry, RepairMarker(1, "old", "id"))
+    config_entry.runtime_data.repair_reconciliation = reconciliation
+    reconciliation.prepare()
+
+    add_entities = MagicMock()
+    await switch_mod.async_setup_entry(ph_hass, config_entry, add_entities)
+    reconciliation.require_platforms_complete(("switch",))
+    reconciliation.finalize()
+
+    assert registry.async_get_entity_id("switch", DOMAIN, "id_service_dpinger_status") == (
+        service_entity.entity_id if keeps_switch else None
+    )
+    assert registry.async_get(stale_rule.entity_id) is None
+    add_entities.assert_called_once_with([])
 
 
 @pytest.mark.parametrize(
