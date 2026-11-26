@@ -236,7 +236,7 @@ When a Firewall entry reports a Hardware ID mismatch, Home Assistant offers a fi
 
 The repair preserves the URL, credentials, and options. A retry marker makes an interrupted repair resumable. Dashboards and automations remain intact for preserved entity IDs; review references to entities removed during reconciliation.
 
-If Speedtest results cannot be read, the repair keeps existing Speedtest registry entries and reconciles the other readable entities. If the Firewall confirms the Speedtest plugin is missing, the repair removes its sensors.
+If Speedtest results cannot be read, the repair keeps existing Speedtest registry entries and reconciles the other readable entities. The kept sensors stay unavailable until the integration is reloaded after the results can be read again. If the Firewall confirms the Speedtest plugin is missing, the repair removes its sensors.
 
 ## Contributing
 
