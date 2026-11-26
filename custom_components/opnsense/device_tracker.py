@@ -687,22 +687,19 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         if self.mac_address is not None:
             connections.add((CONNECTION_NETWORK_MAC, self.mac_address))
 
-        device_info = DeviceInfo(
-            connections=connections,
-            name=self.hostname or self.mac_address or "",
-        )
+        device_info_fields: dict[str, Any] = {
+            "connections": connections,
+            "name": self.hostname or self.mac_address or "",
+        }
+        # Omit an unknown vendor so the registry keeps an existing manufacturer.
         if self._mac_vendor:
-            device_info["manufacturer"] = self._mac_vendor
+            device_info_fields["manufacturer"] = self._mac_vendor
         if self._router_device_id is not None:
-            device_info["via_device_id"] = self._router_device_id
-            return device_info
-
-        # Home Assistant 2026.3-2026.7 resolves parent devices by identifier.
-        legacy_device_info_factory: Any = DeviceInfo
-        return legacy_device_info_factory(
-            **device_info,
-            via_device=(DOMAIN, self._device_unique_id),
-        )
+            device_info_fields["via_device_id"] = self._router_device_id
+        else:
+            # Home Assistant 2026.3-2026.7 resolves parent devices by identifier.
+            device_info_fields["via_device"] = (DOMAIN, self._device_unique_id)
+        return DeviceInfo(**device_info_fields)
 
     async def _restore_last_state(self) -> None:
         """Restore tracker state from Home Assistant's last saved snapshot."""
