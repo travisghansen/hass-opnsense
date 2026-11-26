@@ -2,8 +2,8 @@
 
 from unittest.mock import MagicMock
 
-from aiopnsense import OPNsenseClient
-from aiopnsense.exceptions import OPNsenseConnectionError
+from aiopnsense import Access, AccessDict, OPNsenseClient
+from aiopnsense.exceptions import OPNsenseConnectionError, OPNsensePrivilegeMissing
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
@@ -30,7 +30,6 @@ from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, 
         "status",
         "unavailable",
         "error",
-        "legacy",
         "collision",
         "no-legacy",
         "pending-repair",
@@ -104,10 +103,7 @@ async def test_wireguard_sensor_migration_during_setup(
 
     migration_client = MagicMock(spec=OPNsenseClient)
     if response in {"configuration", "collision", "pending-repair"}:
-        api = pytest.importorskip(
-            "aiopnsense.access", reason="Requires aiopnsense access reporting"
-        )
-        migration_client.get_wireguard.return_value = api.AccessDict(
+        migration_client.get_wireguard.return_value = AccessDict(
             {
                 "servers": {
                     "aabbccdd-1234-4321-9876-abcdef012345": {
@@ -122,26 +118,13 @@ async def test_wireguard_sensor_migration_during_setup(
                     }
                 },
             },
-            access=api.Access.CONFIGURATION,
+            access=Access.CONFIGURATION,
         )
     elif response == "status":
-        api = pytest.importorskip(
-            "aiopnsense.access", reason="Requires aiopnsense access reporting"
-        )
-        migration_client.get_wireguard.return_value = api.AccessDict(
-            {
-                "servers": {"0123456789abcdef": {"key_hash": "0123456789abcdef", "uuid": None}},
-                "clients": {},
-            },
-            access=api.Access.STATUS,
-        )
+        # The migration client raises on errors, so Status Access arrives as a denial.
+        migration_client.get_wireguard.side_effect = OPNsensePrivilegeMissing("forbidden")
     elif response == "error":
         migration_client.get_wireguard.side_effect = OPNsenseConnectionError("offline")
-    elif response == "legacy":
-        migration_client.get_wireguard.return_value = {
-            "servers": {"aabbccdd-1234-4321-9876-abcdef012345": {"name": "Office"}},
-            "clients": {},
-        }
     else:
         migration_client.get_wireguard.return_value = None
 

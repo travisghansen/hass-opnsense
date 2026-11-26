@@ -14,7 +14,7 @@ import time
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call
 
-from aiopnsense import OPNsenseClient
+from aiopnsense import Access, AccessDict, OPNsenseClient, result_access
 from aiopnsense.exceptions import OPNsenseError, OPNsensePrivilegeMissing, OPNsenseTimeoutError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -67,18 +67,17 @@ async def test_vpn_status_access_survives_refresh_and_is_logged_once(
         hass (HomeAssistant): Home Assistant instance used for coordinator refreshes.
         caplog (pytest.LogCaptureFixture): Captured coordinator logs.
     """
-    api = pytest.importorskip("aiopnsense.access", reason="Requires aiopnsense access reporting")
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={option: option == CONF_SYNC_VPN for option in GRANULAR_SYNC_ITEMS},
     )
     client = MagicMock(spec=OPNsenseClient)
     client.get_device_unique_id.return_value = "firewall"
-    client.get_openvpn.return_value = api.AccessDict({}, access=api.Access.STATUS)
+    client.get_openvpn.return_value = AccessDict({}, access=Access.STATUS)
     client.get_wireguard.side_effect = [
-        api.AccessDict({}, access=api.Access.CONFIGURATION),
-        api.AccessDict({}, access=api.Access.STATUS),
-        api.AccessDict({}, access=api.Access.STATUS),
+        AccessDict({}, access=Access.CONFIGURATION),
+        AccessDict({}, access=Access.STATUS),
+        AccessDict({}, access=Access.STATUS),
     ]
     client.get_ipsec.return_value = {}
     coordinator = OPNsenseDataUpdateCoordinator(
@@ -91,11 +90,11 @@ async def test_vpn_status_access_survives_refresh_and_is_logged_once(
         last_openvpn = coordinator.data["openvpn"]
         await coordinator.async_refresh()
 
-    assert api.result_access(coordinator.data["openvpn"]) is api.Access.STATUS
+    assert result_access(coordinator.data["openvpn"]) is Access.STATUS
     previous_openvpn = coordinator.data["previous_state"]["openvpn"]
     assert previous_openvpn is not last_openvpn
-    assert api.result_access(previous_openvpn) is api.Access.STATUS
-    assert api.result_access(coordinator.data["previous_state"]["wireguard"]) is api.Access.STATUS
+    assert result_access(previous_openvpn) is Access.STATUS
+    assert result_access(coordinator.data["previous_state"]["wireguard"]) is Access.STATUS
     assert [
         record.getMessage() for record in caplog.records if "Status Access" in record.getMessage()
     ] == ["Firewall: OpenVPN reports Status Access", "Firewall: WireGuard reports Status Access"]

@@ -9,7 +9,6 @@ import logging
 import re
 from typing import Any, Final, TypeIs
 
-import aiopnsense
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -56,8 +55,6 @@ from .repair_reconciliation import record_desired_entities
 from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-# aiopnsense 1.5.0 predates the access reporting API.
-_RESULT_ACCESS = getattr(aiopnsense, "result_access", None)
 
 
 _INTERFACE_SENSOR_PROPERTIES: tuple[str, ...] = (
@@ -255,27 +252,6 @@ def _is_valid_vpn_sensor_row(instance: Any) -> bool:
         instance (Any): OPNsense payload object being evaluated.
     """
     return isinstance(instance, MutableMapping) and len(instance) > 0
-
-
-def _wireguard_sensor_id(
-    inventory_key: str, instance: Mapping[str, Any], access_reported: bool
-) -> str | None:
-    """Choose the WireGuard sensor identity for a row.
-
-    Args:
-        inventory_key (str): Key used by the API in the enclosing VPN group.
-        instance (Mapping[str, Any]): WireGuard server or client row.
-        access_reported (bool): Whether the enclosing result reports an access level.
-
-    Returns:
-        str | None: Public key hash, legacy inventory key, or no usable identity.
-    """
-    key_hash = instance.get("key_hash")
-    if isinstance(key_hash, str) and key_hash:
-        return key_hash
-    if not access_reported and "key_hash" not in instance:
-        return inventory_key
-    return None
 
 
 def _vnstat_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
@@ -1838,9 +1814,6 @@ async def _compile_vpn_sensors(
     if not isinstance(state, MutableMapping):
         return []
     entities: list = []
-    wireguard_access_reported = (
-        callable(_RESULT_ACCESS) and _RESULT_ACCESS(state.get("wireguard")) is not None
-    )
 
     for vpn_type, clients_servers_groups in _VPN_SENSOR_GROUPS:
         for clients_servers in clients_servers_groups:
@@ -1851,11 +1824,9 @@ async def _compile_vpn_sensors(
             for inventory_key, instance in vpn_instances.items():
                 if not _is_valid_vpn_sensor_row(instance):
                     continue
-                instance_id = (
-                    _wireguard_sensor_id(inventory_key, instance, wireguard_access_reported)
-                    if vpn_type == "wireguard"
-                    else inventory_key
-                )
+                # WireGuard rows are keyed by UUID or key hash depending on the access
+                # level, so their sensors use the key hash, which both levels report.
+                instance_id = instance.get("key_hash") if vpn_type == "wireguard" else inventory_key
                 if instance_id is None or instance_id in seen_ids:
                     continue
                 seen_ids.add(instance_id)
@@ -2849,15 +2820,11 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             self._mark_unavailable()
             return
         if vpn_type == "wireguard":
-            access_reported = (
-                callable(_RESULT_ACCESS) and _RESULT_ACCESS(self._mapping_at(vpn_type)) is not None
-            )
             instance = next(
                 (
                     row
-                    for inventory_key, row in instances.items()
-                    if isinstance(row, MutableMapping)
-                    and _wireguard_sensor_id(inventory_key, row, access_reported) == instance_id
+                    for row in instances.values()
+                    if isinstance(row, MutableMapping) and row.get("key_hash") == instance_id
                 ),
                 None,
             )

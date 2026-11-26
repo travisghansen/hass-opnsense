@@ -7,8 +7,7 @@ import logging
 import time
 from typing import Any
 
-import aiopnsense
-from aiopnsense import OPNsenseClient
+from aiopnsense import Access, OPNsenseClient, result_access
 from aiopnsense.exceptions import OPNsenseError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -70,9 +69,6 @@ _VPN_COUNTER_GROUPS: dict[str, tuple[str, ...]] = {
     "ipsec": ("connections", "children"),
 }
 _VPN_TYPE_NAMES = {"openvpn": "OpenVPN", "wireguard": "WireGuard", "ipsec": "IPsec"}
-# aiopnsense 1.5.0 predates the access reporting API.
-_RESULT_ACCESS = getattr(aiopnsense, "result_access", None)
-_STATUS_ACCESS = getattr(getattr(aiopnsense, "Access", None), "STATUS", None)
 # Device-tracker lookups that may fail without failing the whole poll.
 _OPTIONAL_TRACKER_METHODS: dict[str, str] = {
     "get_arp_entries": "ARP",
@@ -90,11 +86,7 @@ def vpn_has_status_access(result: object) -> bool:
     Returns:
         bool: Whether aiopnsense explicitly reported Status Access.
     """
-    return (
-        _STATUS_ACCESS is not None
-        and callable(_RESULT_ACCESS)
-        and _RESULT_ACCESS(result) is _STATUS_ACCESS
-    )
+    return result_access(result) is Access.STATUS
 
 
 class OPNsenseDataUpdateCoordinator(DataUpdateCoordinator):

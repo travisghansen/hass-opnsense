@@ -5,7 +5,7 @@ from datetime import timedelta
 from typing import Any, Never, cast
 from unittest.mock import MagicMock
 
-from aiopnsense import OPNsenseClient
+from aiopnsense import Access, AccessDict, OPNsenseClient
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntityDescription,
@@ -72,7 +72,6 @@ async def test_wireguard_sensor_identity_and_state_survive_access_changes(
         hass (HomeAssistant): Home Assistant instance for the coordinator.
         make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
     """
-    api = pytest.importorskip("aiopnsense.access", reason="Requires aiopnsense access reporting")
     entry = make_config_entry(
         data={
             CONF_DEVICE_UNIQUE_ID: "AA:BB",
@@ -91,7 +90,7 @@ async def test_wireguard_sensor_identity_and_state_survive_access_changes(
     key_hash = "0123456789abcdef"
     uuid = "aa12bc34-1234-4321-9876-abcdef012345"
     server = {"name": "Office", "key_hash": key_hash}
-    client.get_wireguard.return_value = api.AccessDict(
+    client.get_wireguard.return_value = AccessDict(
         {
             "servers": {
                 uuid: {**server, "uuid": uuid, "enabled": True, "status": "up"},
@@ -99,7 +98,7 @@ async def test_wireguard_sensor_identity_and_state_survive_access_changes(
             },
             "clients": {},
         },
-        access=api.Access.CONFIGURATION,
+        access=Access.CONFIGURATION,
     )
     added = MagicMock()
     await coordinator.async_refresh()
@@ -114,9 +113,9 @@ async def test_wireguard_sensor_identity_and_state_survive_access_changes(
     await status_sensor.async_added_to_hass()
     assert status_sensor.native_value == "up"
 
-    client.get_wireguard.return_value = api.AccessDict(
+    client.get_wireguard.return_value = AccessDict(
         {"servers": {key_hash: {**server, "uuid": None, "status": "down"}}, "clients": {}},
-        access=api.Access.STATUS,
+        access=Access.STATUS,
     )
     await coordinator.async_refresh()
     assert status_sensor.available
@@ -1027,7 +1026,7 @@ async def test_compile_vpn_sensors_falls_back_to_uuid_when_name_is_unusable(
     coordinator.data = {
         "wireguard": {
             "clients": {},
-            "servers": {"wg-uuid": instance},
+            "servers": {"wg-uuid": {**instance, "key_hash": "0123456789abcdef"}},
         }
     }
     entry = make_config_entry()
@@ -1036,7 +1035,7 @@ async def test_compile_vpn_sensors_falls_back_to_uuid_when_name_is_unusable(
     status_sensor = next(
         entity
         for entity in entities
-        if entity.entity_description.key == "wireguard.servers.wg-uuid.status"
+        if entity.entity_description.key == "wireguard.servers.0123456789abcdef.status"
     )
 
     assert isinstance(status_sensor, OPNsenseVPNSensor)
@@ -4709,8 +4708,10 @@ async def test_compile_and_handle_many_entities(
             }
         },
         "wireguard": {
-            "servers": {"wg1": {"name": "wg1", "status": "up", "clients": []}},
-            "clients": {"c1": {"name": "c1", "enabled": True}},
+            "servers": {
+                "wg1": {"name": "wg1", "key_hash": "s1hash", "status": "up", "clients": []}
+            },
+            "clients": {"c1": {"name": "c1", "key_hash": "c1hash", "enabled": True}},
         },
         "dhcp_leases": {
             "leases": {"lan": [{"address": "192.168.1.2", "hostname": "host1"}]},
@@ -5387,8 +5388,17 @@ async def test_generated_sensor_entity_contract(
         "gateways": {"gw1": {"name": "WAN Gateway", "status": "online", "address": "203.0.113.1"}},
         "openvpn": {"servers": {"s1": {"name": "ovpn1", "status": "up", "connected_clients": 2}}},
         "wireguard": {
-            "clients": {"c1": {"name": "wg-client-1", "connected_servers": 1}},
-            "servers": {"wg1": {"name": "wg-server-1", "status": "up", "connected_clients": 1}},
+            "clients": {
+                "c1": {"name": "wg-client-1", "key_hash": "c1hash", "connected_servers": 1}
+            },
+            "servers": {
+                "wg1": {
+                    "name": "wg-server-1",
+                    "key_hash": "s1hash",
+                    "status": "up",
+                    "connected_clients": 1,
+                }
+            },
         },
         "dhcp_leases": {"leases": {"lan": []}, "lease_interfaces": {"lan": "LAN"}},
         "certificates": {"cert1": 1},
@@ -5468,7 +5478,7 @@ async def test_generated_sensor_entity_contract(
             "state_class": None,
             "entity_registry_enabled_default": True,
         },
-        "wireguard.clients.c1.connected_servers": {
+        "wireguard.clients.c1hash.connected_servers": {
             "name": "Wireguard Client wg-client-1 connected_servers",
             "native_unit_of_measurement": None,
             "device_class": None,
@@ -5523,26 +5533,26 @@ async def test_generated_sensor_entity_contract(
     }
 
     wireguard_server_keys = {
-        key for key in entities_by_key if key.startswith("wireguard.servers.wg1.")
+        key for key in entities_by_key if key.startswith("wireguard.servers.s1hash.")
     }
     assert wireguard_server_keys == {
-        "wireguard.servers.wg1.total_bytes_recv",
-        "wireguard.servers.wg1.total_bytes_sent",
-        "wireguard.servers.wg1.total_bytes_recv_kilobytes_per_second",
-        "wireguard.servers.wg1.total_bytes_sent_kilobytes_per_second",
-        "wireguard.servers.wg1.status",
-        "wireguard.servers.wg1.connected_clients",
+        "wireguard.servers.s1hash.total_bytes_recv",
+        "wireguard.servers.s1hash.total_bytes_sent",
+        "wireguard.servers.s1hash.total_bytes_recv_kilobytes_per_second",
+        "wireguard.servers.s1hash.total_bytes_sent_kilobytes_per_second",
+        "wireguard.servers.s1hash.status",
+        "wireguard.servers.s1hash.connected_clients",
     }
 
     wireguard_client_keys = {
-        key for key in entities_by_key if key.startswith("wireguard.clients.c1.")
+        key for key in entities_by_key if key.startswith("wireguard.clients.c1hash.")
     }
     assert wireguard_client_keys == {
-        "wireguard.clients.c1.total_bytes_recv",
-        "wireguard.clients.c1.total_bytes_sent",
-        "wireguard.clients.c1.total_bytes_recv_kilobytes_per_second",
-        "wireguard.clients.c1.total_bytes_sent_kilobytes_per_second",
-        "wireguard.clients.c1.connected_servers",
+        "wireguard.clients.c1hash.total_bytes_recv",
+        "wireguard.clients.c1hash.total_bytes_sent",
+        "wireguard.clients.c1hash.total_bytes_recv_kilobytes_per_second",
+        "wireguard.clients.c1hash.total_bytes_sent_kilobytes_per_second",
+        "wireguard.clients.c1hash.connected_servers",
     }
 
 

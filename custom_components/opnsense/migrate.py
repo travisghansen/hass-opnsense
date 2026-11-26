@@ -20,7 +20,6 @@ from .const import (
     DEFAULT_SYNC_OPTION_VALUE,
     DEFAULT_TLS_INSECURE,
 )
-from .coordinator import vpn_has_status_access
 from .helpers import (
     config_entry_identity,
     create_opnsense_client_from_config_entry,
@@ -617,6 +616,9 @@ async def _read_wireguard_for_migration(
 ) -> Mapping[str, Any] | None:
     """Read WireGuard configuration without blocking migration when it is unavailable.
 
+    The client raises on errors, so Status Access surfaces as
+    ``OPNsensePrivilegeMissing`` and never as a partial result.
+
     Args:
         hass (HomeAssistant): Home Assistant instance.
         config_entry (ConfigEntry): Config entry whose WireGuard inventory is needed.
@@ -639,7 +641,7 @@ async def _read_wireguard_for_migration(
         if client is not None and migration_client is None:
             await client.async_close()
 
-    if vpn_has_status_access(wireguard) or not isinstance(wireguard, Mapping):
+    if not isinstance(wireguard, Mapping):
         _LOGGER.warning("Skipping WireGuard sensor migration: configuration is unavailable")
         return None
     return wireguard

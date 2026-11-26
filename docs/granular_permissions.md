@@ -115,7 +115,7 @@ Firewall and NAT rule switches are unavailable on older firmware; the deprecated
 - **WireGuard** requires only `VPN: WireGuard: Configuration` for Configuration Access because it includes the status endpoint. On 25.1, the combined permission is named `VPN: WireGuard`. From 25.7, `VPN: WireGuard: Status` on its own provides Status Access.
 - **IPsec** requires both `Status: IPsec` and `VPN: IPsec: Connections` for Configuration Access.
 
-A Toggle from a Home Assistant switch calls both the instance's toggle endpoint and the VPN service's reconfigure endpoint.
+A Toggle from a Home Assistant switch calls both the instance's toggle endpoint and the VPN service's reconfigure endpoint. A WireGuard Toggle also reads the instance first.
 
 | OPNsense Permission | Access Level | Method | API Endpoints |
 | --- | --- | --- | --- |
@@ -126,6 +126,7 @@ A Toggle from a Home Assistant switch calls both the instance's toggle endpoint 
 | VPN: OpenVPN: Client Export Utility | Configuration Access (optional) | GET | `/api/openvpn/export/providers` |
 | VPN: WireGuard: Status (25.7+) | Status Access | GET | `/api/wireguard/service/show` |
 | VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | Configuration Access | GET | `/api/wireguard/service/show`<br>`/api/wireguard/client/get`<br>`/api/wireguard/server/get` |
+| VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | Configuration Access (Toggle) | GET | `/api/wireguard/client/get_client/{uuid}` (or `/api/wireguard/client/getClient/{uuid}`)<br>`/api/wireguard/server/get_server/{uuid}` (or `/api/wireguard/server/getServer/{uuid}`) |
 | VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | Configuration Access (Toggle) | POST | `/api/wireguard/client/toggle_client/{uuid}` (or `/api/wireguard/client/toggleClient/{uuid}`)<br>`/api/wireguard/server/toggle_server/{uuid}` (or `/api/wireguard/server/toggleServer/{uuid}`)<br>`/api/wireguard/service/reconfigure` |
 | Status: IPsec | Status Access | GET | `/api/ipsec/sessions/search_phase1` (or `/api/ipsec/sessions/searchPhase1`) |
 | Status: IPsec | Status Access | POST | `/api/ipsec/sessions/search_phase2` (or `/api/ipsec/sessions/searchPhase2`) |
