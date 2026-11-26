@@ -52,8 +52,6 @@ from .const import (
     GRANULAR_SYNC_PREFIX,
     LOADED_PLATFORMS,
     OPNSENSE_CLIENT,
-    OPNSENSE_LTD_FIRMWARE,
-    OPNSENSE_MIN_FIRMWARE,
     PLATFORMS,
     SHOULD_RELOAD,
     VERSION,
@@ -630,7 +628,7 @@ async def _async_probe_router_for_setup(
             router_device_id,
         )
         if not is_valid_device_id(router_device_id):
-            raise ConfigEntryNotReady("OPNsense did not return a usable Device ID during setup")
+            raise ConfigEntryNotReady("OPNsense did not return a usable Hardware ID during setup")
         # Trigger repair task and shutdown if Device ID has changed
         if not _resolve_device_id_probe_state(
             hass,
@@ -729,14 +727,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not identity_matches:
             return False
         _LOGGER.info("OPNsense Firmware %s", firmware)
+        firmware_requirements = OPNsenseClient.get_firmware_requirements()
+        min_firmware = firmware_requirements.minimum
+        recommended_firmware = firmware_requirements.recommended
+        min_firmware_issue_id = f"{config_device_id}_opnsense_below_min_firmware_{min_firmware}"
+        recommended_firmware_issue_id = (
+            f"{config_device_id}_opnsense_below_recommended_firmware_{recommended_firmware}"
+        )
         try:
             if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
-                OPNSENSE_MIN_FIRMWARE
+                min_firmware
             ):
                 ir.async_create_issue(
                     hass,
                     DOMAIN,
-                    f"{config_device_id}_opnsense_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
+                    min_firmware_issue_id,
                     is_fixable=False,
                     is_persistent=False,
                     issue_domain=DOMAIN,
@@ -744,40 +749,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     translation_key="below_min_firmware",
                     translation_placeholders={
                         "version": str(VERSION),
-                        "min_firmware": str(OPNSENSE_MIN_FIRMWARE),
+                        "min_firmware": min_firmware,
                         "firmware": firmware or "Unknown",
                     },
                 )
                 return False
+            # Minimum passed: clear any below-minimum error left from an earlier, older firmware.
+            ir.async_delete_issue(hass, DOMAIN, min_firmware_issue_id)
             if awesomeversion.AwesomeVersion(firmware) < awesomeversion.AwesomeVersion(
-                OPNSENSE_LTD_FIRMWARE
+                recommended_firmware
             ):
                 ir.async_create_issue(
                     hass,
                     DOMAIN,
-                    f"{config_device_id}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
+                    recommended_firmware_issue_id,
                     is_fixable=False,
                     is_persistent=False,
                     issue_domain=DOMAIN,
                     severity=ir.IssueSeverity.WARNING,
-                    translation_key="below_ltd_firmware",
+                    translation_key="below_recommended_firmware",
                     translation_placeholders={
                         "version": str(VERSION),
-                        "ltd_firmware": str(OPNSENSE_LTD_FIRMWARE),
+                        "recommended_firmware": recommended_firmware,
                         "firmware": firmware or "Unknown",
                     },
                 )
             else:
-                ir.async_delete_issue(
-                    hass,
-                    DOMAIN,
-                    f"{config_device_id}_opnsense_below_min_firmware_{OPNSENSE_MIN_FIRMWARE}",
-                )
-                ir.async_delete_issue(
-                    hass,
-                    DOMAIN,
-                    f"{config_device_id}_opnsense_below_ltd_firmware_{OPNSENSE_LTD_FIRMWARE}",
-                )
+                ir.async_delete_issue(hass, DOMAIN, recommended_firmware_issue_id)
         except awesomeversion.exceptions.AwesomeVersionCompareException, TypeError, ValueError:
             _LOGGER.warning("Unable to confirm OPNsense Firmware version")
 

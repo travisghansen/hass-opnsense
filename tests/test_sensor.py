@@ -3854,10 +3854,16 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
     assert recorded["entities"] is None, description
 
 
+@pytest.mark.parametrize(
+    "wireguard",
+    [{}, {"servers": {}, "clients": {}}],
+    ids=["empty_mapping", "empty_wireguard_collections"],
+)
 @pytest.mark.asyncio
 async def test_async_setup_entry_records_complete_vpn_inventory(
     monkeypatch: pytest.MonkeyPatch,
     make_config_entry: Callable[..., MockConfigEntry],
+    wireguard: dict[str, Any],
 ) -> None:
     """A complete VPN inventory, including IPsec children, marks sensor reconciliation complete.
 
@@ -3866,6 +3872,7 @@ async def test_async_setup_entry_records_complete_vpn_inventory(
     Args:
         monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        wireguard (dict[str, Any]): Authoritative empty WireGuard inventory.
     """
     config_entry = make_config_entry(
         {
@@ -3887,7 +3894,7 @@ async def test_async_setup_entry_records_complete_vpn_inventory(
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coordinator.data = {
         "openvpn": {},
-        "wireguard": {},
+        "wireguard": wireguard,
         "ipsec": {"connections": {}, "children": {}},
     }
     setattr(config_entry.runtime_data, COORDINATOR, coordinator)
@@ -3908,7 +3915,7 @@ async def test_async_setup_entry_records_complete_vpn_inventory(
     await async_setup_entry(
         MagicMock(), config_entry, cast("AddEntitiesCallback", lambda ents, _=False: None)
     )
-    assert recorded["entities"] is not None
+    assert recorded["entities"] == []
 
 
 @pytest.mark.parametrize(

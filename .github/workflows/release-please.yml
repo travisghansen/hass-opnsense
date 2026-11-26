@@ -41,6 +41,15 @@ jobs:
           ref: ${{ steps.release.outputs.tag_name || inputs.release_tag }}
           persist-credentials: false
 
+      - name: Set up uv
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          steps.release.outputs.release_created == 'true'
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.14"
+          enable-cache: false
+
       - name: Build and upload the HACS archive
         if: >-
           github.event_name == 'workflow_dispatch' ||
@@ -58,11 +67,13 @@ jobs:
           git archive --format=zip --output="$RUNNER_TEMP/opnsense.zip" \
             HEAD:custom_components/opnsense
           python3 .github/scripts/verify_hacs_archive.py "$RUNNER_TEMP/opnsense.zip" "$RELEASE_TAG"
-          opnsense_ltd_firmware="$(grep 'OPNSENSE_LTD_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)"
-          opnsense_min_firmware="$(grep 'OPNSENSE_MIN_FIRMWARE' custom_components/opnsense/const.py | cut -d '"' -f2)"
-          firmware_notes="<!-- opnsense-firmware-compatibility --><h3>OPNsense Minimum Firmware Required: $opnsense_min_firmware</h3><h4>OPNsense Recommended Firmware: $opnsense_ltd_firmware+</h4><p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i></p>"
           release_body="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
           if [[ "$release_body" != *"opnsense-firmware-compatibility"* ]]; then
+            # Firmware requirements come from the aiopnsense version pinned by the released tag.
+            aiopnsense_pin="$(python3 -c 'import json, sys; print(next(r for r in json.load(open(sys.argv[1]))["requirements"] if r.startswith("aiopnsense==")))' custom_components/opnsense/manifest.json)"
+            firmware_requirements="$(uv run --no-project --with "$aiopnsense_pin" python -c 'from aiopnsense import OPNsenseClient; r = OPNsenseClient.get_firmware_requirements(); print(r.minimum, r.recommended)')"
+            read -r opnsense_min_firmware opnsense_recommended_firmware <<< "$firmware_requirements"
+            firmware_notes="<!-- opnsense-firmware-compatibility --><h3>OPNsense Minimum Firmware Required: $opnsense_min_firmware</h3><h4>OPNsense Recommended Firmware: $opnsense_recommended_firmware+</h4><p><i>For firmware versions below the minimum version, the integration will not permit new installations and existing installations will no longer start. Firmware versions below the recommended version will likely work but may have limited features and/or show errors in the logs.</i></p>"
             gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
               --notes "${release_body}"$'\n\n'"$firmware_notes"
           fi

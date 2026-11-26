@@ -2,8 +2,8 @@
   "title": "OPNsense",
   "config": {
     "abort": {
-      "already_configured": "L'appareil est déjà configuré",
-      "carp_device_url_conflict": "Une entrée CARP et une entrée de périphérique ne peuvent pas utiliser la même URL. ",
+      "already_configured": "Le pare-feu est déjà configuré",
+      "carp_device_url_conflict": "Une entrée VIP CARP et une entrée de pare-feu ne peuvent pas utiliser la même URL. ",
       "reconfigure_successful": "Intégration OPNsense reconfigurée"
     },
     "error": {
@@ -15,17 +15,17 @@
       "connect_timeout": "Délai de connexion",
       "cannot_connect_ssl": "Erreur de vérification du certificat SSL. ",
       "url_redirect": "URL incorrecte (redirection)",
-      "missing_device_unique_id": "Impossible d'obtenir les adresses MAC d'OPNsense pour les utiliser comme ID unique de l'appareil",
+      "missing_device_unique_id": "Impossible d'obtenir les adresses MAC d'OPNsense pour les utiliser comme ID matériel",
       "below_min_firmware": "Le micrologiciel OPNsense de {firmware} est inférieur à la version minimale prise en charge de {min_firmware}",
       "carp_not_configured": "Aucune interface CARP VIP n'est configurée sur l'hôte OPNsense sélectionné",
-      "carp_responder_unavailable": "Impossible de déterminer le répondeur CARP actif à partir de l'hôte OPNsense sélectionné",
+      "carp_responder_unavailable": "Impossible de déterminer le répondeur actif à partir de l'hôte OPNsense sélectionné",
       "unknown_firmware": "Impossible d'obtenir la version du micrologiciel OPNsense"
     },
     "step": {
       "user": {
         "title": "Ajouter une instance hass-opnsense",
         "menu_options": {
-          "device": "Entrée du périphérique OPNsense",
+          "device": "Entrée de pare-feu",
           "carp": "Entrée VIP CARP"
         }
       },
@@ -38,9 +38,9 @@
           "verify_ssl": "Vérifier le certificat SSL",
           "granular_sync_options": "Activer les options de synchronisation granulaire"
         },
-        "title": "Connectez-vous au pare-feu/routeur OPNsense",
+        "title": "Connectez-vous au pare-feu OPNsense",
         "data_description": {
-          "url": "Utilisez l’URL réelle de l’appareil OPNsense. "
+          "url": "Utilisez l’URL réelle du pare-feu OPNsense. "
         }
       },
       "carp": {
@@ -87,7 +87,7 @@
           "password": "Secret API",
           "verify_ssl": "Vérifier le certificat SSL"
         },
-        "title": "Mettre à jour la connexion au pare-feu/routeur OPNsense"
+        "title": "Mettre à jour la connexion au pare-feu OPNsense"
       }
     }
   },
@@ -108,7 +108,8 @@
         },
         "description": "Cet écran expose {options_scope}.",
         "data_description": {
-          "device_tracking_mode": "Pour « Suivre uniquement les appareils sélectionnés », une étape suivante vous permet de sélectionner les appareils parmi les détections ARP récentes et d'ajouter manuellement des adresses MAC.",
+          "device_tracker_resolve_hostnames": "Demande à OPNsense de résoudre en sens inverse les entrées de voisinage afin que les entités de suivi d'appareils portent le nom d'hôte plutôt que l'adresse MAC. Désactivez cette option si le pare-feu n'a pas de DNS inverse fonctionnel pour les clients du réseau local.",
+          "device_tracking_mode": "Pour « Suivre uniquement les clients sélectionnés », une étape suivante vous permet de sélectionner des clients parmi les entrées de voisinage récentes et d'ajouter manuellement des adresses MAC.",
           "scan_interval": "L'intervalle d'analyse contrôle la fréquence à laquelle cette entrée interroge sa source."
         }
       },
@@ -135,13 +136,13 @@
         "title": "Choisissez les éléments à synchroniser"
       },
       "device_tracker": {
-        "description": "Choisissez les appareils à suivre. ",
+        "description": "Choisissez les clients à suivre. ",
         "data": {
-          "devices": "Appareils à suivre",
+          "devices": "Clients à suivre",
           "manual_devices": "Adresses MAC supplémentaires non détectées actuellement"
         },
         "data_description": {
-          "devices": "Seuls les appareils récemment détectés apparaissent ici. ",
+          "devices": "Seuls les clients récemment détectés apparaissent ici. ",
           "manual_devices": "Entrez les adresses MAC séparées par des virgules ou des nouvelles lignes. "
         }
       }
@@ -165,9 +166,9 @@
       "title": "Micrologiciel OPNsense inférieur à la version minimale",
       "description": "hass-opnsense {version} nécessite le micrologiciel OPNsense {min_firmware} ou version ultérieure. "
     },
-    "below_ltd_firmware": {
+    "below_recommended_firmware": {
       "title": "Micrologiciel OPNsense inférieur à la version recommandée",
-      "description": "Certaines fonctions hass-opnsense {version} nécessitent le micrologiciel OPNsense {ltd_firmware} ou version ultérieure. Avec le micrologiciel {firmware}, certaines fonctions peuvent ne pas fonctionner et des erreurs peuvent apparaître dans les journaux."
+      "description": "Certaines fonctions hass-opnsense {version} nécessitent le micrologiciel OPNsense {recommended_firmware} ou version ultérieure. Avec le micrologiciel {firmware}, certaines fonctions peuvent ne pas fonctionner et des erreurs peuvent apparaître dans les journaux."
     },
     "device_id_mismatched": {
       "title": "Matériel de remplacement détecté",
@@ -175,15 +176,15 @@
         "step": {
           "confirm": {
             "title": "Rapprocher l'inventaire du matériel de remplacement",
-            "description": "Cette réparation rapprochera {entry_title} avec l'ID d'appareil de remplacement {new_device_id}. L'ID de l'appareil précédent était {old_device_id}."
+            "description": "Cette réparation rapprochera {entry_title} avec l'ID matériel de remplacement {new_device_id}. L'ID matériel précédent était {old_device_id}."
           }
         },
         "abort": {
-          "entry_not_found": "L’entrée du périphérique OPNsense n’existe plus.",
-          "entry_changed": "L’entrée du périphérique OPNsense a été modifiée pendant l’exécution de la réparation. ",
+          "entry_not_found": "L’entrée de pare-feu n’existe plus.",
+          "entry_changed": "L’entrée de pare-feu a été modifiée pendant l’exécution de la réparation. ",
           "cannot_connect": "Le matériel de remplacement n'a pas pu être confirmé. ",
-          "already_configured": "Une autre entrée de périphérique OPNsense utilise déjà l'ID de périphérique de remplacement. ",
-          "cannot_unload": "L'entrée du périphérique OPNsense n'a pas pu être déchargée en toute sécurité. ",
+          "already_configured": "Une autre entrée de pare-feu utilise déjà l'ID matériel de remplacement. ",
+          "cannot_unload": "L'entrée de pare-feu n'a pas pu être déchargée en toute sécurité. ",
           "repair_failed": "La réparation du matériel de remplacement n'est pas terminée. "
         }
       }
@@ -200,7 +201,7 @@
       "message": "Échec de l'élimination des états : {ip_addr}"
     },
     "no_target_clients": {
-      "message": "Aucun client OPNsense ne correspond à la cible sélectionnée."
+      "message": "Aucun pare-feu ne correspond à la cible sélectionnée."
     },
     "reload_interface_failed": {
       "message": "Échec du rechargement de l'interface : {interface}"
@@ -282,8 +283,8 @@
     "device_tracking_mode": {
       "options": {
         "disabled": "Désactivé",
-        "all_detected": "Suivre tous les appareils détectés (les entités sont désactivées par défaut)",
-        "selected_only": "Suivre uniquement les appareils sélectionnés (choisir les appareils dans une étape suivante)"
+        "all_detected": "Suivre tous les clients détectés (les entités sont désactivées par défaut)",
+        "selected_only": "Suivre uniquement les clients sélectionnés (choisir les clients dans une étape suivante)"
       }
     }
   },
@@ -297,17 +298,17 @@
           "description": "L’ID de la notification à effacer. "
         },
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+          "name": "Pare-feu OPNsense",
+          "description": "Sélectionnez le pare-feu OPNsense sur lequel appeler la commande. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+          "description": "Choisissez n’importe quel capteur du pare-feu OPNsense sur lequel vous souhaitez appeler la commande. "
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+          "name": "Nécessaire uniquement s'il existe plusieurs pare-feu OPNsense"
         }
       }
     },
@@ -324,17 +325,17 @@
           "description": "Le nom du service. "
         },
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+          "name": "Pare-feu OPNsense",
+          "description": "Sélectionnez le pare-feu OPNsense sur lequel appeler la commande. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+          "description": "Choisissez n’importe quel capteur du pare-feu OPNsense sur lequel vous souhaitez appeler la commande. "
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+          "name": "Nécessaire uniquement s'il existe plusieurs pare-feu OPNsense"
         }
       }
     },
@@ -351,17 +352,17 @@
           "description": "Le nom du service. "
         },
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+          "name": "Pare-feu OPNsense",
+          "description": "Sélectionnez le pare-feu OPNsense sur lequel appeler la commande. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+          "description": "Choisissez n’importe quel capteur du pare-feu OPNsense sur lequel vous souhaitez appeler la commande. "
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+          "name": "Nécessaire uniquement s'il existe plusieurs pare-feu OPNsense"
         }
       }
     },
@@ -382,45 +383,45 @@
           "description": "Redémarrez le service uniquement s'il est déjà en cours d'exécution."
         },
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+          "name": "Pare-feu OPNsense",
+          "description": "Sélectionnez le pare-feu OPNsense sur lequel appeler la commande. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+          "description": "Choisissez n’importe quel capteur du pare-feu OPNsense sur lequel vous souhaitez appeler la commande. "
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+          "name": "Nécessaire uniquement s'il existe plusieurs pare-feu OPNsense"
         }
       }
     },
     "system_halt": {
       "name": "Système d'arrêt",
-      "description": "Arrête le routeur OPNsense",
+      "description": "Arrête le pare-feu OPNsense",
       "fields": {
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Nécessaire uniquement s’il existe plusieurs routeurs OPNsense. "
+          "name": "Pare-feu OPNsense",
+          "description": "Nécessaire uniquement s’il existe plusieurs pare-feu OPNsense. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Nécessaire uniquement s’il existe plusieurs routeurs OPNsense. "
+          "description": "Nécessaire uniquement s’il existe plusieurs pare-feu OPNsense. "
         }
       }
     },
     "system_reboot": {
       "name": "Redémarrer le système",
-      "description": "Redémarre le routeur OPNsense",
+      "description": "Redémarre le pare-feu OPNsense",
       "fields": {
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Nécessaire uniquement s’il existe plusieurs routeurs OPNsense. "
+          "name": "Pare-feu OPNsense",
+          "description": "Nécessaire uniquement s’il existe plusieurs pare-feu OPNsense. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Nécessaire uniquement s’il existe plusieurs routeurs OPNsense. "
+          "description": "Nécessaire uniquement s’il existe plusieurs pare-feu OPNsense. "
         }
       }
     },
@@ -437,17 +438,17 @@
           "description": "L'adresse MAC cible."
         },
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+          "name": "Pare-feu OPNsense",
+          "description": "Sélectionnez le pare-feu OPNsense sur lequel appeler la commande. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+          "description": "Choisissez n’importe quel capteur du pare-feu OPNsense sur lequel vous souhaitez appeler la commande. "
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+          "name": "Nécessaire uniquement s'il existe plusieurs pare-feu OPNsense"
         }
       }
     },
@@ -460,17 +461,17 @@
           "description": "Le nom de l'interface. "
         },
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+          "name": "Pare-feu OPNsense",
+          "description": "Sélectionnez le pare-feu OPNsense sur lequel appeler la commande. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+          "description": "Choisissez n’importe quel capteur du pare-feu OPNsense sur lequel vous souhaitez appeler la commande. "
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+          "name": "Nécessaire uniquement s'il existe plusieurs pare-feu OPNsense"
         }
       }
     },
@@ -499,17 +500,17 @@
           "description": "FACULTATIF : nécessaire uniquement s'il existe plusieurs serveurs de bons de portail captifs"
         },
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+          "name": "Pare-feu OPNsense",
+          "description": "Sélectionnez le pare-feu OPNsense sur lequel appeler la commande. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+          "description": "Choisissez n’importe quel capteur du pare-feu OPNsense sur lequel vous souhaitez appeler la commande. "
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+          "name": "Nécessaire uniquement s'il existe plusieurs pare-feu OPNsense"
         }
       }
     },
@@ -522,17 +523,17 @@
           "description": "L'adresse IP pour laquelle supprimer tous les états. "
         },
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+          "name": "Pare-feu OPNsense",
+          "description": "Sélectionnez le pare-feu OPNsense sur lequel appeler la commande. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+          "description": "Choisissez n’importe quel capteur du pare-feu OPNsense sur lequel vous souhaitez appeler la commande. "
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+          "name": "Nécessaire uniquement s'il existe plusieurs pare-feu OPNsense"
         }
       }
     },
@@ -541,17 +542,17 @@
       "description": "Exécutez un test de vitesse OPNsense et renvoyez les résultats sous forme de données de réponse à l'action",
       "fields": {
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+          "name": "Pare-feu OPNsense",
+          "description": "Sélectionnez le pare-feu OPNsense sur lequel appeler la commande. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+          "description": "Choisissez n’importe quel capteur du pare-feu OPNsense sur lequel vous souhaitez appeler la commande. "
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+          "name": "Nécessaire uniquement s'il existe plusieurs pare-feu OPNsense"
         }
       }
     },
@@ -564,17 +565,17 @@
           "description": "La période vnStat à interroger"
         },
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+          "name": "Pare-feu OPNsense",
+          "description": "Sélectionnez le pare-feu OPNsense sur lequel appeler la commande. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+          "description": "Choisissez n’importe quel capteur du pare-feu OPNsense sur lequel vous souhaitez appeler la commande. "
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+          "name": "Nécessaire uniquement s'il existe plusieurs pare-feu OPNsense"
         }
       }
     },
@@ -591,17 +592,17 @@
           "description": "Quelle action entreprendre sur l'alias"
         },
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+          "name": "Pare-feu OPNsense",
+          "description": "Sélectionnez le pare-feu OPNsense sur lequel appeler la commande. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+          "description": "Choisissez n’importe quel capteur du pare-feu OPNsense sur lequel vous souhaitez appeler la commande. "
         }
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+          "name": "Nécessaire uniquement s'il existe plusieurs pare-feu OPNsense"
         }
       }
     },
@@ -614,12 +615,12 @@
           "description": "Action à effectuer sur l’interface"
         },
         "device_id": {
-          "name": "Appareil OPNsense",
-          "description": "Sélectionnez le routeur OPNsense sur lequel appeler la commande. "
+          "name": "Pare-feu OPNsense",
+          "description": "Sélectionnez le pare-feu OPNsense sur lequel appeler la commande. "
         },
         "entity_id": {
           "name": "Entité OPNsense",
-          "description": "Choisissez n’importe quel capteur du routeur OPNsense sur lequel vous souhaitez appeler la commande. "
+          "description": "Choisissez n’importe quel capteur du pare-feu OPNsense sur lequel vous souhaitez appeler la commande. "
         },
         "interface": {
           "name": "Interface",
@@ -628,7 +629,7 @@
       },
       "sections": {
         "multiple_opnsense": {
-          "name": "Nécessaire uniquement s'il existe plusieurs routeurs OPNsense"
+          "name": "Nécessaire uniquement s'il existe plusieurs pare-feu OPNsense"
         }
       }
     }

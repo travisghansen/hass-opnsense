@@ -59,7 +59,6 @@ from .const import (
     ENTRY_TYPE_CARP,
     ENTRY_TYPE_DEVICE,
     GRANULAR_SYNC_ITEMS,
-    OPNSENSE_MIN_FIRMWARE,
     TRACKED_MACS,
 )
 from .helpers import (
@@ -75,7 +74,7 @@ DeviceEntries = dict[str, str]
 
 CONFIG_FLOW_DOCUMENTATION_URL = "https://github.com/travisghansen/hass-opnsense"
 USER_MENU_OPTIONS = {
-    "device": "OPNsense device entry",
+    "device": "Firewall entry",
     "carp": "CARP VIP entry",
 }
 
@@ -398,7 +397,7 @@ def _get_validation_error_details(
             "below_min_firmware",
             (
                 f"OPNsense Firmware of {user_input.get(CONF_FIRMWARE_VERSION)} is below the "
-                f"minimum supported version of {OPNSENSE_MIN_FIRMWARE}"
+                f"minimum supported version of {OPNsenseClient.get_firmware_requirements().minimum}"
             ),
         )
     if isinstance(error, OPNsenseUnknownFirmware):
@@ -1104,7 +1103,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "firmware": firmware,
-                "min_firmware": OPNSENSE_MIN_FIRMWARE,
+                "min_firmware": OPNsenseClient.get_firmware_requirements().minimum,
             },
         )
 
@@ -1154,7 +1153,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "firmware": firmware,
-                "min_firmware": OPNSENSE_MIN_FIRMWARE,
+                "min_firmware": OPNsenseClient.get_firmware_requirements().minimum,
             },
         )
 
@@ -1285,7 +1284,7 @@ class OPNsenseConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
             description_placeholders={
                 "firmware": firmware,
-                "min_firmware": OPNSENSE_MIN_FIRMWARE,
+                "min_firmware": OPNsenseClient.get_firmware_requirements().minimum,
             },
         )
 

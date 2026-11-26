@@ -11,13 +11,13 @@
 - For non-trivial edits, provide a short plan. For small, low-risk edits, implement and include a one-line summary.
 - Focus on a single conceptual change at a time when public APIs or multiple modules are affected.
 - Follow `CODING_STANDARDS.md`. Maintain Python 3.14+ compatibility and target latest Home Assistant core.
-- Keep compatibility with the minimum supported OPNsense firmware documented in `custom_components/opnsense/const.py` and `README.md`.
+- Keep compatibility with the minimum supported OPNsense firmware reported by `OPNsenseClient.get_firmware_requirements()` and documented in `README.md`. Do not hardcode the Minimum or Recommended Firmware in this repository; aiopnsense owns those thresholds.
 - If deviating from these guidelines, explicitly state which guideline is deviated from and why.
 
 ## Agent Permissions and Venv Policy
 
 - Agents may create and use a repository-local venv at `./.venv`. Use `./.venv/bin/python`, `./.venv/bin/pytest`, and `./.venv/bin/prek` for local commands unless using the main checkout venv for a git worktree with no dependency changes.
-- The project uses `pyproject.toml` dependency groups (`ha`, `lint`, `pytest`, `dev`). Installing packages from repo manifests into `./.venv` with `uv` (for example `uv sync --group dev`) is allowed for running tests or local tooling after approval; avoid unrelated network operations without explicit consent.
+- The project uses `pyproject.toml` dependency groups (`ha`, `lint`, `pytest`, `dev`). Installing packages from repo manifests into `./.venv` with `uv` (for example `uv sync --group dev`) is allowed for running tests or local tooling.
 
 ## Folder Structure (Repo-Specific)
 
@@ -43,9 +43,10 @@
 - Create branches or PRs only when explicitly requested. Do not open PRs autonomously.
 - Pull request titles follow the convention in `CONTRIBUTING.md`.
 
-## Network / Install Consent
+## Network access
 
-- Package installs from repo manifests for local tooling and tests are allowed after approval. Obtain explicit consent before unrelated network operations.
+- Run read-only lookups that inform the task without asking: GitHub, Home Assistant docs and core source, OPNsense docs and source, and PyPI.
+- Ask first for package installs beyond the repo manifests and for any write to an external service that this file does not already authorize.
 
 ## CI/CD
 
