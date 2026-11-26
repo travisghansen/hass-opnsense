@@ -236,7 +236,7 @@ When a Firewall entry reports a Hardware ID mismatch, Home Assistant offers a fi
 
 The repair preserves the URL, credentials, and options. A retry marker makes an interrupted repair resumable. Dashboards and automations remain intact for preserved entity IDs; review references to entities removed during reconciliation.
 
-If the repair receives an unknown inventory for services or for a firewall or NAT rule group, it keeps the existing switch registry entries for that inventory and reconciles the inventories that are available. The kept switches stay unavailable until the integration is reloaded after that inventory can be read again.
+If the repair receives an unknown inventory for services or for a firewall or NAT rule group, it keeps the existing switch registry entries for that inventory and reconciles the inventories that are available. The kept switches stay unavailable until the integration is reloaded after that inventory can be read again. A kept switch whose service or rule does not exist on the replacement hardware gets no entity after that reload, remains in the entity registry, and is not removed automatically.
 
 ## Contributing
 
