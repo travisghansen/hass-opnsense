@@ -152,7 +152,7 @@ def _is_known_ipsec_switch_row(connection: Any) -> bool:
 
 
 def _vpn_switch_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
-    """Validate each VPN switch inventory, including empty ones under Status Access.
+    """Validate VPN switch inventories, skipping VPN types under Status Access.
 
     Returns:
         bool: Whether all VPN switch rows can be reconciled.

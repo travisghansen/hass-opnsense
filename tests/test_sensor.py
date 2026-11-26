@@ -90,9 +90,12 @@ async def test_wireguard_sensor_identity_and_state_survive_access_changes(
     key_hash = "0123456789abcdef"
     uuid = "aa12bc34-1234-4321-9876-abcdef012345"
     server = {"name": "Office", "key_hash": key_hash}
+    # A disabled entry that shares the public key must not hide the enabled one.
+    disabled_uuid = "11111111-1234-4321-9876-abcdef012345"
     client.get_wireguard.return_value = AccessDict(
         {
             "servers": {
+                disabled_uuid: {**server, "uuid": disabled_uuid, "enabled": False},
                 uuid: {**server, "uuid": uuid, "enabled": True, "status": "up"},
                 "00000000-0000-0000-0000-000000000000": {"name": "Keyless", "key_hash": None},
             },

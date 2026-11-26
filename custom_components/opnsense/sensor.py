@@ -254,6 +254,21 @@ def _is_valid_vpn_sensor_row(instance: Any) -> bool:
     return isinstance(instance, MutableMapping) and len(instance) > 0
 
 
+def _vpn_rows_enabled_first(instances: Mapping[str, Any]) -> list[tuple[str, Any]]:
+    """Order VPN rows so an enabled entry backs sensors that several entries share.
+
+    Args:
+        instances (Mapping[str, Any]): VPN rows keyed as aiopnsense reports them.
+
+    Returns:
+        list[tuple[str, Any]]: Rows in their reported order, with disabled rows last.
+    """
+    return sorted(
+        instances.items(),
+        key=lambda item: isinstance(item[1], Mapping) and item[1].get("enabled") is False,
+    )
+
+
 def _vnstat_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
     """Return whether every consumed vnStat interface row is valid.
 
@@ -1821,7 +1836,7 @@ async def _compile_vpn_sensors(
             if not isinstance(vpn_instances, MutableMapping):
                 continue
             seen_ids: set[str] = set()
-            for inventory_key, instance in vpn_instances.items():
+            for inventory_key, instance in _vpn_rows_enabled_first(vpn_instances):
                 if not _is_valid_vpn_sensor_row(instance):
                     continue
                 # WireGuard rows are keyed by UUID or key hash depending on the access
@@ -2823,7 +2838,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             instance = next(
                 (
                     row
-                    for row in instances.values()
+                    for _, row in _vpn_rows_enabled_first(instances)
                     if isinstance(row, MutableMapping) and row.get("key_hash") == instance_id
                 ),
                 None,

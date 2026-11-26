@@ -115,6 +115,10 @@ Firewall and NAT rule switches are unavailable on older firmware; the deprecated
 - **WireGuard** requires only `VPN: WireGuard: Configuration` for Configuration Access because it includes the status endpoint. On 25.1, the combined permission is named `VPN: WireGuard`. From 25.7, `VPN: WireGuard: Status` on its own provides Status Access.
 - **IPsec** requires both `Status: IPsec` and `VPN: IPsec: Connections` for Configuration Access.
 
+WireGuard sensors are identified by public key, so they stay the same under both access levels. Changing the key of a WireGuard Server or WireGuard Client creates new sensors after a reload and leaves the old ones unavailable. Entries that share a public key share one set of sensors, which follows an enabled entry.
+
+When you upgrade, existing WireGuard sensors keep their entity IDs if the integration can read the WireGuard configuration. Otherwise new sensors are created and you can delete the old ones.
+
 A Toggle from a Home Assistant switch calls both the instance's toggle endpoint and the VPN service's reconfigure endpoint. A WireGuard Toggle also reads the instance first.
 
 | OPNsense Permission | Access Level | Method | API Endpoints |
