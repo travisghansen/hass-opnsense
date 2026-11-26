@@ -536,8 +536,8 @@ async def _migrate_4_to_5(
             nat = firewall.get("nat")
             if isinstance(nat, Mapping):
                 for nat_section in NATIVE_FIREWALL_NAT_SECTIONS:
-                    # Keep legacy pruning for omitted sections. An explicit None is unknown.
-                    nat_rules = nat.get(nat_section, {})
+                    # Only a mapping is a readable inventory; None means unknown.
+                    nat_rules = nat.get(nat_section)
                     if isinstance(nat_rules, Mapping):
                         current_native_nat_unique_ids[nat_section] = (
                             firewall_nat_switch_unique_ids_from_payload(
