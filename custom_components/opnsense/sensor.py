@@ -9,7 +9,7 @@ import logging
 import re
 from typing import Any, Final, TypeIs
 
-import aiopnsense
+from aiopnsense import Access, result_access
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -62,9 +62,6 @@ from .repair_reconciliation import record_desired_entities
 from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
-# aiopnsense 1.5.0 predates the access reporting API.
-_RESULT_ACCESS = getattr(aiopnsense, "result_access", None)
-_STATUS_ACCESS = getattr(getattr(aiopnsense, "Access", None), "STATUS", None)
 
 
 _INTERFACE_SENSOR_PROPERTIES: tuple[str, ...] = (
@@ -2016,14 +2013,11 @@ async def async_setup_entry(
         ):
             reconciliation_complete = False
         else:
-            has_status_access = (
-                _STATUS_ACCESS is not None
-                and callable(_RESULT_ACCESS)
-                and _RESULT_ACCESS(dhcp_leases) is _STATUS_ACCESS
-            )
             # Status Access can omit interfaces with existing DHCP sensor registrations.
             dhcp_prefix = slugify(f"{config_entry_identity(config_entry)}_dhcp_leases")
-            preserve_prefix = f"{dhcp_prefix}_" if has_status_access else None
+            preserve_prefix = (
+                f"{dhcp_prefix}_" if result_access(dhcp_leases) is Access.STATUS else None
+            )
 
     _LOGGER.debug("[sensor async_setup_entry] entities: %s", len(entities))
     record_desired_entities(
