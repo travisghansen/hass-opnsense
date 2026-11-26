@@ -792,6 +792,12 @@ async def async_setup_entry(
             and entry.platform == DOMAIN
             and entry.unique_id.startswith(prefixes)
         ]
+        _LOGGER.info(
+            "Replacement repair for %s is keeping %d existing switches for unknown groups: %s",
+            config_entry.title,
+            len(preserved_switches),
+            ", ".join(unknown_switch_groups),
+        )
 
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))
     record_desired_entities(

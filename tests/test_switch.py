@@ -30,11 +30,7 @@ from custom_components.opnsense.const import (
     DOMAIN,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
-from custom_components.opnsense.repair_reconciliation import (
-    RepairMarker,
-    RepairReconciliation,
-    RepairReconciliationError,
-)
+from custom_components.opnsense.repair_reconciliation import RepairMarker, RepairReconciliation
 from custom_components.opnsense.switch import (
     OPNsenseCarpMaintenanceSwitch,
     OPNsenseFirewallRuleSwitch,
@@ -208,6 +204,8 @@ def setup_switch_reconciliation_entry(
             False,
             None,
         ),
+        ({"firewall": None}, True, False, False, False, None),
+        ({"firewall": {"nat": []}}, True, False, False, False, None),
         ({}, False, False, True, False, None),
         ({"openvpn": {}, "wireguard": {}, "ipsec": {}}, False, False, True, False, []),
         (
@@ -229,6 +227,8 @@ def setup_switch_reconciliation_entry(
         "missing_firewall",
         "empty_firewall",
         "partial_firewall-without-nat",
+        "unavailable_firewall",
+        "malformed_firewall_nat",
         "missing_vpn",
         "empty_vpn",
         "empty_wireguard_collections",
@@ -447,14 +447,20 @@ async def test_repair_preserves_switches_for_an_unknown_firewall_group(
     )
     config_entry.add_to_hass(ph_hass)
     registry = er.async_get(ph_hass)
-    unknown_entity = registry.async_get_or_create(
-        "switch", DOMAIN, f"old_{unknown_group}_keep", config_entry=config_entry
-    )
-    known_entity = registry.async_get_or_create(
-        "switch", DOMAIN, f"old_{known_group}_keep", config_entry=config_entry
-    )
-    stale_entity = registry.async_get_or_create(
-        "switch", DOMAIN, f"old_{known_group}_stale", config_entry=config_entry
+    # Rule switches are disabled by default, so repair must handle disabled entries.
+    unknown_entity, known_entity, stale_entity = (
+        registry.async_get_or_create(
+            "switch",
+            DOMAIN,
+            unique_id,
+            config_entry=config_entry,
+            disabled_by=er.RegistryEntryDisabler.INTEGRATION,
+        )
+        for unique_id in (
+            f"old_{unknown_group}_keep",
+            f"old_{known_group}_keep",
+            f"old_{known_group}_stale",
+        )
     )
     reconciliation = RepairReconciliation(ph_hass, config_entry, RepairMarker(1, "old", "id"))
     config_entry.runtime_data.repair_reconciliation = reconciliation
@@ -473,34 +479,6 @@ async def test_repair_preserves_switches_for_an_unknown_firewall_group(
     assert [entity.unique_id for entity in add_entities.call_args.args[0]] == [
         f"id_{known_group}_keep"
     ]
-
-
-@pytest.mark.parametrize(
-    "state", [{}, {"firewall": None}, {"firewall": {"rules": {}}}, {"firewall": {"nat": []}}]
-)
-@pytest.mark.asyncio
-async def test_repair_requires_firewall_and_nat_mappings(
-    ph_hass: HomeAssistant,
-    make_config_entry: Callable[..., MockConfigEntry],
-    state: dict[str, Any],
-) -> None:
-    """Leave switch discovery incomplete when a required container is unavailable.
-
-    Args:
-        ph_hass (HomeAssistant): Home Assistant instance used for reconciliation.
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-        state (dict[str, Any]): Coordinator payload missing a required mapping.
-    """
-    config_entry = setup_switch_reconciliation_entry(
-        make_config_entry, coordinator=make_coord(state), sync_firewall_and_nat=True
-    )
-    reconciliation = RepairReconciliation(ph_hass, config_entry, RepairMarker(1, "old", "id"))
-    config_entry.runtime_data.repair_reconciliation = reconciliation
-
-    await switch_mod.async_setup_entry(ph_hass, config_entry, MagicMock())
-
-    with pytest.raises(RepairReconciliationError, match="platform discovery incomplete: switch"):
-        reconciliation.require_platforms_complete(("switch",))
 
 
 @pytest.mark.parametrize(

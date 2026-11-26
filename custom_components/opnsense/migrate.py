@@ -546,6 +546,12 @@ async def _migrate_4_to_5(
                                 nat_rules,
                             )
                         )
+                    else:
+                        _LOGGER.warning(
+                            "Migration to version 5 skipping native NAT rule pruning for %s "
+                            "because its rules data is unavailable",
+                            nat_section,
+                        )
 
             elif nat is not None:
                 _LOGGER.warning(
