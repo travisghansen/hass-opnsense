@@ -1866,6 +1866,7 @@ async def test_tracker_platform_registers_client_device(
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
     legacy_mac_linking: bool,
     existing_device: bool,
     enabled_default: bool,
@@ -1882,6 +1883,7 @@ async def test_tracker_platform_registers_client_device(
         coordinator (MagicMock): Coordinator supplying tracker state.
         make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
         monkeypatch (pytest.MonkeyPatch): Fixture replacing the removed Core hook.
+        caplog (pytest.LogCaptureFixture): Captures Core's device info warnings.
         legacy_mac_linking (bool): Whether to retain Core's pre-2026.11 linking hook.
         existing_device (bool): Whether another integration already knows the MAC.
         enabled_default (bool): Whether this tracker was explicitly selected.
@@ -1924,7 +1926,9 @@ async def test_tracker_platform_registers_client_device(
         mac=mac_address,
         mac_vendor=mac_vendor,
         hostname="Client",
-        router_device_id=router.id,
+        router_device_id=router.id
+        if hasattr(device_reg, "async_get_device_by_identifier")
+        else None,
     )
     if not legacy_mac_linking:
         # HA 2026.11 removes ScannerEntity's special post-registration MAC linking.
@@ -1961,6 +1965,7 @@ async def test_tracker_platform_registers_client_device(
     assert client_device.name == "Client"
     assert client_device.manufacturer == expected_manufacturer
     assert client_device.via_device_id == router.id
+    assert "which is deprecated as device infos are dataclasses" not in caplog.text
     await platform.async_reset()
 
 

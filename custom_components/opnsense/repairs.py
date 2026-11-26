@@ -2,10 +2,10 @@
 
 from copy import deepcopy
 import logging
-from typing import TypeGuard
+from typing import TYPE_CHECKING, TypeGuard
 
 from aiopnsense.exceptions import OPNsenseError, OPNsenseMissingDeviceUniqueID
-from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow, RepairsFlowResult
+from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -15,6 +15,9 @@ import voluptuous as vol
 from .const import CONF_DEVICE_UNIQUE_ID, DOMAIN, TRACKED_ARP_MACS, TRACKED_MACS, TRACKED_NDP_MACS
 from .helpers import create_opnsense_client_from_config_entry, is_carp_entry
 from .repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker, parse_repair_marker
+
+if TYPE_CHECKING:
+    from homeassistant.components.repairs import RepairsFlowResult
 
 _DEVICE_ID_MISMATCH_ISSUE_SUFFIX = "_device_id_mismatched"
 _LOGGER = logging.getLogger(__name__)
