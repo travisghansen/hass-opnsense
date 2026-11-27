@@ -17,7 +17,8 @@ from .helpers import create_opnsense_client_from_config_entry, is_carp_entry
 from .repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker, parse_repair_marker
 
 if TYPE_CHECKING:
-    from homeassistant.components.repairs import RepairsFlowResult
+    # Older Home Assistant releases do not export the typed repair result.
+    from homeassistant.components.repairs import RepairsFlowResult  # type: ignore[attr-defined, unused-ignore]
 
 _DEVICE_ID_MISMATCH_ISSUE_SUFFIX = "_device_id_mismatched"
 _LOGGER = logging.getLogger(__name__)

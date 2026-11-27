@@ -436,7 +436,7 @@ async def test_async_setup_entry_configured_devices(
     assert created._router_device_id == "router-device-id"
     device_info = created.device_info
     assert device_info is not None
-    assert device_info["via_device_id"] == "router-device-id"
+    assert device_info.get("via_device_id") == "router-device-id"
     assert "via_device" not in device_info
     fake.async_get_or_create.assert_called_once_with(
         config_entry_id=entry.entry_id,
@@ -1385,7 +1385,7 @@ async def test_restore_last_state_and_device_info(
     assert any(t[1] == "aa:bb:cc" for t in devinfo["connections"])
     assert devinfo["name"] == "dev"
     assert devinfo["manufacturer"] == "mfg"
-    assert devinfo["via_device_id"] == "router-device-id"
+    assert devinfo.get("via_device_id") == "router-device-id"
     assert "default_name" not in devinfo
     assert "default_manufacturer" not in devinfo
     assert "via_device" not in devinfo

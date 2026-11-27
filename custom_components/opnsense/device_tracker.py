@@ -699,7 +699,9 @@ class OPNsenseScannerEntity(OPNsenseBaseEntity, ScannerEntity, RestoreEntity):
         else:
             # Home Assistant 2026.3-2026.7 resolves parent devices by identifier.
             device_info_fields["via_device"] = (DOMAIN, self._device_unique_id)
-        return DeviceInfo(**device_info_fields)
+        # Older HA types DeviceInfo as a TypedDict, which mypy cannot construct
+        # from these conditional keyword fields. At runtime it accepts them.
+        return DeviceInfo(**device_info_fields)  # type: ignore[typeddict-item, unused-ignore]
 
     async def _restore_last_state(self) -> None:
         """Restore tracker state from Home Assistant's last saved snapshot."""

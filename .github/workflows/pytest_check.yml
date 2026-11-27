@@ -10,17 +10,19 @@ jobs:
   tests:
     # Keep the current leg's name: Dependabot auto-merge requires this check name.
     name: ${{ matrix.name }}
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.user.login == 'prek-autoupdate-bot' ||
-      github.event.pull_request.user.login == 'dependabot[bot]' ||
-      startsWith(github.event.pull_request.head.ref, 'release-please--') ||
-      !(contains(github.event.pull_request.labels.*.name, 'dependencies') ||
-      github.event.pull_request.user.type == 'Bot')
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
+    env:
+      # Expand the matrix even when tests are skipped so both check names are reported.
+      RUN_TESTS: >-
+        ${{ github.event_name != 'pull_request' ||
+        github.event.pull_request.user.login == 'prek-autoupdate-bot' ||
+        github.event.pull_request.user.login == 'dependabot[bot]' ||
+        startsWith(github.event.pull_request.head.ref, 'release-please--') ||
+        !(contains(github.event.pull_request.labels.*.name, 'dependencies') ||
+        github.event.pull_request.user.type == 'Bot') }}
     strategy:
       fail-fast: false
       matrix:
@@ -34,55 +36,63 @@ jobs:
 
     steps:
       - name: Checkout Repository
+        if: env.RUN_TESTS == 'true'
         uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Setup uv (with caching)
+        if: env.RUN_TESTS == 'true'
         uses: astral-sh/setup-uv@v10.3.3
         with:
-          python-version: "3.14"
           enable-cache: true
           ignore-nothing-to-cache: true
           cache-dependency-glob: uv.lock
+          cache-suffix: ${{ matrix.ha-version }}
+
+      - name: Verify current test environment
+        if: env.RUN_TESTS == 'true' && matrix.ha-version == 'current'
+        run: >-
+          uv run --python ">=3.14.2,<3.15" --locked --group pytest
+          python .github/scripts/minimum_ha_test_env.py verify
 
       - name: Run pytest with coverage from the lock
-        if: matrix.ha-version == 'current'
-        run: uv run --locked --group pytest pytest
+        if: env.RUN_TESTS == 'true' && matrix.ha-version == 'current'
+        run: uv run --python ">=3.14.2,<3.15" --locked --group pytest pytest
 
       - name: Install minimum Home Assistant test environment
-        if: matrix.ha-version == 'minimum'
+        if: env.RUN_TESTS == 'true' && matrix.ha-version == 'minimum'
         # Resolve the oldest Home Assistant and test plugin release that satisfy the
         # hacs.json minimum, then install only those two pins with the pytest-base
         # group. --no-config skips the project's [tool.uv] security constraints, which
         # conflict with the older dependency pins of the minimum HA release. This
         # environment is only used for tests.
         run: |
-          uv venv
+          uv venv --python ">=3.14.2,<3.15"
           python3 .github/scripts/minimum_ha_test_env.py requirements > "${RUNNER_TEMP}/ha-min.in"
           uv pip compile --quiet --no-config --python .venv/bin/python --resolution lowest-direct \
             --no-header --output-file "${RUNNER_TEMP}/ha-min.txt" "${RUNNER_TEMP}/ha-min.in"
           grep -E '^(homeassistant|pytest-homeassistant(-custom-component)?)==' \
             "${RUNNER_TEMP}/ha-min.txt" > "${RUNNER_TEMP}/ha-min-pins.txt"
           cat "${RUNNER_TEMP}/ha-min-pins.txt"
-          uv pip install --no-config --group pytest-base \
+          uv pip install --no-config --python .venv/bin/python --group pytest-base \
             --requirements "${RUNNER_TEMP}/ha-min-pins.txt"
-          sed -n 's/^homeassistant==//p' "${RUNNER_TEMP}/ha-min-pins.txt" > "${RUNNER_TEMP}/ha-min-version"
 
-      - name: Verify minimum Home Assistant version
-        if: matrix.ha-version == 'minimum'
+      - name: Verify minimum test environment
+        if: env.RUN_TESTS == 'true' && matrix.ha-version == 'minimum'
         run: >-
           .venv/bin/python .github/scripts/minimum_ha_test_env.py verify
-          "$(cat "${RUNNER_TEMP}/ha-min-version")"
+          --pins "${RUNNER_TEMP}/ha-min-pins.txt"
 
       - name: Run pytest on minimum Home Assistant
-        if: matrix.ha-version == 'minimum'
+        if: env.RUN_TESTS == 'true' && matrix.ha-version == 'minimum'
         run: .venv/bin/python -m pytest
 
       - name: Generate coverage comment
         # Keep required tests running for update and release PRs without posting coverage.
         if: >-
+          env.RUN_TESTS == 'true' &&
           matrix.ha-version == 'current' &&
           github.event_name == 'pull_request' &&
           github.event.pull_request.user.login != 'prek-autoupdate-bot' &&
@@ -97,7 +107,7 @@ jobs:
           MINIMUM_ORANGE: 70
 
       - name: Store PR coverage comment
-        if: steps.coverage_comment.outputs.comment_file_written == 'true'
+        if: env.RUN_TESTS == 'true' && steps.coverage_comment.outputs.comment_file_written == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: python-coverage-comment-action
@@ -105,7 +115,7 @@ jobs:
           retention-days: 1
 
       - name: Store coverage data for trusted publication
-        if: matrix.ha-version == 'current' && github.event_name == 'push'
+        if: env.RUN_TESTS == 'true' && matrix.ha-version == 'current' && github.event_name == 'push'
         uses: actions/upload-artifact@v7
         with:
           name: python-coverage-data

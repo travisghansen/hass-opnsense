@@ -3,12 +3,14 @@
 from importlib import util
 import json
 from pathlib import Path
+import platform
 import sys
 from types import ModuleType
 
+from homeassistant.const import __version__
 import pytest
 
-SCRIPT_PATH = Path(".github/scripts/minimum_ha_test_env.py")
+SCRIPT_PATH = Path(__file__).parents[1] / ".github/scripts/minimum_ha_test_env.py"
 
 
 def _load_script() -> ModuleType:
@@ -90,35 +92,90 @@ def test_requirements_reject_unusable_minimum(tmp_path: Path, payload: object) -
 
 
 @pytest.mark.parametrize(
-    ("minimum", "resolved", "passes"),
+    ("minimum", "pin_changes", "error"),
     [
-        ("2026.3.0b0", "installed", True),
-        ("2026.3.0b0", "2026.3.1", False),
-        ("2999.1.0", "installed", False),
+        ("2026.3.0b0", None, None),
+        # Resolved pins that match the installed releases.
+        ("2026.3.0b0", {}, None),
+        ("2999.1.0", None, "older than the minimum"),
+        ("2026.3.0b0", {"homeassistant": "2000.1.0"}, "differs from the resolved pins"),
+        ("2026.3.0b0", {"plugin": "0.0.0"}, "differs from the resolved pins"),
     ],
 )
-def test_verify_checks_installed_home_assistant(
-    tmp_path: Path, minimum: str, resolved: str, passes: bool
+def test_verify_checks_installed_environment(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    minimum: str,
+    pin_changes: dict[str, str] | None,
+    error: str | None,
 ) -> None:
-    """Accept only the resolved Home Assistant release at or above the minimum.
+    """Report the installed releases, or reject ones that were not expected.
+
+    Args:
+        tmp_path (Path): Directory for the hacs.json and pin fixtures.
+        capsys (pytest.CaptureFixture[str]): Captures the printed versions.
+        minimum (str): Minimum Home Assistant version declared in hacs.json.
+        pin_changes (dict[str, str] | None): Resolved pins that differ from the
+            installed releases, or ``None`` to verify without pins.
+        error (str | None): Expected failure message, or ``None`` for success.
+    """
+    ((plugin, plugin_version),) = SCRIPT.installed_test_plugins().items()
+    hacs_path = _write_hacs(tmp_path, {"homeassistant": minimum})
+    args = ["--hacs", str(hacs_path), "verify"]
+    if pin_changes is not None:
+        pins = {"homeassistant": __version__, plugin: plugin_version}
+        pins.update(
+            {plugin if name == "plugin" else name: pin for name, pin in pin_changes.items()}
+        )
+        pins_path = tmp_path / "pins.txt"
+        pins_path.write_text(
+            "".join(f"{name}=={pin}\n" for name, pin in pins.items()), encoding="utf-8"
+        )
+        args += ["--pins", str(pins_path)]
+
+    if error is None:
+        SCRIPT.main(args)
+        output = capsys.readouterr().out
+        assert f"Home Assistant {__version__} (minimum {minimum})" in output
+        assert f"{plugin} {plugin_version}" in output
+        assert f"Python {platform.python_version()}" in output
+    else:
+        with pytest.raises(SystemExit, match=error):
+            SCRIPT.main(args)
+
+
+@pytest.mark.parametrize(
+    ("plugins", "requirements", "error"),
+    [
+        ({}, [], "exactly one"),
+        (
+            {"pytest-homeassistant": "1", "pytest-homeassistant-custom-component": "2"},
+            [],
+            "exactly one",
+        ),
+        ({"pytest-homeassistant": "1"}, ["homeassistant==2000.1.0"], "does not pin"),
+        ({"pytest-homeassistant": "1"}, ["homeassistant>=2000.1.0"], "does not pin"),
+    ],
+)
+def test_verify_rejects_unusable_test_plugins(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    plugins: dict[str, str],
+    requirements: list[str],
+    error: str,
+) -> None:
+    """Require exactly one test plugin that pins the installed Home Assistant.
 
     Args:
         tmp_path (Path): Directory for the hacs.json fixture.
-        minimum (str): Minimum Home Assistant version declared in hacs.json.
-        resolved (str): Resolved pin, or ``installed`` for the installed version.
-        passes (bool): Whether verification should succeed.
+        monkeypatch (pytest.MonkeyPatch): Replaces the installed plugin metadata.
+        plugins (dict[str, str]): Installed test plugins and their versions.
+        requirements (list[str]): Requirements declared by the installed plugin.
+        error (str): Expected failure message.
     """
-    from homeassistant.const import __version__  # noqa: PLC0415
+    monkeypatch.setattr(SCRIPT, "installed_test_plugins", lambda: plugins)
+    monkeypatch.setattr(SCRIPT.metadata, "requires", lambda _name: requirements)
+    hacs_path = _write_hacs(tmp_path, {"homeassistant": "2026.3.0b0"})
 
-    if resolved == "installed":
-        resolved = __version__
-    elif resolved == __version__:
-        pytest.skip("Fixture pin matches the installed Home Assistant version")
-    hacs_path = _write_hacs(tmp_path, {"homeassistant": minimum})
-    args = ["--hacs", str(hacs_path), "verify", resolved]
-
-    if passes:
-        SCRIPT.main(args)
-    else:
-        with pytest.raises(SystemExit):
-            SCRIPT.main(args)
+    with pytest.raises(SystemExit, match=error):
+        SCRIPT.main(["--hacs", str(hacs_path), "verify"])
