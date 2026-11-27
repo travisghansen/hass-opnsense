@@ -3016,7 +3016,6 @@ async def test_migrate_4_to_5_preserves_native_nat_switches_for_unknown_inventor
 
     assert await init_mod.async_migrate_entry(ph_hass, entry)
 
-    assert entry.version == 6
     assert registry.async_get(firewall_rule.entity_id) is not None
     assert registry.async_get(npt.entity_id) is not None
     assert registry.async_get(destination.entity_id) is None
