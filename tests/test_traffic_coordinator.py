@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, MagicMock
 from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import OPNsenseError
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, CONF_SYNC_LIVE_TRAFFIC
 from custom_components.opnsense.traffic_coordinator import OPNsenseLiveTrafficCoordinator
+from tests.common import MockConfigEntry
 
 
 class _FakeStreamClient(OPNsenseClient):

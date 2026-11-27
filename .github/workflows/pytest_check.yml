@@ -8,7 +8,8 @@ on:
 
 jobs:
   tests:
-    name: pytest check and post coverage
+    # Keep the current leg's name: Dependabot auto-merge requires this check name.
+    name: ${{ matrix.name }}
     if: >-
       github.event_name != 'pull_request' ||
       github.event.pull_request.user.login == 'prek-autoupdate-bot' ||
@@ -20,6 +21,20 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Current Home Assistant from uv.lock with pytest-homeassistant. Posts coverage.
+          - name: pytest check and post coverage
+            ha-version: current
+            test-plugin: ""
+          # Minimum supported Home Assistant. pytest-homeassistant starts at 2026.11, so
+          # use its predecessor; 0.13.317 pins homeassistant==2026.3.1, the oldest 2026.3
+          # release it covers.
+          - name: pytest Home Assistant 2026.3.1 (minimum)
+            ha-version: "2026.3.1"
+            test-plugin: pytest-homeassistant-custom-component==0.13.317
 
     steps:
       - name: Checkout Repository
@@ -37,11 +52,37 @@ jobs:
           cache-dependency-glob: uv.lock
 
       - name: Run pytest with coverage from the lock
+        if: matrix.ha-version == 'current'
         run: uv run --locked --group pytest pytest
+
+      - name: Install minimum Home Assistant test environment
+        if: matrix.ha-version != 'current'
+        # --no-config skips the project's [tool.uv] security constraints, which
+        # conflict with the older dependency pins of the minimum HA release. This
+        # environment is only used for tests.
+        run: |
+          uv venv
+          uv pip install --no-config --group pytest-base "${TEST_PLUGIN}"
+        env:
+          TEST_PLUGIN: ${{ matrix.test-plugin }}
+
+      - name: Verify minimum Home Assistant version
+        if: matrix.ha-version != 'current'
+        run: >-
+          .venv/bin/python -c "import sys; from homeassistant.const import __version__;
+          print(f'Home Assistant {__version__}');
+          sys.exit(__version__ != sys.argv[1])" "${HA_VERSION}"
+        env:
+          HA_VERSION: ${{ matrix.ha-version }}
+
+      - name: Run pytest on minimum Home Assistant
+        if: matrix.ha-version != 'current'
+        run: .venv/bin/python -m pytest
 
       - name: Generate coverage comment
         # Keep required tests running for update and release PRs without posting coverage.
         if: >-
+          matrix.ha-version == 'current' &&
           github.event_name == 'pull_request' &&
           github.event.pull_request.user.login != 'prek-autoupdate-bot' &&
           github.event.pull_request.user.login != 'dependabot[bot]' &&
@@ -63,7 +104,7 @@ jobs:
           retention-days: 1
 
       - name: Store coverage data for trusted publication
-        if: github.event_name == 'push'
+        if: matrix.ha-version == 'current' && github.event_name == 'push'
         uses: actions/upload-artifact@v7
         with:
           name: python-coverage-data

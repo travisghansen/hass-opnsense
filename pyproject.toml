@@ -41,14 +41,19 @@ lint = [
     "types-setuptools",
     "uv>=0.13.4",
 ]
-pytest = [
+# Test dependencies without the Home Assistant test plugin. CI installs this
+# group with pytest-homeassistant-custom-component to test the minimum HA version.
+pytest-base = [
     { include-group = "ha" },
     "aiohttp",
     "pytest>=9",
     "pytest-asyncio",
     "pytest-cov",
-    "pytest-homeassistant>=2026.11.0",
     "pytest-timeout",
+]
+pytest = [
+    { include-group = "pytest-base" },
+    "pytest-homeassistant>=2026.11.0",
 ]
 dev = [
     { include-group = "lint" },
@@ -85,7 +90,7 @@ warn_unused_configs = true
 mypy_path = "typings"
 
 [[tool.mypy.overrides]]
-module = ["pytest_homeassistant.*"]
+module = ["pytest_homeassistant.*", "pytest_homeassistant_custom_component.*"]
 ignore_missing_imports = true
 
 [tool.ruff]

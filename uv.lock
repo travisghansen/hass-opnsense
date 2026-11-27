@@ -1269,6 +1269,15 @@ pytest = [
     { name = "pytest-homeassistant" },
     { name = "pytest-timeout" },
 ]
+pytest-base = [
+    { name = "aiohttp" },
+    { name = "aiopnsense" },
+    { name = "homeassistant" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-timeout" },
+]
 
 [package.metadata]
 
@@ -1324,6 +1333,15 @@ pytest = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-homeassistant", specifier = ">=2026.11.0" },
+    { name = "pytest-timeout" },
+]
+pytest-base = [
+    { name = "aiohttp" },
+    { name = "aiopnsense", specifier = "==1.6.0" },
+    { name = "homeassistant", specifier = ">=2026.3" },
+    { name = "pytest", specifier = ">=9" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
     { name = "pytest-timeout" },
 ]
 

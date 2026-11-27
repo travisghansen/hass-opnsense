@@ -20,7 +20,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense import coordinator as coordinator_module
 from custom_components.opnsense.const import (
@@ -53,6 +52,7 @@ from custom_components.opnsense.const import (
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
+from tests.common import MockConfigEntry
 from tests.utilities import arp_ndp_entry, arp_ndp_table, host_observation, host_observations
 
 
