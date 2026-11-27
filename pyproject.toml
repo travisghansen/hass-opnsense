@@ -87,6 +87,7 @@ namespace_packages = true
 pretty = true
 show_error_codes = true
 warn_unused_configs = true
+# typings/voluptuous types voluptuous as probatio; see the stub for its limitations.
 mypy_path = "typings"
 
 [[tool.mypy.overrides]]
