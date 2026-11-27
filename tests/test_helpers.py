@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 
 import aiohttp
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense import helpers as helpers_mod
 from custom_components.opnsense.const import (
@@ -42,6 +41,7 @@ from custom_components.opnsense.helpers import (
     normalize_mac_address,
     tracked_ndp_macs,
 )
+from tests.common import MockConfigEntry
 
 
 @pytest.mark.parametrize("use_modern_api", [True, False], ids=["modern", "legacy"])

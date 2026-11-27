@@ -13,7 +13,6 @@ from homeassistant.const import PERCENTAGE, UnitOfDataRate, UnitOfInformation, U
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense import sensor as sensor_module
 from custom_components.opnsense.const import (
@@ -55,6 +54,7 @@ from custom_components.opnsense.sensor import (
     slugify_filesystem_mountpoint,
 )
 from custom_components.opnsense.traffic_coordinator import OPNsenseLiveTrafficCoordinator
+from tests.common import MockConfigEntry
 
 
 @pytest.mark.asyncio

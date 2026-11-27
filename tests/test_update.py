@@ -13,7 +13,6 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense.const import (
     CONF_DEVICE_UNIQUE_ID,
@@ -24,6 +23,7 @@ from custom_components.opnsense.update import (
     OPNsenseFirmwareUpdatesAvailableUpdate,
     async_setup_entry,
 )
+from tests.common import MockConfigEntry
 
 
 @pytest.fixture

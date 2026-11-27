@@ -9,7 +9,6 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity import Entity
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense import repair_reconciliation as rr
 from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, DOMAIN
@@ -24,6 +23,7 @@ from custom_components.opnsense.repair_reconciliation import (
     parse_repair_marker,
     record_desired_entities,
 )
+from tests.common import MockConfigEntry
 
 
 class _EntityRegistry:

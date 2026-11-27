@@ -1222,6 +1222,7 @@ dev = [
     { name = "homeassistant" },
     { name = "mypy" },
     { name = "prek" },
+    { name = "probatio" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -1247,6 +1248,7 @@ lint = [
     { name = "homeassistant" },
     { name = "mypy" },
     { name = "prek" },
+    { name = "probatio" },
     { name = "ruff" },
     { name = "types-cffi" },
     { name = "types-pymysql" },
@@ -1265,6 +1267,15 @@ pytest = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-homeassistant" },
+    { name = "pytest-timeout" },
+]
+pytest-base = [
+    { name = "aiohttp" },
+    { name = "aiopnsense" },
+    { name = "homeassistant" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
     { name = "pytest-timeout" },
 ]
 
@@ -1277,6 +1288,7 @@ dev = [
     { name = "homeassistant", specifier = ">=2026.3" },
     { name = "mypy" },
     { name = "prek" },
+    { name = "probatio" },
     { name = "pytest", specifier = ">=9" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -1302,6 +1314,7 @@ lint = [
     { name = "homeassistant", specifier = ">=2026.3" },
     { name = "mypy" },
     { name = "prek" },
+    { name = "probatio" },
     { name = "ruff" },
     { name = "types-cffi" },
     { name = "types-pymysql" },
@@ -1320,6 +1333,15 @@ pytest = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-homeassistant", specifier = ">=2026.11.0" },
+    { name = "pytest-timeout" },
+]
+pytest-base = [
+    { name = "aiohttp" },
+    { name = "aiopnsense", specifier = "==1.6.1" },
+    { name = "homeassistant", specifier = ">=2026.3" },
+    { name = "pytest", specifier = ">=9" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
     { name = "pytest-timeout" },
 ]
 
