@@ -137,6 +137,8 @@ def capture_reconciled_desired_entities(
         _entry: MockConfigEntry,
         _platform: str,
         entities: Any | None = None,
+        *,
+        preserve_prefix: tuple[str, ...] | None = None,
     ) -> None:
         """Capture entities passed to ``record_desired_entities``.
 
@@ -144,6 +146,7 @@ def capture_reconciled_desired_entities(
             _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
             _platform (str): Platform name passed through the mocked loader.
             entities (Any | None): Entities captured by the platform add callback.
+            preserve_prefix (tuple[str, ...] | None): Prefixes of retained registry entries.
         """
         captured["entities"] = entities
 
@@ -342,13 +345,20 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
     created: list[Any] = []
     recorded: dict[str, Any] = {}
 
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+    def capture(
+        _entry: MockConfigEntry,
+        _platform: str,
+        entities: Any | None = None,
+        *,
+        preserve_prefix: tuple[str, ...] | None = None,
+    ) -> None:
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
             _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
             _platform (str): Platform name passed through the mocked loader.
             entities (Any | None): Entities captured by the platform add callback.
+            preserve_prefix (tuple[str, ...] | None): Prefixes of retained registry entries.
         """
         recorded["entities"] = entities
 
@@ -693,13 +703,20 @@ async def test_async_setup_entry_records_none_for_invalid_carp_summary(
     captured: dict[str, Any] = {}
     created: list[Any] = []
 
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+    def capture(
+        _entry: MockConfigEntry,
+        _platform: str,
+        entities: Any | None = None,
+        *,
+        preserve_prefix: tuple[str, ...] | None = None,
+    ) -> None:
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
             _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
             _platform (str): Platform name passed through the mocked loader.
             entities (Any | None): Entities captured by the platform add callback.
+            preserve_prefix (tuple[str, ...] | None): Prefixes of retained registry entries.
         """
         captured["entities"] = entities
 
@@ -5008,13 +5025,20 @@ async def test_async_setup_entry_records_none_for_malformed_service_identity_row
     recorded: dict[str, Any] = {}
     created: list[Any] = []
 
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+    def capture(
+        _entry: MockConfigEntry,
+        _platform: str,
+        entities: Any | None = None,
+        *,
+        preserve_prefix: tuple[str, ...] | None = None,
+    ) -> None:
         """Capture desired entities input for reconciliation.
 
         Args:
             _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
             _platform (str): Platform name passed through the mocked loader.
             entities (Any | None): Entities captured by the platform add callback.
+            preserve_prefix (tuple[str, ...] | None): Prefixes of retained registry entries.
         """
         recorded["entities"] = entities
 

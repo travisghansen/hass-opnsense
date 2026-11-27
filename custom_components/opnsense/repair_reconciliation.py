@@ -206,9 +206,9 @@ class RepairReconciliation:
     def record_desired_entities(
         self,
         platform_domain: PlatformDomain,
-        entities: Iterable[Entity | er.RegistryEntry] | None,
+        entities: Iterable[Entity] | None,
         *,
-        preserve_prefix: str | None = None,
+        preserve_prefix: str | tuple[str, ...] | None = None,
     ) -> None:
         """Record a platform's complete intended entity list, including disabled rows.
 
@@ -217,10 +217,9 @@ class RepairReconciliation:
 
         Args:
             platform_domain (PlatformDomain): Platform whose desired entity IDs were compiled.
-            entities (Iterable[Entity | er.RegistryEntry] | None): Discovered entities and
-                existing registry entries to retain.
-            preserve_prefix (str | None): Unique ID prefix of existing entities to keep when
-                discovery cannot establish whether they are stale.
+            entities (Iterable[Entity] | None): Registry records exposed to the repair helper.
+            preserve_prefix (str | tuple[str, ...] | None): Unique ID prefix, or prefixes, of
+                existing entities to keep when discovery cannot establish whether they are stale.
         """
         if entities is None:
             return
@@ -342,19 +341,18 @@ class RepairReconciliation:
 def record_desired_entities(
     config_entry: ConfigEntry,
     platform_domain: PlatformDomain,
-    entities: Iterable[Entity | er.RegistryEntry] | None,
+    entities: Iterable[Entity] | None,
     *,
-    preserve_prefix: str | None = None,
+    preserve_prefix: str | tuple[str, ...] | None = None,
 ) -> None:
     """Record a final platform entity list when reconciliation is active.
 
     Args:
         config_entry (ConfigEntry): OPNsense config entry participating in the operation.
         platform_domain (PlatformDomain): Platform whose desired entity IDs were compiled.
-        entities (Iterable[Entity | er.RegistryEntry] | None): Discovered entities and existing
-            registry entries to retain.
-        preserve_prefix (str | None): Unique ID prefix of existing entities to keep when
-            discovery cannot establish whether they are stale.
+        entities (Iterable[Entity] | None): Registry records exposed to the repair helper.
+        preserve_prefix (str | tuple[str, ...] | None): Unique ID prefix, or prefixes, of
+            existing entities to keep when discovery cannot establish whether they are stale.
     """
     reconciliation = config_entry.runtime_data.repair_reconciliation
     if isinstance(reconciliation, RepairReconciliation) and reconciliation.active:

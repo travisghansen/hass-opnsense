@@ -7,7 +7,6 @@ from typing import Any
 from homeassistant.components.switch import SwitchDeviceClass, SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.util import slugify
@@ -21,7 +20,6 @@ from .const import (
     CONF_SYNC_VPN,
     COORDINATOR,
     DEFAULT_SYNC_OPTION_VALUE,
-    DOMAIN,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator, vpn_has_status_access
 from .entity import OPNsenseEntity
@@ -779,24 +777,16 @@ async def async_setup_entry(
         else:
             reconciliation_complete = False
 
-    preserved_switches: list[er.RegistryEntry] = []
+    preserve_prefix: tuple[str, ...] | None = None
     if reconciliation_complete and unknown_switch_groups and is_reconciliation_active(config_entry):
         # Repair preparation has already migrated the registry entries to the new prefix.
         identity = config_entry_identity(config_entry)
-        prefixes = tuple(f"{slugify(f'{identity}_{group}')}_" for group in unknown_switch_groups)
-        preserved_switches = [
-            entry
-            for entry in er.async_entries_for_config_entry(
-                er.async_get(hass), config_entry.entry_id
-            )
-            if entry.domain == "switch"
-            and entry.platform == DOMAIN
-            and entry.unique_id.startswith(prefixes)
-        ]
+        preserve_prefix = tuple(
+            f"{slugify(f'{identity}_{group}')}_" for group in unknown_switch_groups
+        )
         _LOGGER.info(
-            "Replacement repair for %s is keeping %d existing switches for unknown groups: %s",
+            "Replacement repair for %s is keeping existing switches for unknown groups: %s",
             config_entry.title,
-            len(preserved_switches),
             ", ".join(unknown_switch_groups),
         )
 
@@ -804,7 +794,8 @@ async def async_setup_entry(
     record_desired_entities(
         config_entry,
         "switch",
-        [*entities, *preserved_switches] if reconciliation_complete else None,
+        entities if reconciliation_complete else None,
+        preserve_prefix=preserve_prefix,
     )
     async_add_entities(entities)
 
