@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.components.switch import SwitchEntityDescription
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
 
@@ -25,8 +26,10 @@ from custom_components.opnsense.const import (
     CONF_SYNC_UNBOUND,
     CONF_SYNC_VPN,
     COORDINATOR,
+    DOMAIN,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
+from custom_components.opnsense.repair_reconciliation import RepairMarker, RepairReconciliation
 from custom_components.opnsense.switch import (
     OPNsenseCarpMaintenanceSwitch,
     OPNsenseFirewallRuleSwitch,
@@ -134,6 +137,8 @@ def capture_reconciled_desired_entities(
         _entry: MockConfigEntry,
         _platform: str,
         entities: Any | None = None,
+        *,
+        preserve_prefix: tuple[str, ...] | None = None,
     ) -> None:
         """Capture entities passed to ``record_desired_entities``.
 
@@ -141,6 +146,7 @@ def capture_reconciled_desired_entities(
             _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
             _platform (str): Platform name passed through the mocked loader.
             entities (Any | None): Entities captured by the platform add callback.
+            preserve_prefix (tuple[str, ...] | None): Prefixes of retained registry entries.
         """
         captured["entities"] = entities
 
@@ -191,6 +197,7 @@ def setup_switch_reconciliation_entry(
     [
         ({}, False, True, False, False, None),
         ({"services": []}, False, True, False, False, []),
+        ({"services": {}}, False, True, False, False, None),
         ({}, True, False, False, False, None),
         ({"firewall": {}}, True, False, False, False, None),
         (
@@ -201,6 +208,8 @@ def setup_switch_reconciliation_entry(
             False,
             None,
         ),
+        ({"firewall": None}, True, False, False, False, None),
+        ({"firewall": {"nat": []}}, True, False, False, False, None),
         ({}, False, False, True, False, None),
         ({"openvpn": {}, "wireguard": {}, "ipsec": {}}, False, False, True, False, []),
         (
@@ -219,9 +228,12 @@ def setup_switch_reconciliation_entry(
     ids=[
         "missing_service",
         "empty_service",
+        "malformed_service",
         "missing_firewall",
         "empty_firewall",
         "partial_firewall-without-nat",
+        "unavailable_firewall",
+        "malformed_firewall_nat",
         "missing_vpn",
         "empty_vpn",
         "empty_wireguard_collections",
@@ -333,13 +345,20 @@ async def test_async_setup_entry_records_none_for_partial_vpn_inventory(
     created: list[Any] = []
     recorded: dict[str, Any] = {}
 
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+    def capture(
+        _entry: MockConfigEntry,
+        _platform: str,
+        entities: Any | None = None,
+        *,
+        preserve_prefix: tuple[str, ...] | None = None,
+    ) -> None:
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
             _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
             _platform (str): Platform name passed through the mocked loader.
             entities (Any | None): Entities captured by the platform add callback.
+            preserve_prefix (tuple[str, ...] | None): Prefixes of retained registry entries.
         """
         recorded["entities"] = entities
 
@@ -395,21 +414,42 @@ def test_vpn_switch_rows_are_complete_defaults_and_rejects_falsy_rows() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("unknown_group", "known_group", "unknown_inventory"),
+    [
+        ("firewall_nat_npt", "firewall_rule", None),
+        ("firewall_rule", "firewall_nat_npt", None),
+        ("firewall_nat_npt", "firewall_rule", []),
+    ],
+)
 @pytest.mark.asyncio
-async def test_async_setup_entry_records_none_for_malformed_firewall_nat_inventory(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_repair_preserves_switches_for_an_unknown_firewall_group(
+    ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
+    unknown_group: str,
+    known_group: str,
+    unknown_inventory: object,
 ) -> None:
-    """Missing NAT subsections should force incomplete firewall reconciliation.
+    """Complete repair and preserve registry entries only where inventory supports it.
 
     Args:
-        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        ph_hass (HomeAssistant): Home Assistant instance with a real entity registry.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        unknown_group (str): Registry ID segment for the group without an inventory.
+        known_group (str): Registry ID segment for the group with an inventory.
+        unknown_inventory (object): Non-mapping payload for the unknown group.
     """
+    known_inventory = {"keep": {"uuid": "keep", "%interface": "wan"}}
+    filter_rules_unknown = unknown_group == "firewall_rule"
     state = {
         "firewall": {
-            "rules": {"r1": {"uuid": "r1", "description": "Rule", "%interface": "wan"}},
-            "nat": {"source_nat": {}, "d_nat": {}, "one_to_one": {}},
+            "rules": unknown_inventory if filter_rules_unknown else known_inventory,
+            "nat": {
+                "source_nat": {},
+                "d_nat": {},
+                "one_to_one": {},
+                "npt": known_inventory if filter_rules_unknown else unknown_inventory,
+            },
         }
     }
     config_entry = setup_switch_reconciliation_entry(
@@ -417,36 +457,109 @@ async def test_async_setup_entry_records_none_for_malformed_firewall_nat_invento
         coordinator=make_coord(state),
         sync_firewall_and_nat=True,
     )
-    recorded: dict[str, Any] = {}
-    created: list[Any] = []
-
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
-        """Capture the desired-entity payload sent to reconciliation.
-
-        Args:
-            _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
-            _platform (str): Platform name passed through the mocked loader.
-            entities (Any | None): Entities captured by the platform add callback.
-        """
-        recorded["entities"] = entities
-
-    def add_entities(ents: Iterable[Any], _update_before_add: bool = False) -> None:
-        """Capture switch entities emitted by setup.
-
-        Args:
-            ents (Iterable[Any]): Entities captured by the platform add callback.
-            _update_before_add (bool): Whether Home Assistant requested an update before adding the entities.
-        """
-        created.extend(ents)
-
-    monkeypatch.setattr(switch_mod, "record_desired_entities", capture)
-
-    await switch_mod.async_setup_entry(
-        MagicMock(), config_entry, cast("AddEntitiesCallback", add_entities)
+    config_entry.add_to_hass(ph_hass)
+    registry = er.async_get(ph_hass)
+    # Rule switches are disabled by default, so repair must handle disabled entries.
+    unknown_entity, known_entity, stale_entity = (
+        registry.async_get_or_create(
+            "switch",
+            DOMAIN,
+            unique_id,
+            config_entry=config_entry,
+            disabled_by=er.RegistryEntryDisabler.INTEGRATION,
+        )
+        for unique_id in (
+            f"old_{unknown_group}_keep",
+            f"old_{known_group}_keep",
+            f"old_{known_group}_stale",
+        )
     )
+    reconciliation = RepairReconciliation(ph_hass, config_entry, RepairMarker(1, "old", "id"))
+    config_entry.runtime_data.repair_reconciliation = reconciliation
+    reconciliation.prepare()
 
-    assert recorded.get("entities") is None
-    assert created
+    add_entities = MagicMock()
+    await switch_mod.async_setup_entry(ph_hass, config_entry, add_entities)
+    reconciliation.require_platforms_complete(("switch",))
+    reconciliation.finalize()
+
+    assert registry.async_get_entity_id("switch", DOMAIN, f"id_{unknown_group}_keep") == (
+        unknown_entity.entity_id
+    )
+    assert registry.async_get(known_entity.entity_id) is not None
+    assert registry.async_get(stale_entity.entity_id) is None
+    assert [entity.unique_id for entity in add_entities.call_args.args[0]] == [
+        f"id_{known_group}_keep"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("services", "npt_rules", "keeps_service", "keeps_npt_rule"),
+    [
+        (None, {}, True, False),
+        ([], {}, False, False),
+        (None, None, True, True),
+    ],
+)
+@pytest.mark.asyncio
+async def test_repair_preserves_switches_only_for_unknown_service_and_rule_inventories(
+    ph_hass: HomeAssistant,
+    make_config_entry: Callable[..., MockConfigEntry],
+    services: list[Any] | None,
+    npt_rules: dict[str, Any] | None,
+    keeps_service: bool,
+    keeps_npt_rule: bool,
+) -> None:
+    """Complete repair and keep service and rule switches only for unknown inventories.
+
+    Args:
+        ph_hass (HomeAssistant): Home Assistant instance with a real entity registry.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        services (list[Any] | None): Service inventory reported for the replacement hardware.
+        npt_rules (dict[str, Any] | None): NPTv6 rule inventory reported for the replacement hardware.
+        keeps_service (bool): Whether repair should keep the existing service switch.
+        keeps_npt_rule (bool): Whether repair should keep the existing NPTv6 rule switch.
+    """
+    state: dict[str, Any] = {
+        "firewall": {
+            "rules": {},
+            "nat": {"source_nat": {}, "d_nat": {}, "one_to_one": {}, "npt": npt_rules},
+        },
+        "services": services,
+    }
+    config_entry = setup_switch_reconciliation_entry(
+        make_config_entry,
+        coordinator=make_coord(state),
+        sync_firewall_and_nat=True,
+        sync_services=True,
+    )
+    config_entry.add_to_hass(ph_hass)
+    registry = er.async_get(ph_hass)
+    service_entity, npt_entity, stale_rule = (
+        registry.async_get_or_create("switch", DOMAIN, unique_id, config_entry=config_entry)
+        for unique_id in (
+            "old_service_dpinger_status",
+            "old_firewall_nat_npt_keep",
+            "old_firewall_rule_stale",
+        )
+    )
+    reconciliation = RepairReconciliation(ph_hass, config_entry, RepairMarker(1, "old", "id"))
+    config_entry.runtime_data.repair_reconciliation = reconciliation
+    reconciliation.prepare()
+
+    add_entities = MagicMock()
+    await switch_mod.async_setup_entry(ph_hass, config_entry, add_entities)
+    reconciliation.require_platforms_complete(("switch",))
+    reconciliation.finalize()
+
+    assert registry.async_get_entity_id("switch", DOMAIN, "id_service_dpinger_status") == (
+        service_entity.entity_id if keeps_service else None
+    )
+    assert registry.async_get_entity_id("switch", DOMAIN, "id_firewall_nat_npt_keep") == (
+        npt_entity.entity_id if keeps_npt_rule else None
+    )
+    assert registry.async_get(stale_rule.entity_id) is None
+    add_entities.assert_called_once_with([])
 
 
 @pytest.mark.parametrize(
@@ -590,13 +703,20 @@ async def test_async_setup_entry_records_none_for_invalid_carp_summary(
     captured: dict[str, Any] = {}
     created: list[Any] = []
 
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+    def capture(
+        _entry: MockConfigEntry,
+        _platform: str,
+        entities: Any | None = None,
+        *,
+        preserve_prefix: tuple[str, ...] | None = None,
+    ) -> None:
         """Capture the desired-entity payload sent to reconciliation.
 
         Args:
             _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
             _platform (str): Platform name passed through the mocked loader.
             entities (Any | None): Entities captured by the platform add callback.
+            preserve_prefix (tuple[str, ...] | None): Prefixes of retained registry entries.
         """
         captured["entities"] = entities
 
@@ -4905,13 +5025,20 @@ async def test_async_setup_entry_records_none_for_malformed_service_identity_row
     recorded: dict[str, Any] = {}
     created: list[Any] = []
 
-    def capture(_entry: MockConfigEntry, _platform: str, entities: Any | None = None) -> None:
+    def capture(
+        _entry: MockConfigEntry,
+        _platform: str,
+        entities: Any | None = None,
+        *,
+        preserve_prefix: tuple[str, ...] | None = None,
+    ) -> None:
         """Capture desired entities input for reconciliation.
 
         Args:
             _entry (MockConfigEntry): Config entry passed through the mocked platform loader.
             _platform (str): Platform name passed through the mocked loader.
             entities (Any | None): Entities captured by the platform add callback.
+            preserve_prefix (tuple[str, ...] | None): Prefixes of retained registry entries.
         """
         recorded["entities"] = entities
 

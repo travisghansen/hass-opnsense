@@ -544,6 +544,7 @@ async def _migrate_4_to_5(
             nat = firewall.get("nat")
             if isinstance(nat, Mapping):
                 for nat_section in NATIVE_FIREWALL_NAT_SECTIONS:
+                    # Only a mapping is a readable inventory; None means unknown.
                     nat_rules = nat.get(nat_section)
                     if isinstance(nat_rules, Mapping):
                         current_native_nat_unique_ids[nat_section] = (
@@ -554,7 +555,11 @@ async def _migrate_4_to_5(
                             )
                         )
                     else:
-                        current_native_nat_unique_ids[nat_section] = set()
+                        _LOGGER.warning(
+                            "Migration to version 5 skipping native NAT rule pruning for %s "
+                            "because its rules data is unavailable",
+                            nat_section,
+                        )
 
             elif nat is not None:
                 _LOGGER.warning(
