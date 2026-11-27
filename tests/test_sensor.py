@@ -95,7 +95,12 @@ async def test_wireguard_sensor_identity_and_state_survive_access_changes(
     client.get_wireguard.return_value = AccessDict(
         {
             "servers": {
-                disabled_uuid: {**server, "uuid": disabled_uuid, "enabled": False},
+                disabled_uuid: {
+                    **server,
+                    "name": "Retired",
+                    "uuid": disabled_uuid,
+                    "enabled": False,
+                },
                 uuid: {**server, "uuid": uuid, "enabled": True, "status": "up"},
                 "00000000-0000-0000-0000-000000000000": {"name": "Keyless", "key_hash": None},
             },
@@ -110,6 +115,7 @@ async def test_wireguard_sensor_identity_and_state_survive_access_changes(
     configured_sensors = added.call_args.args[0]
     assert len(configured_sensors) == 6
     status_sensor = next(entity for entity in configured_sensors if entity.unique_id == expected_id)
+    assert status_sensor.name == "Wireguard Server Office status"
     status_sensor.hass = hass
     status_sensor.entity_id = "sensor.office_wireguard"
     stub_async_write_ha_state(status_sensor)

@@ -50,7 +50,13 @@ from .const import (
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity, OPNsenseEntityCoordinator
-from .helpers import coerce_bool, dict_get, get_smart_device_name, is_carp_entry
+from .helpers import (
+    coerce_bool,
+    dict_get,
+    get_smart_device_name,
+    is_carp_entry,
+    vpn_rows_enabled_first,
+)
 from .repair_reconciliation import record_desired_entities
 from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
@@ -252,21 +258,6 @@ def _is_valid_vpn_sensor_row(instance: Any) -> bool:
         instance (Any): OPNsense payload object being evaluated.
     """
     return isinstance(instance, MutableMapping) and len(instance) > 0
-
-
-def _vpn_rows_enabled_first(instances: Mapping[str, Any]) -> list[tuple[str, Any]]:
-    """Order VPN rows so an enabled entry backs sensors that several entries share.
-
-    Args:
-        instances (Mapping[str, Any]): VPN rows keyed as aiopnsense reports them.
-
-    Returns:
-        list[tuple[str, Any]]: Rows in their reported order, with disabled rows last.
-    """
-    return sorted(
-        instances.items(),
-        key=lambda item: isinstance(item[1], Mapping) and item[1].get("enabled") is False,
-    )
 
 
 def _vnstat_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
@@ -1836,7 +1827,7 @@ async def _compile_vpn_sensors(
             if not isinstance(vpn_instances, MutableMapping):
                 continue
             seen_ids: set[str] = set()
-            for inventory_key, instance in _vpn_rows_enabled_first(vpn_instances):
+            for inventory_key, instance in vpn_rows_enabled_first(vpn_instances):
                 if not _is_valid_vpn_sensor_row(instance):
                     continue
                 # WireGuard rows are keyed by UUID or key hash depending on the access
@@ -2840,7 +2831,7 @@ class OPNsenseVPNSensor(OPNsenseSensor):
                 for name, row in instances.items()
                 if isinstance(row, MutableMapping) and row.get("key_hash") == instance_id
             }
-            instance = next((row for _, row in _vpn_rows_enabled_first(matching_rows)), None)
+            instance = next((row for _, row in vpn_rows_enabled_first(matching_rows)), None)
         else:
             instance = instances.get(instance_id)
         if (

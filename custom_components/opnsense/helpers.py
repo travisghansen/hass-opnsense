@@ -195,6 +195,21 @@ def device_belongs_to_config_entry(
     return config_entry_id in legacy_entry_ids
 
 
+def vpn_rows_enabled_first(instances: Mapping[str, Any]) -> list[tuple[str, Any]]:
+    """Order VPN rows so an enabled entry backs sensors that several entries share.
+
+    Args:
+        instances (Mapping[str, Any]): VPN rows keyed as aiopnsense reports them.
+
+    Returns:
+        list[tuple[str, Any]]: Rows in their reported order, with disabled rows last.
+    """
+    return sorted(
+        instances.items(),
+        key=lambda item: isinstance(item[1], Mapping) and item[1].get("enabled") is False,
+    )
+
+
 def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = None) -> Any | None:
     """Parse a dotted path to get a value from nested mapping or list data.
 

@@ -25,6 +25,7 @@ from .helpers import (
     create_opnsense_client_from_config_entry,
     firewall_nat_switch_unique_ids_from_payload,
     firewall_rule_switch_unique_ids_from_payload,
+    vpn_rows_enabled_first,
 )
 from .repair_reconciliation import parse_repair_marker
 
@@ -690,11 +691,8 @@ async def _migrate_5_to_6(
             inventory = wireguard.get(group)
             if not isinstance(inventory, Mapping):
                 continue
-            # Same order as sensor.py: a shared key hash follows the first enabled row.
-            for uuid, row in sorted(
-                inventory.items(),
-                key=lambda item: isinstance(item[1], Mapping) and item[1].get("enabled") is False,
-            ):
+            # A shared key hash follows the first enabled row, as the sensors do.
+            for uuid, row in vpn_rows_enabled_first(inventory):
                 key_hash = row.get("key_hash") if isinstance(row, Mapping) else None
                 if isinstance(uuid, str) and isinstance(key_hash, str) and key_hash:
                     hashes[group, slugify(uuid)] = key_hash
