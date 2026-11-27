@@ -483,26 +483,37 @@ async def test_repair_preserves_switches_for_an_unknown_firewall_group(
     ]
 
 
-@pytest.mark.parametrize(("services", "keeps_switch"), [(None, True), ([], False)])
+@pytest.mark.parametrize(
+    ("services", "npt_rules", "keeps_service", "keeps_npt_rule"),
+    [
+        (None, {}, True, False),
+        ([], {}, False, False),
+        (None, None, True, True),
+    ],
+)
 @pytest.mark.asyncio
-async def test_repair_preserves_service_switches_only_for_an_unknown_inventory(
+async def test_repair_preserves_switches_only_for_unknown_service_and_rule_inventories(
     ph_hass: HomeAssistant,
     make_config_entry: Callable[..., MockConfigEntry],
     services: list[Any] | None,
-    keeps_switch: bool,
+    npt_rules: dict[str, Any] | None,
+    keeps_service: bool,
+    keeps_npt_rule: bool,
 ) -> None:
-    """Complete repair and keep service switches only when their inventory is unknown.
+    """Complete repair and keep service and rule switches only for unknown inventories.
 
     Args:
         ph_hass (HomeAssistant): Home Assistant instance with a real entity registry.
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
         services (list[Any] | None): Service inventory reported for the replacement hardware.
-        keeps_switch (bool): Whether repair should keep the existing service switch.
+        npt_rules (dict[str, Any] | None): NPTv6 rule inventory reported for the replacement hardware.
+        keeps_service (bool): Whether repair should keep the existing service switch.
+        keeps_npt_rule (bool): Whether repair should keep the existing NPTv6 rule switch.
     """
     state: dict[str, Any] = {
         "firewall": {
             "rules": {},
-            "nat": {"source_nat": {}, "d_nat": {}, "one_to_one": {}, "npt": {}},
+            "nat": {"source_nat": {}, "d_nat": {}, "one_to_one": {}, "npt": npt_rules},
         },
         "services": services,
     }
@@ -514,9 +525,13 @@ async def test_repair_preserves_service_switches_only_for_an_unknown_inventory(
     )
     config_entry.add_to_hass(ph_hass)
     registry = er.async_get(ph_hass)
-    service_entity, stale_rule = (
+    service_entity, npt_entity, stale_rule = (
         registry.async_get_or_create("switch", DOMAIN, unique_id, config_entry=config_entry)
-        for unique_id in ("old_service_dpinger_status", "old_firewall_rule_stale")
+        for unique_id in (
+            "old_service_dpinger_status",
+            "old_firewall_nat_npt_keep",
+            "old_firewall_rule_stale",
+        )
     )
     reconciliation = RepairReconciliation(ph_hass, config_entry, RepairMarker(1, "old", "id"))
     config_entry.runtime_data.repair_reconciliation = reconciliation
@@ -528,7 +543,10 @@ async def test_repair_preserves_service_switches_only_for_an_unknown_inventory(
     reconciliation.finalize()
 
     assert registry.async_get_entity_id("switch", DOMAIN, "id_service_dpinger_status") == (
-        service_entity.entity_id if keeps_switch else None
+        service_entity.entity_id if keeps_service else None
+    )
+    assert registry.async_get_entity_id("switch", DOMAIN, "id_firewall_nat_npt_keep") == (
+        npt_entity.entity_id if keeps_npt_rule else None
     )
     assert registry.async_get(stale_rule.entity_id) is None
     add_entities.assert_called_once_with([])
