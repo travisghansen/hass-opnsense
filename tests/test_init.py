@@ -40,8 +40,10 @@ from custom_components.opnsense.const import (
     CONF_ENTRY_TYPE,
     CONF_GRANULAR_SYNC_OPTIONS,
     CONF_SYNC_FIREWALL_AND_NAT,
+    CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
     CONF_SYNC_LIVE_TRAFFIC,
+    CONF_SYNC_SPEEDTEST,
     CONF_TLS_INSECURE,
     COORDINATOR,
     DEVICE_TRACKER_COORDINATOR,
@@ -63,6 +65,7 @@ from custom_components.opnsense.repair_reconciliation import (
     REPAIR_MARKER_KEY,
     RepairMarker,
     RepairReconciliationError,
+    build_repair_marker,
     parse_repair_marker,
 )
 from tests.common import MockConfigEntry
@@ -5770,6 +5773,114 @@ async def test_cleanup_reconciliation_failure_returns_platform_unload_result(
     issue_create.assert_called_once()
     assert events == ["create_issue", "unload_platforms"]
     ph_hass.config_entries.async_unload_platforms.assert_awaited_once()
+
+
+@pytest.mark.usefixtures("enable_custom_integrations")
+@pytest.mark.parametrize(
+    ("speedtest", "gateways", "repair_completes"),
+    [
+        pytest.param(None, {"WAN": {}}, True, id="unreadable-speedtest"),
+        pytest.param({}, {"WAN": {}}, True, id="missing-availability"),
+        pytest.param({"available": False}, {"WAN": {}}, True, id="missing-plugin"),
+        pytest.param(
+            {"available": True, "last": {"download": {"value": 100}}},
+            {"WAN": {}},
+            True,
+            id="latest-only",
+        ),
+        pytest.param(None, None, False, id="unreadable-gateways"),
+    ],
+)
+async def test_replacement_repair_reconciles_speedtest_registry(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    monkeypatch: pytest.MonkeyPatch,
+    speedtest: dict[str, object] | None,
+    gateways: dict[str, object] | None,
+    repair_completes: bool,
+) -> None:
+    """Repair should preserve unreadable Speedtest entries and reconcile readable inventory.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance running the integration.
+        entity_registry (er.EntityRegistry): Home Assistant entity registry.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture for the OPNsense client boundary.
+        speedtest (dict[str, object] | None): Speedtest inventory returned by the Firewall.
+        gateways (dict[str, object] | None): Gateway inventory returned by the Firewall.
+        repair_completes (bool): Whether setup should clear the repair marker.
+    """
+    client = _make_valid_setup_client()
+    client.get_system_info = AsyncMock(return_value={"name": "Firewall"})
+    client.reset_query_counts = AsyncMock()
+    client.get_query_counts = AsyncMock(return_value=0)
+    client.get_speedtest = AsyncMock(return_value=speedtest)
+    client.get_gateways = AsyncMock(return_value=gateways)
+    patch_opnsense_client(monkeypatch, init_mod, lambda **_kwargs: client)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=5,
+        unique_id="dev1",
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: build_repair_marker("Old Firewall", "dev1"),
+            **dict.fromkeys(GRANULAR_SYNC_PREFIX, False),
+            CONF_SYNC_SPEEDTEST: True,
+            CONF_SYNC_GATEWAYS: True,
+        },
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+    entry.add_to_hass(hass)
+    latest = entity_registry.async_get_or_create(
+        "sensor", DOMAIN, "old_firewall_speedtest_last_download", config_entry=entry
+    )
+    average = entity_registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "old_firewall_speedtest_average_latency",
+        config_entry=entry,
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
+    gateway = entity_registry.async_get_or_create(
+        "sensor", DOMAIN, "old_firewall_gateway_wan_status", config_entry=entry
+    )
+    stale = entity_registry.async_get_or_create(
+        "sensor", DOMAIN, "old_firewall_gateway_lan_status", config_entry=entry
+    )
+
+    assert await hass.config_entries.async_setup(entry.entry_id) is repair_completes
+    await hass.async_block_till_done()
+
+    assert (REPAIR_MARKER_KEY not in entry.data) is repair_completes
+    assert (entity_registry.async_get(stale.entity_id) is None) is repair_completes
+    assert entity_registry.async_get_entity_id("sensor", DOMAIN, "dev1_gateway_wan_status") == (
+        gateway.entity_id
+    )
+    available = speedtest.get("available") if speedtest is not None else None
+    for previous, unique_id in (
+        (latest, "dev1_speedtest_last_download"),
+        (average, "dev1_speedtest_average_latency"),
+    ):
+        current = entity_registry.async_get(previous.entity_id)
+        if available is not False:
+            assert current is not None
+            assert current.unique_id == unique_id
+            assert current.id == previous.id
+            assert current.disabled_by == previous.disabled_by
+        else:
+            assert current is None
+    if available is None:
+        assert {
+            row.entity_id
+            for row in er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+            if row.unique_id.startswith("dev1_speedtest_")
+        } == {latest.entity_id, average.entity_id}
+    elif available is True:
+        state = hass.states.get(latest.entity_id)
+        assert state is not None
+        assert float(state.state) == 100
 
 
 @pytest.mark.asyncio
