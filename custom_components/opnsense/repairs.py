@@ -10,14 +10,19 @@ from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
-import voluptuous as vol
 
 from .const import CONF_DEVICE_UNIQUE_ID, DOMAIN, TRACKED_ARP_MACS, TRACKED_MACS, TRACKED_NDP_MACS
 from .helpers import create_opnsense_client_from_config_entry, is_carp_entry
 from .repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker, parse_repair_marker
 
+# HA 2026.9+ types flow schemas as probatio.Schema and aliases ``voluptuous`` to
+# probatio at runtime. Older supported HA versions only ship voluptuous, so type
+# check against probatio while importing voluptuous at runtime.
 if TYPE_CHECKING:
     from homeassistant.components.repairs import RepairsFlowResult
+    import probatio as vol
+else:
+    import voluptuous as vol
 
 _DEVICE_ID_MISMATCH_ISSUE_SUFFIX = "_device_id_mismatched"
 _LOGGER = logging.getLogger(__name__)
@@ -553,9 +558,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         if user_input is None:
             return self.async_show_form(
                 step_id="confirm",
-                # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
-                # Older HA annotations do not need the argument-type ignore.
-                data_schema=vol.Schema({}),  # type: ignore[arg-type, unused-ignore]
+                data_schema=vol.Schema({}),
                 description_placeholders=self._description_placeholders,
             )
 
