@@ -66,21 +66,26 @@ async def test_wireguard_sensor_migration_during_setup(
     )
     entry.add_to_hass(hass)
     legacy_ids = {
-        # Shares the office server's public key, so each keeps its own sensor.
+        # Shares the office server's public key; the interface tells them apart.
         "disabled_server": "aa_bb_wireguard_servers_ddeeff00_1234_4321_9876_abcdef012345_status",
         "office_server": "aa_bb_wireguard_servers_aabbccdd_1234_4321_9876_abcdef012345_status",
         "office_client": "aa_bb_wireguard_clients_bbccddee_1234_4321_9876_abcdef012345_connected_servers",
+        # Shares the office client's public key, so each keeps its own sensor.
+        "branch_client": "aa_bb_wireguard_clients_ccbbaa99_1234_4321_9876_abcdef012345_connected_servers",
         "missing_server": "aa_bb_wireguard_servers_ccddeeff_1234_4321_9876_abcdef012345_status",
     }
     target_ids = {
         **legacy_ids,
-        "disabled_server": (
-            "aa_bb_wireguard_servers_0123456789abcdef_ddeeff00_1234_4321_9876_abcdef012345_status"
+        "disabled_server": "aa_bb_wireguard_servers_0123456789abcdef_wg1_status",
+        "office_server": "aa_bb_wireguard_servers_0123456789abcdef_wg0_status",
+        "office_client": (
+            "aa_bb_wireguard_clients_123456789abcdef0_"
+            "bbccddee_1234_4321_9876_abcdef012345_connected_servers"
         ),
-        "office_server": (
-            "aa_bb_wireguard_servers_0123456789abcdef_aabbccdd_1234_4321_9876_abcdef012345_status"
+        "branch_client": (
+            "aa_bb_wireguard_clients_123456789abcdef0_"
+            "ccbbaa99_1234_4321_9876_abcdef012345_connected_servers"
         ),
-        "office_client": "aa_bb_wireguard_clients_123456789abcdef0_connected_servers",
     }
     if response == "no-legacy":
         legacy_ids = {"office_server": target_ids["office_server"]}
@@ -116,17 +121,23 @@ async def test_wireguard_sensor_migration_during_setup(
                     "ddeeff00-1234-4321-9876-abcdef012345": {
                         "enabled": False,
                         "key_hash": "0123456789abcdef",
+                        "interface": "wg1",
                     },
                     "aabbccdd-1234-4321-9876-abcdef012345": {
                         "enabled": True,
                         "key_hash": "0123456789abcdef",
+                        "interface": "wg0",
                     },
                 },
                 "clients": {
                     "bbccddee-1234-4321-9876-abcdef012345": {
                         "enabled": True,
                         "key_hash": "123456789abcdef0",
-                    }
+                    },
+                    "ccbbaa99-1234-4321-9876-abcdef012345": {
+                        "enabled": True,
+                        "key_hash": "123456789abcdef0",
+                    },
                 },
             },
             access=Access.CONFIGURATION,

@@ -1827,9 +1827,9 @@ async def _compile_vpn_sensors(
             if not isinstance(vpn_instances, MutableMapping):
                 continue
             # WireGuard rows are keyed by UUID or key hash depending on the access
-            # level, so their sensor IDs are built from the key hash instead.
+            # level, so their sensor IDs are built from fields both levels report.
             instance_ids = (
-                wireguard_sensor_instance_ids(vpn_instances)
+                wireguard_sensor_instance_ids(clients_servers, vpn_instances)
                 if vpn_type == "wireguard"
                 else {inventory_key: inventory_key for inventory_key in vpn_instances}
             )
@@ -2827,14 +2827,19 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             self._mark_unavailable()
             return
         if vpn_type == "wireguard":
-            # An ID that names an entry reads only that entry. A bare key hash reads
-            # the single row with that key, and none once several entries share it.
-            key_hash, _, entry_key = instance_id.partition("_")
-            candidates = [instances.get(entry_key)] if entry_key else list(instances.values())
+            # A Server ID adds its interface to the key hash. A Client ID adds an entry
+            # only when Clients share a key; a bare key hash reads the single Client
+            # with that key, and none once several Clients share it.
+            key_hash, _, qualifier = instance_id.partition("_")
+            candidates = list(instances.values())
+            if clients_servers == "clients" and qualifier:
+                candidates = [instances.get(qualifier)]
             matches = [
                 row
                 for row in candidates
-                if isinstance(row, MutableMapping) and row.get("key_hash") == key_hash
+                if isinstance(row, MutableMapping)
+                and row.get("key_hash") == key_hash
+                and (clients_servers == "clients" or row.get("interface") == qualifier)
             ]
             instance = matches[0] if len(matches) == 1 else None
         else:

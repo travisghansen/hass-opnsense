@@ -68,9 +68,14 @@ async def test_vpn_repair_reconciles_entities_by_access_level(
     ipsec = AccessDict({"connections": {"site": dict(row)}, "children": {}}, access=access)
     key_hash = "0123456789abcdef"
     uuid = "aabbccdd-1234-4321-9876-abcdef012345"
-    server: dict[str, Any] = {"name": "Office", "status": "up", "key_hash": key_hash}
+    server: dict[str, Any] = {
+        "name": "Office",
+        "status": "up",
+        "key_hash": key_hash,
+        "interface": "wg0",
+    }
     if wireguard_access is Access.STATUS:
-        servers = {key_hash: {**server, "uuid": None}}
+        servers = {f"wg0:{key_hash}": {**server, "uuid": None}}
     else:
         servers = {uuid: {**server, "uuid": uuid, "enabled": True}}
     wireguard = AccessDict({"servers": servers, "clients": {}}, access=wireguard_access)
@@ -95,7 +100,7 @@ async def test_vpn_repair_reconciles_entities_by_access_level(
     entry.runtime_data = SimpleNamespace(
         **{COORDINATOR: coordinator}, repair_reconciliation=reconciliation
     )
-    wireguard_sensor = f"wireguard_servers_{key_hash}_status"
+    wireguard_sensor = f"wireguard_servers_{key_hash}_wg0_status"
     wireguard_switch = f"wireguard_servers_{slugify(uuid)}"
     registry_keys = [
         ("sensor", "openvpn_servers_server_status"),

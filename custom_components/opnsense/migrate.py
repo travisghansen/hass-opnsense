@@ -691,7 +691,7 @@ async def _migrate_5_to_6(
             inventory = wireguard.get(group)
             if not isinstance(inventory, Mapping):
                 continue
-            for uuid, instance_id in wireguard_sensor_instance_ids(inventory).items():
+            for uuid, instance_id in wireguard_sensor_instance_ids(group, inventory).items():
                 instance_ids[group, slugify(uuid)] = instance_id
 
         for entity, prefix, group, uuid, property_name in legacy_sensors:

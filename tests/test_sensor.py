@@ -66,7 +66,9 @@ from tests.utilities import stub_async_write_ha_state
 async def test_wireguard_sensor_identity_and_state_survive_access_changes(
     hass: HomeAssistant, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Keep a WireGuard sensor ID and update its state after the access level changes.
+    """Keep each WireGuard Server's sensor IDs and state when the access level changes.
+
+    The two Servers share a public key and differ only by interface.
 
     Args:
         hass (HomeAssistant): Home Assistant instance for the coordinator.
@@ -89,11 +91,14 @@ async def test_wireguard_sensor_identity_and_state_survive_access_changes(
     setattr(entry.runtime_data, OPNSENSE_CLIENT, client)
     key_hash = "0123456789abcdef"
     uuid = "aa12bc34-1234-4321-9876-abcdef012345"
-    server = {"name": "Office", "key_hash": key_hash}
+    server = {"name": "Office", "key_hash": key_hash, "interface": "wg0"}
+    branch = {"name": "Branch", "key_hash": key_hash, "interface": "wg1", "status": "up"}
+    branch_uuid = "bb12bc34-1234-4321-9876-abcdef012345"
     client.get_wireguard.return_value = AccessDict(
         {
             "servers": {
                 uuid: {**server, "uuid": uuid, "enabled": True, "status": "up"},
+                branch_uuid: {**branch, "uuid": branch_uuid, "enabled": True},
                 "00000000-0000-0000-0000-000000000000": {"name": "Keyless", "key_hash": None},
             },
             "clients": {},
@@ -103,35 +108,42 @@ async def test_wireguard_sensor_identity_and_state_survive_access_changes(
     added = MagicMock()
     await coordinator.async_refresh()
     await async_setup_entry(hass, entry, added)
-    expected_id = "aa_bb_wireguard_servers_0123456789abcdef_status"
+    prefix = "aa_bb_wireguard_servers_0123456789abcdef"
     configured_sensors = added.call_args.args[0]
-    assert len(configured_sensors) == 6
-    status_sensor = next(entity for entity in configured_sensors if entity.unique_id == expected_id)
-    status_sensor.hass = hass
-    status_sensor.entity_id = "sensor.office_wireguard"
-    stub_async_write_ha_state(status_sensor)
-    await status_sensor.async_added_to_hass()
-    assert status_sensor.native_value == "up"
+    assert len(configured_sensors) == 12
+    by_id = {entity.unique_id: entity for entity in configured_sensors}
+    status_sensors = [by_id[f"{prefix}_wg0_status"], by_id[f"{prefix}_wg1_status"]]
+    for index, status_sensor in enumerate(status_sensors):
+        status_sensor.hass = hass
+        status_sensor.entity_id = f"sensor.wireguard_{index}"
+        stub_async_write_ha_state(status_sensor)
+        await status_sensor.async_added_to_hass()
+    assert [sensor.native_value for sensor in status_sensors] == ["up", "up"]
 
     client.get_wireguard.return_value = AccessDict(
-        {"servers": {key_hash: {**server, "uuid": None, "status": "down"}}, "clients": {}},
+        {
+            "servers": {
+                f"wg0:{key_hash}": {**server, "uuid": None, "status": "down"},
+                f"wg1:{key_hash}": {**branch, "uuid": None},
+            },
+            "clients": {},
+        },
         access=Access.STATUS,
     )
     await coordinator.async_refresh()
-    assert status_sensor.available
-    assert status_sensor.native_value == "down"
+    assert all(sensor.available for sensor in status_sensors)
+    assert [sensor.native_value for sensor in status_sensors] == ["down", "up"]
     await async_setup_entry(hass, entry, added)
-    assert {entity.unique_id for entity in added.call_args.args[0]} == {
-        entity.unique_id for entity in configured_sensors
-    }
-    await status_sensor.async_internal_will_remove_from_hass()
+    assert {entity.unique_id for entity in added.call_args.args[0]} == set(by_id)
+    for status_sensor in status_sensors:
+        await status_sensor.async_internal_will_remove_from_hass()
 
 
 @pytest.mark.asyncio
-async def test_wireguard_entries_sharing_a_key_keep_their_own_sensors(
+async def test_wireguard_clients_sharing_a_key_keep_their_own_sensors(
     hass: HomeAssistant, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Give each entry that shares a public key sensors that never read another entry.
+    """Give each Client that shares a public key sensors that never read another Client.
 
     Args:
         hass (HomeAssistant): Home Assistant instance for the coordinator.
@@ -157,7 +169,7 @@ async def test_wireguard_entries_sharing_a_key_keep_their_own_sensors(
     branch_uuid = "bb12bc34-1234-4321-9876-abcdef012345"
 
     def wireguard(access: Access, **rows: tuple[str, int, bool]) -> AccessDict[str, Any]:
-        """Build a WireGuard result whose servers share one public key.
+        """Build a WireGuard result whose Clients share one public key.
 
         Args:
             access (Access): Access level the result reports.
@@ -166,7 +178,7 @@ async def test_wireguard_entries_sharing_a_key_keep_their_own_sensors(
         Returns:
             AccessDict[str, Any]: WireGuard result for the client mock.
         """
-        servers = {
+        clients = {
             inventory_key: {
                 "name": name,
                 "key_hash": key_hash,
@@ -175,7 +187,7 @@ async def test_wireguard_entries_sharing_a_key_keep_their_own_sensors(
             }
             for name, (inventory_key, received, enabled) in rows.items()
         }
-        return AccessDict({"servers": servers, "clients": {}}, access=access)
+        return AccessDict({"servers": {}, "clients": clients}, access=access)
 
     async def received_sensors() -> dict[str, OPNsenseVPNSensor]:
         """Set up the sensor platform and attach its received-bytes sensors.
@@ -201,7 +213,7 @@ async def test_wireguard_entries_sharing_a_key_keep_their_own_sensors(
         Access.CONFIGURATION, Office=(office_uuid, 1_000, True)
     )
     await coordinator.async_refresh()
-    prefix = "aa_bb_wireguard_servers_0123456789abcdef"
+    prefix = "aa_bb_wireguard_clients_0123456789abcdef"
     sole = (await received_sensors())[f"{prefix}_total_bytes_recv"]
     assert sole.native_value == 1_000
 
@@ -217,7 +229,7 @@ async def test_wireguard_entries_sharing_a_key_keep_their_own_sensors(
     branch = shared[f"{prefix}_{slugify(branch_uuid)}_total_bytes_recv"]
     assert len(shared) == 2
     assert (office.native_value, branch.native_value) == (1_000, 4_000)
-    assert office.name == "Wireguard Server Office total_bytes_recv"
+    assert office.name == "Wireguard Client Office total_bytes_recv"
 
     client.get_wireguard.return_value = wireguard(
         Access.CONFIGURATION,
@@ -1136,7 +1148,9 @@ async def test_compile_vpn_sensors_falls_back_to_uuid_when_name_is_unusable(
     coordinator.data = {
         "wireguard": {
             "clients": {},
-            "servers": {"wg-uuid": {**instance, "key_hash": "0123456789abcdef"}},
+            "servers": {
+                "wg-uuid": {**instance, "key_hash": "0123456789abcdef", "interface": "wg0"}
+            },
         }
     }
     entry = make_config_entry()
@@ -1145,7 +1159,7 @@ async def test_compile_vpn_sensors_falls_back_to_uuid_when_name_is_unusable(
     status_sensor = next(
         entity
         for entity in entities
-        if entity.entity_description.key == "wireguard.servers.0123456789abcdef.status"
+        if entity.entity_description.key == "wireguard.servers.0123456789abcdef_wg0.status"
     )
 
     assert isinstance(status_sensor, OPNsenseVPNSensor)
@@ -4819,7 +4833,13 @@ async def test_compile_and_handle_many_entities(
         },
         "wireguard": {
             "servers": {
-                "wg1": {"name": "wg1", "key_hash": "s1hash", "status": "up", "clients": []}
+                "wg1": {
+                    "name": "wg1",
+                    "key_hash": "s1hash",
+                    "interface": "wg1",
+                    "status": "up",
+                    "clients": [],
+                }
             },
             "clients": {"c1": {"name": "c1", "key_hash": "c1hash", "enabled": True}},
         },
@@ -5505,6 +5525,7 @@ async def test_generated_sensor_entity_contract(
                 "wg1": {
                     "name": "wg-server-1",
                     "key_hash": "s1hash",
+                    "interface": "wg1",
                     "status": "up",
                     "connected_clients": 1,
                 }
@@ -5643,15 +5664,15 @@ async def test_generated_sensor_entity_contract(
     }
 
     wireguard_server_keys = {
-        key for key in entities_by_key if key.startswith("wireguard.servers.s1hash.")
+        key for key in entities_by_key if key.startswith("wireguard.servers.s1hash_wg1.")
     }
     assert wireguard_server_keys == {
-        "wireguard.servers.s1hash.total_bytes_recv",
-        "wireguard.servers.s1hash.total_bytes_sent",
-        "wireguard.servers.s1hash.total_bytes_recv_kilobytes_per_second",
-        "wireguard.servers.s1hash.total_bytes_sent_kilobytes_per_second",
-        "wireguard.servers.s1hash.status",
-        "wireguard.servers.s1hash.connected_clients",
+        "wireguard.servers.s1hash_wg1.total_bytes_recv",
+        "wireguard.servers.s1hash_wg1.total_bytes_sent",
+        "wireguard.servers.s1hash_wg1.total_bytes_recv_kilobytes_per_second",
+        "wireguard.servers.s1hash_wg1.total_bytes_sent_kilobytes_per_second",
+        "wireguard.servers.s1hash_wg1.status",
+        "wireguard.servers.s1hash_wg1.connected_clients",
     }
 
     wireguard_client_keys = {
