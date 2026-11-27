@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 from aiopnsense import OPNsenseClient
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense.query_stats_coordinator import OPNsenseQueryStatsCoordinator
+from tests.common import MockConfigEntry
 
 STATS = OPNsenseClient.QueryStats(
     last_minute=OPNsenseClient.BucketCounts(queries=10, blocked=2, dropped=0),
