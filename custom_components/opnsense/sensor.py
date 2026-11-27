@@ -9,6 +9,7 @@ import logging
 import re
 from typing import Any, Final, TypeIs
 
+from aiopnsense import Access, result_access
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -52,6 +53,7 @@ from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity, OPNsenseEntityCoordinator
 from .helpers import (
     coerce_bool,
+    config_entry_identity,
     dict_get,
     get_smart_device_name,
     is_carp_entry,
@@ -1902,6 +1904,7 @@ async def async_setup_entry(
         return
 
     reconciliation_complete = True
+    preserve_prefix = None
     preserved_speedtest_entities: list[OPNsenseSpeedtestSensor] = []
 
     if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
@@ -2018,12 +2021,19 @@ async def async_setup_entry(
             and isinstance(dhcp_leases.get("lease_interfaces"), MutableMapping)
         ):
             reconciliation_complete = False
+        else:
+            # Status Access can omit interfaces with existing DHCP sensor registrations.
+            dhcp_prefix = slugify(f"{config_entry_identity(config_entry)}_dhcp_leases")
+            preserve_prefix = (
+                f"{dhcp_prefix}_" if result_access(dhcp_leases) is Access.STATUS else None
+            )
 
     _LOGGER.debug("[sensor async_setup_entry] entities: %s", len(entities))
     record_desired_entities(
         config_entry,
         "sensor",
         entities + preserved_speedtest_entities if reconciliation_complete else None,
+        preserve_prefix=preserve_prefix,
     )
     async_add_entities(entities)
 
