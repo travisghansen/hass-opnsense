@@ -22,7 +22,7 @@ version = { attr = "custom_components.opnsense.const.VERSION" }
 
 [dependency-groups]
 ha = [
-    "aiopnsense==1.6.0",
+    "aiopnsense==1.6.1",
     "homeassistant>=2026.3",
 ]
 lint = [
@@ -30,6 +30,7 @@ lint = [
     "aiohttp",
     "mypy",
     "prek",
+    "probatio",
     "ruff",
     "types-cffi",
     "types-PyMySQL",
@@ -40,14 +41,19 @@ lint = [
     "types-setuptools",
     "uv>=0.13.4",
 ]
-pytest = [
+# Test dependencies without the Home Assistant test plugin. The minimum Home
+# Assistant CI job installs this group with the plugin that covers its version.
+pytest-base = [
     { include-group = "ha" },
     "aiohttp",
     "pytest>=9",
     "pytest-asyncio",
     "pytest-cov",
-    "pytest-homeassistant>=2026.11.0",
     "pytest-timeout",
+]
+pytest = [
+    { include-group = "pytest-base" },
+    "pytest-homeassistant>=2026.11.0",
 ]
 dev = [
     { include-group = "lint" },
@@ -81,9 +87,11 @@ namespace_packages = true
 pretty = true
 show_error_codes = true
 warn_unused_configs = true
+# typings/voluptuous types voluptuous as probatio; see the stub for its limitations.
+mypy_path = "typings"
 
 [[tool.mypy.overrides]]
-module = ["pytest_homeassistant.*"]
+module = ["pytest_homeassistant.*", "pytest_homeassistant_custom_component.*"]
 ignore_missing_imports = true
 
 [tool.ruff]
@@ -173,6 +181,9 @@ max-complexity = 25
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
+"typings/voluptuous/__init__.pyi" = [
+    "F403",    # Re-export probatio as voluptuous for mypy
+]
 "tests/*" = [
     "B017",    # Don't assert blind Exception
     "C90",     # mccabe, complexity

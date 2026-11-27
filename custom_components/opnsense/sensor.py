@@ -50,7 +50,13 @@ from .const import (
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity, OPNsenseEntityCoordinator
-from .helpers import coerce_bool, dict_get, get_smart_device_name, is_carp_entry
+from .helpers import (
+    coerce_bool,
+    dict_get,
+    get_smart_device_name,
+    is_carp_entry,
+    wireguard_sensor_instance_ids,
+)
 from .repair_reconciliation import is_reconciliation_active, record_desired_entities
 from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
@@ -977,7 +983,7 @@ def _build_dhcp_leases_total_sensor_description() -> SensorEntityDescription:
 def _build_vpn_sensor_description(
     vpn_type: str,
     clients_servers: str,
-    uuid: str,
+    instance_id: str,
     instance_name: str,
     prop_name: str,
 ) -> SensorEntityDescription:
@@ -987,7 +993,7 @@ def _build_vpn_sensor_description(
         vpn_type (str): VPN implementation type, such as ``openvpn``, ``wireguard``, or
             ``ipsec``.
         clients_servers (str): VPN collection type represented by the sensor.
-        uuid (str): VPN instance identifier used in the entity key.
+        instance_id (str): VPN instance identifier used in the entity key.
         instance_name (str): User-facing VPN instance name.
         prop_name (str): VPN property represented by the sensor.
 
@@ -1030,7 +1036,7 @@ def _build_vpn_sensor_description(
         icon = "mdi:gauge"
 
     return SensorEntityDescription(
-        key=f"{vpn_type}.{clients_servers}.{uuid}.{prop_name}",
+        key=f"{vpn_type}.{clients_servers}.{instance_id}.{prop_name}",
         name=(
             f"{_VPN_TYPE_DISPLAY_NAMES.get(vpn_type, vpn_type.title())} "
             f"{_VPN_GROUP_DISPLAY_NAMES.get(clients_servers, clients_servers.title().rstrip('s'))} "
@@ -1812,12 +1818,20 @@ async def _compile_vpn_sensors(
             vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
             if not isinstance(vpn_instances, MutableMapping):
                 continue
-            for uuid, instance in vpn_instances.items():
-                if not _is_valid_vpn_sensor_row(instance):
+            # WireGuard rows are keyed by UUID or key hash depending on the access
+            # level, so their sensor IDs are built from fields both levels report.
+            instance_ids = (
+                wireguard_sensor_instance_ids(clients_servers, vpn_instances)
+                if vpn_type == "wireguard"
+                else {inventory_key: inventory_key for inventory_key in vpn_instances}
+            )
+            for inventory_key, instance in vpn_instances.items():
+                instance_id = instance_ids.get(inventory_key)
+                if instance_id is None or not _is_valid_vpn_sensor_row(instance):
                     continue
                 instance_name = OPNsenseEntity.payload_display_name(
                     instance,
-                    str(uuid),
+                    str(inventory_key),
                     "name",
                     "description",
                     allow_scalar=False,
@@ -1837,7 +1851,7 @@ async def _compile_vpn_sensors(
                         _build_vpn_sensor_description(
                             vpn_type,
                             clients_servers,
-                            uuid,
+                            instance_id,
                             instance_name,
                             prop_name,
                         ),
@@ -2810,19 +2824,30 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             return
         vpn_type = key_parts[0]
         clients_servers = key_parts[1]
-        uuid = key_parts[2]
+        instance_id = key_parts[2]
         prop_name = key_parts[3]
         instances = self._mapping_at(f"{vpn_type}.{clients_servers}")
         if instances is None:
             self._mark_unavailable()
             return
-        instance: MutableMapping[str, Any] = {}
-        for instance_uuid, ins in instances.items():
-            if not isinstance(ins, MutableMapping):
-                continue
-            if uuid == instance_uuid:
-                instance = ins
-                break
+        if vpn_type == "wireguard":
+            # A Server ID adds its interface to the key hash. A Client ID adds an entry
+            # only when Clients share a key; a bare key hash reads the single Client
+            # with that key, and none once several Clients share it.
+            key_hash, _, qualifier = instance_id.partition("_")
+            candidates = list(instances.values())
+            if clients_servers == "clients" and qualifier:
+                candidates = [instances.get(qualifier)]
+            matches = [
+                row
+                for row in candidates
+                if isinstance(row, MutableMapping)
+                and row.get("key_hash") == key_hash
+                and (clients_servers == "clients" or row.get("interface") == qualifier)
+            ]
+            instance = matches[0] if len(matches) == 1 else None
+        else:
+            instance = instances.get(instance_id)
         if (
             not isinstance(instance, MutableMapping)
             or not instance

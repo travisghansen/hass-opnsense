@@ -1,18 +1,28 @@
 """Tests for restart-safe Device ID repair reconciliation."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
+from aiopnsense import Access, AccessDict, OPNsenseClient
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity import Entity
+from homeassistant.util import slugify
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
-from custom_components.opnsense import repair_reconciliation as rr
-from custom_components.opnsense.const import CONF_DEVICE_UNIQUE_ID, DOMAIN
+from custom_components.opnsense import repair_reconciliation as rr, sensor, switch
+from custom_components.opnsense.const import (
+    CONF_DEVICE_UNIQUE_ID,
+    CONF_SYNC_VPN,
+    COORDINATOR,
+    DOMAIN,
+    GRANULAR_SYNC_ITEMS,
+)
+from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.repair_reconciliation import (
     REPAIR_MARKER_KEY,
     RepairMarker,
@@ -24,6 +34,128 @@ from custom_components.opnsense.repair_reconciliation import (
     parse_repair_marker,
     record_desired_entities,
 )
+from tests.common import MockConfigEntry
+
+
+@pytest.mark.parametrize(
+    ("access", "wireguard_access"),
+    [
+        (Access.STATUS, Access.STATUS),
+        (Access.CONFIGURATION, Access.CONFIGURATION),
+        (Access.CONFIGURATION, Access.STATUS),
+    ],
+    ids=["status", "configuration", "only-wireguard-status"],
+)
+@pytest.mark.asyncio
+async def test_vpn_repair_reconciles_entities_by_access_level(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    access: Access,
+    wireguard_access: Access,
+) -> None:
+    """Keep visible VPN sensors and reconcile switch inventory at each access level.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance used for platform setup.
+        entity_registry (er.EntityRegistry): Registry containing the pre-repair entities.
+        access (Access): OpenVPN and IPsec access level reported by aiopnsense.
+        wireguard_access (Access): WireGuard access level reported by aiopnsense.
+    """
+    row: dict[str, Any] = {"name": "Office", "status": "up"}
+    if access is Access.CONFIGURATION:
+        row["enabled"] = True
+    openvpn = AccessDict({"servers": {"server": dict(row)}, "clients": {}}, access=access)
+    ipsec = AccessDict({"connections": {"site": dict(row)}, "children": {}}, access=access)
+    key_hash = "0123456789abcdef"
+    uuid = "aabbccdd-1234-4321-9876-abcdef012345"
+    server: dict[str, Any] = {
+        "name": "Office",
+        "status": "up",
+        "key_hash": key_hash,
+        "interface": "wg0",
+    }
+    if wireguard_access is Access.STATUS:
+        servers = {f"wg0:{key_hash}": {**server, "uuid": None}}
+    else:
+        servers = {uuid: {**server, "uuid": uuid, "enabled": True}}
+    wireguard = AccessDict({"servers": servers, "clients": {}}, access=wireguard_access)
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_DEVICE_UNIQUE_ID: "new_id",
+            **{option: option == CONF_SYNC_VPN for option in GRANULAR_SYNC_ITEMS},
+        },
+    )
+    entry.add_to_hass(hass)
+    client = MagicMock(spec=OPNsenseClient)
+    client.get_device_unique_id.return_value = "new_id"
+    client.get_openvpn.return_value = openvpn
+    client.get_wireguard.return_value = wireguard
+    client.get_ipsec.return_value = ipsec
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass, client, "Firewall", timedelta(seconds=60), "new_id", entry
+    )
+    reconciliation = RepairReconciliation(hass, entry, RepairMarker(1, "old_id", "new_id"))
+    entry.runtime_data = SimpleNamespace(
+        **{COORDINATOR: coordinator}, repair_reconciliation=reconciliation
+    )
+    wireguard_sensor = f"wireguard_servers_{key_hash}_wg0_status"
+    wireguard_switch = f"wireguard_servers_{slugify(uuid)}"
+    registry_keys = [
+        ("sensor", "openvpn_servers_server_status"),
+        ("sensor", "openvpn_servers_disabled_status"),
+        ("sensor", "ipsec_connections_site_status"),
+        ("switch", "openvpn_servers_server"),
+        ("switch", "ipsec_connections_site"),
+        ("sensor", wireguard_sensor),
+        ("sensor", "wireguard_servers_ffffffffffffffff_status"),
+        ("switch", wireguard_switch),
+    ]
+    registered = {
+        key: entity_registry.async_get_or_create(
+            domain, DOMAIN, f"old_id_{key}", config_entry=entry
+        ).entity_id
+        for domain, key in registry_keys
+    }
+    created: list[Entity] = []
+
+    def add_entities(new_entities: Iterable[Entity], update_before_add: bool = False) -> None:
+        """Capture entities emitted by Home Assistant platform setup.
+
+        Args:
+            new_entities (Iterable[Entity]): Entities submitted for registration.
+            update_before_add (bool): Whether to request an update before registration.
+        """
+        created.extend(new_entities)
+
+    await coordinator.async_refresh()
+    reconciliation.prepare()
+    await sensor.async_setup_entry(hass, entry, add_entities)
+    sensor_ids = {entity.unique_id for entity in created if entity.unique_id is not None}
+    expected_sensors = {
+        "openvpn_servers_server_status",
+        "ipsec_connections_site_status",
+        wireguard_sensor,
+    }
+    assert {f"new_id_{key}" for key in expected_sensors} <= sensor_ids
+    created.clear()
+    await switch.async_setup_entry(hass, entry, add_entities)
+
+    expected_switches = (
+        set() if access is Access.STATUS else {"openvpn_servers_server", "ipsec_connections_site"}
+    )
+    if wireguard_access is Access.CONFIGURATION:
+        expected_switches.add(wireguard_switch)
+    assert {entity.unique_id for entity in created} == {
+        f"new_id_{key}" for key in expected_switches
+    }
+    reconciliation.require_platforms_complete(("sensor", "switch"))
+    reconciliation.finalize()
+
+    assert {
+        key for key, entity_id in registered.items() if entity_registry.async_get(entity_id)
+    } == expected_sensors | expected_switches
 
 
 class _EntityRegistry:

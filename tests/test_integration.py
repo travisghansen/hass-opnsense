@@ -25,7 +25,6 @@ from unittest.mock import AsyncMock, MagicMock
 from homeassistant.const import CONF_NAME, CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 import custom_components.opnsense as init_mod
 from custom_components.opnsense import (
@@ -50,6 +49,7 @@ from custom_components.opnsense.const import (
     DOMAIN,
     SHOULD_RELOAD,
 )
+from tests.common import MockConfigEntry
 from tests.utilities import arp_ndp_entry, arp_ndp_table, patch_opnsense_client
 
 homeassistant = pytest.importorskip("homeassistant")
@@ -681,7 +681,7 @@ async def test_e2e_reload_and_unload(
 async def test_e2e_full_migration_chain(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Exercise the full ``async_migrate_entry`` path from version 1 to 5.
+    """Exercise the full ``async_migrate_entry`` path from version 1 to 6.
 
     Verifies:
         - v1 to v2 removes ``tls_insecure`` and adds ``verify_ssl`` as its inverse.
@@ -689,6 +689,8 @@ async def test_e2e_full_migration_chain(
         - v3 to v4 transforms telemetry-related sensor unique IDs and removes
           ``*_connected_client_count`` entities.
         - v4 to v5 removes legacy switch entities and stale native firewall rule switches.
+        - v5 to v6 completes the chain and sets the entry to version 6; this fixture has no
+          legacy WireGuard sensors, so their re-keying is not exercised here.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
@@ -919,7 +921,7 @@ async def test_e2e_full_migration_chain(
     # Run full migration
     ok = await async_migrate_entry(hass, entry)
     assert ok is True
-    assert entry.version == 5
+    assert entry.version == 6
     assert migration_clients
     assert all(client.close_calls == 1 for client in migration_clients)
     # v1->2: tls_insecure removed, verify_ssl added (inverse of True -> False)

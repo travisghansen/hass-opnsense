@@ -1,19 +1,21 @@
 """These tests import the integration code via relative imports and assert behavior across sensor variants using a synthesized coordinator state."""
 
 from collections.abc import Callable, Iterable
+from datetime import timedelta
 from typing import Any, Never, cast
 from unittest.mock import MagicMock
 
+from aiopnsense import Access, AccessDict, OPNsenseClient
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.const import PERCENTAGE, UnitOfDataRate, UnitOfInformation, UnitOfTemperature
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense import sensor as sensor_module
 from custom_components.opnsense.const import (
@@ -31,6 +33,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
     COORDINATOR,
+    GRANULAR_SYNC_ITEMS,
     OPNSENSE_CLIENT,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
@@ -55,6 +58,195 @@ from custom_components.opnsense.sensor import (
     slugify_filesystem_mountpoint,
 )
 from custom_components.opnsense.traffic_coordinator import OPNsenseLiveTrafficCoordinator
+from tests.common import MockConfigEntry
+from tests.utilities import stub_async_write_ha_state
+
+
+@pytest.mark.asyncio
+async def test_wireguard_sensor_identity_and_state_survive_access_changes(
+    hass: HomeAssistant, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Keep each WireGuard Server's sensor IDs and state when the access level changes.
+
+    The two Servers share a public key and differ only by interface.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance for the coordinator.
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+    """
+    entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "AA:BB",
+            **{option: option == CONF_SYNC_VPN for option in GRANULAR_SYNC_ITEMS},
+        }
+    )
+    client = MagicMock(spec=OPNsenseClient)
+    client.get_device_unique_id.return_value = "AA:BB"
+    client.get_openvpn.return_value = {"servers": {}, "clients": {}}
+    client.get_ipsec.return_value = {"connections": {}, "children": {}}
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass, client, "Firewall", timedelta(seconds=60), "AA:BB", entry
+    )
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+    setattr(entry.runtime_data, OPNSENSE_CLIENT, client)
+    key_hash = "0123456789abcdef"
+    uuid = "aa12bc34-1234-4321-9876-abcdef012345"
+    server = {"name": "Office", "key_hash": key_hash, "interface": "wg0"}
+    branch = {"name": "Branch", "key_hash": key_hash, "interface": "wg1", "status": "up"}
+    branch_uuid = "bb12bc34-1234-4321-9876-abcdef012345"
+    client.get_wireguard.return_value = AccessDict(
+        {
+            "servers": {
+                uuid: {**server, "uuid": uuid, "enabled": True, "status": "up"},
+                branch_uuid: {**branch, "uuid": branch_uuid, "enabled": True},
+                "00000000-0000-0000-0000-000000000000": {"name": "Keyless", "key_hash": None},
+            },
+            "clients": {},
+        },
+        access=Access.CONFIGURATION,
+    )
+    added = MagicMock()
+    await coordinator.async_refresh()
+    await async_setup_entry(hass, entry, added)
+    prefix = "aa_bb_wireguard_servers_0123456789abcdef"
+    configured_sensors = added.call_args.args[0]
+    assert len(configured_sensors) == 12
+    by_id = {entity.unique_id: entity for entity in configured_sensors}
+    status_sensors = [by_id[f"{prefix}_wg0_status"], by_id[f"{prefix}_wg1_status"]]
+    for index, status_sensor in enumerate(status_sensors):
+        status_sensor.hass = hass
+        status_sensor.entity_id = f"sensor.wireguard_{index}"
+        stub_async_write_ha_state(status_sensor)
+        await status_sensor.async_added_to_hass()
+    assert [sensor.native_value for sensor in status_sensors] == ["up", "up"]
+
+    client.get_wireguard.return_value = AccessDict(
+        {
+            "servers": {
+                f"wg0:{key_hash}": {**server, "uuid": None, "status": "down"},
+                f"wg1:{key_hash}": {**branch, "uuid": None},
+            },
+            "clients": {},
+        },
+        access=Access.STATUS,
+    )
+    await coordinator.async_refresh()
+    assert all(sensor.available for sensor in status_sensors)
+    assert [sensor.native_value for sensor in status_sensors] == ["down", "up"]
+    await async_setup_entry(hass, entry, added)
+    assert {entity.unique_id for entity in added.call_args.args[0]} == set(by_id)
+    for status_sensor in status_sensors:
+        await status_sensor.async_internal_will_remove_from_hass()
+
+
+@pytest.mark.asyncio
+async def test_wireguard_clients_sharing_a_key_keep_their_own_sensors(
+    hass: HomeAssistant, make_config_entry: Callable[..., MockConfigEntry]
+) -> None:
+    """Give each Client that shares a public key sensors that never read another Client.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance for the coordinator.
+        make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
+    """
+    entry = make_config_entry(
+        data={
+            CONF_DEVICE_UNIQUE_ID: "AA:BB",
+            **{option: option == CONF_SYNC_VPN for option in GRANULAR_SYNC_ITEMS},
+        }
+    )
+    client = MagicMock(spec=OPNsenseClient)
+    client.get_device_unique_id.return_value = "AA:BB"
+    client.get_openvpn.return_value = {"servers": {}, "clients": {}}
+    client.get_ipsec.return_value = {"connections": {}, "children": {}}
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass, client, "Firewall", timedelta(seconds=60), "AA:BB", entry
+    )
+    setattr(entry.runtime_data, COORDINATOR, coordinator)
+    setattr(entry.runtime_data, OPNSENSE_CLIENT, client)
+    key_hash = "0123456789abcdef"
+    office_uuid = "aa12bc34-1234-4321-9876-abcdef012345"
+    branch_uuid = "bb12bc34-1234-4321-9876-abcdef012345"
+
+    def wireguard(access: Access, **rows: tuple[str, int, bool]) -> AccessDict[str, Any]:
+        """Build a WireGuard result whose Clients share one public key.
+
+        Args:
+            access (Access): Access level the result reports.
+            **rows (tuple[str, int, bool]): Inventory key, received bytes and enabled state.
+
+        Returns:
+            AccessDict[str, Any]: WireGuard result for the client mock.
+        """
+        clients = {
+            inventory_key: {
+                "name": name,
+                "key_hash": key_hash,
+                "total_bytes_recv": received,
+                "enabled": enabled,
+            }
+            for name, (inventory_key, received, enabled) in rows.items()
+        }
+        return AccessDict({"servers": {}, "clients": clients}, access=access)
+
+    async def received_sensors() -> dict[str, OPNsenseVPNSensor]:
+        """Set up the sensor platform and attach its received-bytes sensors.
+
+        Returns:
+            dict[str, OPNsenseVPNSensor]: Received-bytes sensors keyed by unique ID.
+        """
+        added = MagicMock()
+        await async_setup_entry(hass, entry, added)
+        sensors = {
+            entity.unique_id: entity
+            for entity in added.call_args.args[0]
+            if entity.unique_id.endswith("_total_bytes_recv")
+        }
+        for index, entity in enumerate(sensors.values()):
+            entity.hass = hass
+            entity.entity_id = f"sensor.wireguard_{index}"
+            stub_async_write_ha_state(entity)
+            await entity.async_added_to_hass()
+        return sensors
+
+    client.get_wireguard.return_value = wireguard(
+        Access.CONFIGURATION, Office=(office_uuid, 1_000, True)
+    )
+    await coordinator.async_refresh()
+    prefix = "aa_bb_wireguard_clients_0123456789abcdef"
+    sole = (await received_sensors())[f"{prefix}_total_bytes_recv"]
+    assert sole.native_value == 1_000
+
+    client.get_wireguard.return_value = wireguard(
+        Access.CONFIGURATION,
+        Office=(office_uuid, 1_000, True),
+        Branch=(branch_uuid, 4_000, True),
+    )
+    await coordinator.async_refresh()
+    assert not sole.available
+    shared = await received_sensors()
+    office = shared[f"{prefix}_{slugify(office_uuid)}_total_bytes_recv"]
+    branch = shared[f"{prefix}_{slugify(branch_uuid)}_total_bytes_recv"]
+    assert len(shared) == 2
+    assert (office.native_value, branch.native_value) == (1_000, 4_000)
+    assert office.name == "Wireguard Client Office total_bytes_recv"
+
+    client.get_wireguard.return_value = wireguard(
+        Access.CONFIGURATION,
+        Office=(office_uuid, 0, False),
+        Branch=(branch_uuid, 5_000, True),
+    )
+    await coordinator.async_refresh()
+    assert not office.available
+    assert branch.native_value == 5_000
+
+    client.get_wireguard.return_value = wireguard(Access.STATUS, Office=(key_hash, 9_000, True))
+    await coordinator.async_refresh()
+    assert not office.available
+    assert not branch.available
+    assert sole.native_value == 9_000
+    for entity in (sole, office, branch):
+        await entity.async_internal_will_remove_from_hass()
 
 
 @pytest.mark.asyncio
@@ -956,7 +1148,9 @@ async def test_compile_vpn_sensors_falls_back_to_uuid_when_name_is_unusable(
     coordinator.data = {
         "wireguard": {
             "clients": {},
-            "servers": {"wg-uuid": instance},
+            "servers": {
+                "wg-uuid": {**instance, "key_hash": "0123456789abcdef", "interface": "wg0"}
+            },
         }
     }
     entry = make_config_entry()
@@ -965,7 +1159,7 @@ async def test_compile_vpn_sensors_falls_back_to_uuid_when_name_is_unusable(
     status_sensor = next(
         entity
         for entity in entities
-        if entity.entity_description.key == "wireguard.servers.wg-uuid.status"
+        if entity.entity_description.key == "wireguard.servers.0123456789abcdef_wg0.status"
     )
 
     assert isinstance(status_sensor, OPNsenseVPNSensor)
@@ -4638,8 +4832,16 @@ async def test_compile_and_handle_many_entities(
             }
         },
         "wireguard": {
-            "servers": {"wg1": {"name": "wg1", "status": "up", "clients": []}},
-            "clients": {"c1": {"name": "c1", "enabled": True}},
+            "servers": {
+                "wg1": {
+                    "name": "wg1",
+                    "key_hash": "s1hash",
+                    "interface": "wg1",
+                    "status": "up",
+                    "clients": [],
+                }
+            },
+            "clients": {"c1": {"name": "c1", "key_hash": "c1hash", "enabled": True}},
         },
         "dhcp_leases": {
             "leases": {"lan": [{"address": "192.168.1.2", "hostname": "host1"}]},
@@ -5316,8 +5518,18 @@ async def test_generated_sensor_entity_contract(
         "gateways": {"gw1": {"name": "WAN Gateway", "status": "online", "address": "203.0.113.1"}},
         "openvpn": {"servers": {"s1": {"name": "ovpn1", "status": "up", "connected_clients": 2}}},
         "wireguard": {
-            "clients": {"c1": {"name": "wg-client-1", "connected_servers": 1}},
-            "servers": {"wg1": {"name": "wg-server-1", "status": "up", "connected_clients": 1}},
+            "clients": {
+                "c1": {"name": "wg-client-1", "key_hash": "c1hash", "connected_servers": 1}
+            },
+            "servers": {
+                "wg1": {
+                    "name": "wg-server-1",
+                    "key_hash": "s1hash",
+                    "interface": "wg1",
+                    "status": "up",
+                    "connected_clients": 1,
+                }
+            },
         },
         "dhcp_leases": {"leases": {"lan": []}, "lease_interfaces": {"lan": "LAN"}},
         "certificates": {"cert1": 1},
@@ -5397,7 +5609,7 @@ async def test_generated_sensor_entity_contract(
             "state_class": None,
             "entity_registry_enabled_default": True,
         },
-        "wireguard.clients.c1.connected_servers": {
+        "wireguard.clients.c1hash.connected_servers": {
             "name": "Wireguard Client wg-client-1 connected_servers",
             "native_unit_of_measurement": None,
             "device_class": None,
@@ -5452,26 +5664,26 @@ async def test_generated_sensor_entity_contract(
     }
 
     wireguard_server_keys = {
-        key for key in entities_by_key if key.startswith("wireguard.servers.wg1.")
+        key for key in entities_by_key if key.startswith("wireguard.servers.s1hash_wg1.")
     }
     assert wireguard_server_keys == {
-        "wireguard.servers.wg1.total_bytes_recv",
-        "wireguard.servers.wg1.total_bytes_sent",
-        "wireguard.servers.wg1.total_bytes_recv_kilobytes_per_second",
-        "wireguard.servers.wg1.total_bytes_sent_kilobytes_per_second",
-        "wireguard.servers.wg1.status",
-        "wireguard.servers.wg1.connected_clients",
+        "wireguard.servers.s1hash_wg1.total_bytes_recv",
+        "wireguard.servers.s1hash_wg1.total_bytes_sent",
+        "wireguard.servers.s1hash_wg1.total_bytes_recv_kilobytes_per_second",
+        "wireguard.servers.s1hash_wg1.total_bytes_sent_kilobytes_per_second",
+        "wireguard.servers.s1hash_wg1.status",
+        "wireguard.servers.s1hash_wg1.connected_clients",
     }
 
     wireguard_client_keys = {
-        key for key in entities_by_key if key.startswith("wireguard.clients.c1.")
+        key for key in entities_by_key if key.startswith("wireguard.clients.c1hash.")
     }
     assert wireguard_client_keys == {
-        "wireguard.clients.c1.total_bytes_recv",
-        "wireguard.clients.c1.total_bytes_sent",
-        "wireguard.clients.c1.total_bytes_recv_kilobytes_per_second",
-        "wireguard.clients.c1.total_bytes_sent_kilobytes_per_second",
-        "wireguard.clients.c1.connected_servers",
+        "wireguard.clients.c1hash.total_bytes_recv",
+        "wireguard.clients.c1hash.total_bytes_sent",
+        "wireguard.clients.c1hash.total_bytes_recv_kilobytes_per_second",
+        "wireguard.clients.c1hash.total_bytes_sent_kilobytes_per_second",
+        "wireguard.clients.c1hash.connected_servers",
     }
 
 

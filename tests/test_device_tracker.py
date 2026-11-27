@@ -15,14 +15,12 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import OPNsenseTimeoutError
 from homeassistant.components.device_tracker import SourceType
-from homeassistant.components.device_tracker.entity import BaseScannerEntity, ScannerEntity
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback, EntityPlatform
 from homeassistant.util import slugify
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 import custom_components.opnsense as init_mod
 from custom_components.opnsense.const import (
@@ -44,6 +42,7 @@ from custom_components.opnsense.device_tracker import OPNsenseScannerEntity
 from custom_components.opnsense.device_tracker_evidence import DeviceTrackerEvidenceSnapshot
 from custom_components.opnsense.entity import OPNsenseBaseEntity
 from custom_components.opnsense.helpers import device_belongs_to_config_entry
+from tests.common import MockConfigEntry
 from tests.utilities import (
     arp_ndp_entry,
     arp_ndp_table,
@@ -1787,7 +1786,6 @@ async def test_restore_last_state_normalizes_connected_time_and_skips_empty_attr
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("legacy_mac_linking", [True, False], ids=["pre-2026.11", "2026.11+"])
 @pytest.mark.parametrize(
     (
         "existing_device",
@@ -1865,9 +1863,7 @@ async def test_tracker_platform_registers_client_device(
     hass: HomeAssistant,
     coordinator: MagicMock,
     make_config_entry: Callable[..., MockConfigEntry],
-    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
-    legacy_mac_linking: bool,
     existing_device: bool,
     enabled_default: bool,
     disable_new: bool,
@@ -1876,15 +1872,13 @@ async def test_tracker_platform_registers_client_device(
     existing_manufacturer: str | None,
     expected_manufacturer: str,
 ) -> None:
-    """Register client metadata and retain enabled defaults without legacy MAC linking.
+    """Register client metadata and retain enabled defaults on the installed Core version.
 
     Args:
         hass (HomeAssistant): Home Assistant test instance.
         coordinator (MagicMock): Coordinator supplying tracker state.
         make_config_entry (Callable[..., MockConfigEntry]): Config entry factory.
-        monkeypatch (pytest.MonkeyPatch): Fixture replacing the removed Core hook.
         caplog (pytest.LogCaptureFixture): Captures Core's device info warnings.
-        legacy_mac_linking (bool): Whether to retain Core's pre-2026.11 linking hook.
         existing_device (bool): Whether another integration already knows the MAC.
         enabled_default (bool): Whether this tracker was explicitly selected.
         disable_new (bool): Whether the config entry disables new entities.
@@ -1930,13 +1924,6 @@ async def test_tracker_platform_registers_client_device(
         if hasattr(device_reg, "async_get_device_by_identifier")
         else None,
     )
-    if not legacy_mac_linking:
-        # HA 2026.11 removes ScannerEntity's special post-registration MAC linking.
-        monkeypatch.setattr(
-            ScannerEntity,
-            "async_internal_added_to_hass",
-            BaseScannerEntity.async_internal_added_to_hass,
-        )
     platform = EntityPlatform(
         hass=hass,
         logger=logging.getLogger(__name__),
