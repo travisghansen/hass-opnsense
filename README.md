@@ -238,11 +238,7 @@ When a Firewall entry reports a Hardware ID mismatch, Home Assistant offers a fi
 
 The repair preserves the URL, credentials, and options. A retry marker makes an interrupted repair resumable. Dashboards and automations remain intact for preserved entity IDs; review references to entities removed during reconciliation.
 
-If the repair receives an unknown inventory for services or for a firewall or NAT rule group, it keeps the existing switch registry entries for that inventory and reconciles the inventories that are available. The kept switches stay unavailable until the integration is reloaded after that inventory can be read again. A kept switch whose service or rule does not exist on the replacement hardware gets no entity after that reload, remains in the entity registry, and is not removed automatically.
-
 If Speedtest results cannot be read, the repair keeps existing Speedtest registry entries and reconciles the other readable entities. The kept sensors stay unavailable until the integration is reloaded after the results can be read again. If the Firewall confirms the Speedtest plugin is missing, the repair removes its sensors.
-
-Some other unknown inventories, such as the Unbound blocklist, still keep the repair from completing.
 
 ## Contributing
 
