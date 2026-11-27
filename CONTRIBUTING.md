@@ -92,9 +92,11 @@ oldest Home Assistant release at or above that minimum together with a test plug
 covers it: `pytest-homeassistant` from Home Assistant 2026.11, otherwise its predecessor
 `pytest-homeassistant-custom-component`. It installs them with the `pytest-base` group
 in a separate environment. Raising the minimum in `hacs.json` is all the job needs.
+Both legs require Python 3.14.2 or newer, verify the test environment, and print the
+Python, Home Assistant, and test plugin versions.
 
 Import Home Assistant test plugin helpers such as `MockConfigEntry` from `tests.common`
 so the tests work with either plugin. To reproduce the job locally, run the workflow's
-minimum steps from a separate clone or worktree with `RUNNER_TEMP` set to a scratch
-directory. The steps create their own `.venv` in the current directory, so they fail in a
-checkout that already has one.
+minimum steps from a clean copy without an existing `.venv`, with `RUNNER_TEMP` set to a
+scratch directory. The steps install into that copy's `.venv` even if another environment
+is active.
