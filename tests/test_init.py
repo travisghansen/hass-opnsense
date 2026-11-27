@@ -2167,6 +2167,7 @@ async def test_async_migrate_entry_does_not_call_migrate_3_to_4_when_version_not
 
     res = await init_mod.async_migrate_entry(ph_hass, cfg)
 
+    # for versions not 3, migration should complete (except versions >6, which are handled earlier)
     assert res is True
     mock_m3.assert_not_called()
 
@@ -2296,9 +2297,10 @@ async def test_migrate_4_to_5_removes_rule_switch_entities(
         remove_call.args[0] != unrelated_entry.entity_id
         for remove_call in entity_registry.async_remove.call_args_list
     )
-    ph_hass.config_entries.async_update_entry.assert_has_calls(
-        [call(entry, version=5), call(entry, version=6)]
-    )
+    assert ph_hass.config_entries.async_update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.asyncio
@@ -2363,9 +2365,10 @@ async def test_migrate_4_to_5_uses_rule_key_when_uuid_is_missing(
         remove_call.args[0] for remove_call in entity_registry.async_remove.call_args_list
     }
     assert current_native_firewall.entity_id not in removed_entity_ids
-    ph_hass.config_entries.async_update_entry.assert_has_calls(
-        [call(entry, version=5), call(entry, version=6)]
-    )
+    assert ph_hass.config_entries.async_update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.asyncio
@@ -2442,9 +2445,10 @@ async def test_migrate_4_to_5_sync_disabled_skips_firewall_fetch_removes_native_
     assert stale_native_firewall.entity_id in removed_entity_ids
     assert current_native_firewall.entity_id in removed_entity_ids
     assert native_nat.entity_id in removed_entity_ids
-    ph_hass.config_entries.async_update_entry.assert_has_calls(
-        [call(entry, version=5), call(entry, version=6)]
-    )
+    assert ph_hass.config_entries.async_update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
     create_client.assert_not_called()
 
 
@@ -2500,7 +2504,10 @@ async def test_migrate_4_to_5_granular_entry_defaults_missing_category_key_to_en
     create_client.assert_called_once()
     client.get_firewall.assert_awaited_once()
     entity_registry.async_remove.assert_called_once_with(stale_native_firewall.entity_id)
-    update_entry.assert_has_calls([call(entry, version=5), call(entry, version=6)])
+    assert update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.asyncio
@@ -2586,7 +2593,10 @@ async def test_migrate_4_to_5_non_granular_entry_missing_category_key_preserves_
     assert current_native_firewall.entity_id not in removed_entity_ids
     assert current_nat.entity_id not in removed_entity_ids
     assert entity_registry.async_remove.call_count == 3
-    update_entry.assert_has_calls([call(entry, version=5), call(entry, version=6)])
+    assert update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -2840,7 +2850,10 @@ async def test_migrate_4_to_5_completes_when_firewall_privileges_are_missing(
 
     assert res is True
     entity_registry.async_remove.assert_called_once_with(legacy_filter.entity_id)
-    update_entry.assert_has_calls([call(entry, version=5), call(entry, version=6)])
+    assert update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.asyncio
@@ -2908,7 +2921,10 @@ async def test_migrate_4_to_5_skips_native_pruning_when_rules_payload_unavailabl
         any_order=True,
     )
     assert entity_registry.async_remove.call_count == 1
-    update_entry.assert_has_calls([call(entry, version=5), call(entry, version=6)])
+    assert update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.asyncio
@@ -3076,7 +3092,10 @@ async def test_migrate_4_to_5_sync_enabled_prunes_stale_native_nat_rule_entities
     assert current_nat_dnat.entity_id not in removed_entity_ids
     assert stale_nat_one_to_one.entity_id in removed_entity_ids
     assert entity_registry.async_remove.call_count == 5
-    update_entry.assert_has_calls([call(entry, version=5), call(entry, version=6)])
+    assert update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.asyncio
