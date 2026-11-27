@@ -94,5 +94,7 @@ covers it: `pytest-homeassistant` from Home Assistant 2026.11, otherwise its pre
 in a separate environment. Raising the minimum in `hacs.json` is all the job needs.
 
 Import Home Assistant test plugin helpers such as `MockConfigEntry` from `tests.common`
-so the tests work with either plugin. To reproduce the job locally, outside the project
-`.venv`, run the workflow's minimum steps with `RUNNER_TEMP` set to a scratch directory.
+so the tests work with either plugin. To reproduce the job locally, run the workflow's
+minimum steps from a separate clone or worktree with `RUNNER_TEMP` set to a scratch
+directory. The steps create their own `.venv` in the current directory, so they fail in a
+checkout that already has one.
