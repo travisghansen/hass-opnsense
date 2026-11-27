@@ -9,7 +9,6 @@ from homeassistant.const import CONF_PASSWORD, CONF_URL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense import helpers
 from custom_components.opnsense.const import (
@@ -20,9 +19,12 @@ from custom_components.opnsense.const import (
     GRANULAR_SYNC_ITEMS,
 )
 from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
+from tests.common import MockConfigEntry
 
 
 @pytest.mark.asyncio
+# Older Home Assistant test plugins load custom integrations only when asked.
+@pytest.mark.usefixtures("enable_custom_integrations")
 @pytest.mark.parametrize(
     "response",
     [
