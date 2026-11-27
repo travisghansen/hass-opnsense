@@ -57,8 +57,9 @@ from .helpers import (
     dict_get,
     get_smart_device_name,
     is_carp_entry,
+    wireguard_sensor_instance_ids,
 )
-from .repair_reconciliation import record_desired_entities
+from .repair_reconciliation import is_reconciliation_active, record_desired_entities
 from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -984,7 +985,7 @@ def _build_dhcp_leases_total_sensor_description() -> SensorEntityDescription:
 def _build_vpn_sensor_description(
     vpn_type: str,
     clients_servers: str,
-    uuid: str,
+    instance_id: str,
     instance_name: str,
     prop_name: str,
 ) -> SensorEntityDescription:
@@ -994,7 +995,7 @@ def _build_vpn_sensor_description(
         vpn_type (str): VPN implementation type, such as ``openvpn``, ``wireguard``, or
             ``ipsec``.
         clients_servers (str): VPN collection type represented by the sensor.
-        uuid (str): VPN instance identifier used in the entity key.
+        instance_id (str): VPN instance identifier used in the entity key.
         instance_name (str): User-facing VPN instance name.
         prop_name (str): VPN property represented by the sensor.
 
@@ -1037,7 +1038,7 @@ def _build_vpn_sensor_description(
         icon = "mdi:gauge"
 
     return SensorEntityDescription(
-        key=f"{vpn_type}.{clients_servers}.{uuid}.{prop_name}",
+        key=f"{vpn_type}.{clients_servers}.{instance_id}.{prop_name}",
         name=(
             f"{_VPN_TYPE_DISPLAY_NAMES.get(vpn_type, vpn_type.title())} "
             f"{_VPN_GROUP_DISPLAY_NAMES.get(clients_servers, clients_servers.title().rstrip('s'))} "
@@ -1203,27 +1204,19 @@ async def _compile_vnstat_sensors(
     return entities
 
 
-async def _compile_speedtest_sensors(
+def _create_speedtest_sensors(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
-    state: MutableMapping[str, Any],
-) -> list:
-    """Compile speedtest sensors from normalized coordinator state.
+) -> list[OPNsenseSpeedtestSensor]:
+    """Create the fixed set of Speedtest sensors.
 
     Args:
         config_entry (ConfigEntry): Config entry owning the sensors.
         coordinator (OPNsenseDataUpdateCoordinator): Data update coordinator supplying state.
-        state (MutableMapping[str, Any]): Coordinator state snapshot containing speedtest instances.
 
     Returns:
-        list: Compiled speedtest sensor entities.
+        list[OPNsenseSpeedtestSensor]: Speedtest sensor entities with stable unique IDs.
     """
-    if not isinstance(state, MutableMapping):
-        return []
-    speedtest = state.get("speedtest")
-    if not isinstance(speedtest, MutableMapping) or not speedtest.get("available", False):
-        return []
-
     metric_definitions: tuple[tuple[str, str, Any, str], ...] = (
         (
             "speedtest.last.download",
@@ -1827,12 +1820,20 @@ async def _compile_vpn_sensors(
             vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
             if not isinstance(vpn_instances, MutableMapping):
                 continue
-            for uuid, instance in vpn_instances.items():
-                if not _is_valid_vpn_sensor_row(instance):
+            # WireGuard rows are keyed by UUID or key hash depending on the access
+            # level, so their sensor IDs are built from fields both levels report.
+            instance_ids = (
+                wireguard_sensor_instance_ids(clients_servers, vpn_instances)
+                if vpn_type == "wireguard"
+                else {inventory_key: inventory_key for inventory_key in vpn_instances}
+            )
+            for inventory_key, instance in vpn_instances.items():
+                instance_id = instance_ids.get(inventory_key)
+                if instance_id is None or not _is_valid_vpn_sensor_row(instance):
                     continue
                 instance_name = OPNsenseEntity.payload_display_name(
                     instance,
-                    str(uuid),
+                    str(inventory_key),
                     "name",
                     "description",
                     allow_scalar=False,
@@ -1852,7 +1853,7 @@ async def _compile_vpn_sensors(
                         _build_vpn_sensor_description(
                             vpn_type,
                             clients_servers,
-                            uuid,
+                            instance_id,
                             instance_name,
                             prop_name,
                         ),
@@ -1904,6 +1905,7 @@ async def async_setup_entry(
 
     reconciliation_complete = True
     preserve_prefix = None
+    preserved_speedtest_entities: list[OPNsenseSpeedtestSensor] = []
 
     if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
         telemetry = state.get("telemetry")
@@ -1919,10 +1921,17 @@ async def async_setup_entry(
         else:
             reconciliation_complete = False
     if config.get(CONF_SYNC_SPEEDTEST, DEFAULT_SYNC_OPTION_VALUE):
-        if "speedtest" in state and isinstance(state.get("speedtest"), MutableMapping):
-            entities.extend(await _compile_speedtest_sensors(config_entry, coordinator, state))
+        speedtest = state.get("speedtest")
+        available = speedtest.get("available") if isinstance(speedtest, Mapping) else None
+        if available is True:
+            entities.extend(_create_speedtest_sensors(config_entry, coordinator))
         else:
-            reconciliation_complete = False
+            # Use the same unique IDs to keep existing entries without adding new entities.
+            preserved_speedtest_entities = (
+                _create_speedtest_sensors(config_entry, coordinator)
+                if available is not False and is_reconciliation_active(config_entry)
+                else []
+            )
     if config.get(CONF_SYNC_NUT, DEFAULT_SYNC_OPTION_VALUE):
         nut_entities, nut_inventory_complete = await _compile_nut_sensors_for_setup(
             config_entry, coordinator, state
@@ -2023,7 +2032,7 @@ async def async_setup_entry(
     record_desired_entities(
         config_entry,
         "sensor",
-        entities if reconciliation_complete else None,
+        entities + preserved_speedtest_entities if reconciliation_complete else None,
         preserve_prefix=preserve_prefix,
     )
     async_add_entities(entities)
@@ -2825,19 +2834,30 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             return
         vpn_type = key_parts[0]
         clients_servers = key_parts[1]
-        uuid = key_parts[2]
+        instance_id = key_parts[2]
         prop_name = key_parts[3]
         instances = self._mapping_at(f"{vpn_type}.{clients_servers}")
         if instances is None:
             self._mark_unavailable()
             return
-        instance: MutableMapping[str, Any] = {}
-        for instance_uuid, ins in instances.items():
-            if not isinstance(ins, MutableMapping):
-                continue
-            if uuid == instance_uuid:
-                instance = ins
-                break
+        if vpn_type == "wireguard":
+            # A Server ID adds its interface to the key hash. A Client ID adds an entry
+            # only when Clients share a key; a bare key hash reads the single Client
+            # with that key, and none once several Clients share it.
+            key_hash, _, qualifier = instance_id.partition("_")
+            candidates = list(instances.values())
+            if clients_servers == "clients" and qualifier:
+                candidates = [instances.get(qualifier)]
+            matches = [
+                row
+                for row in candidates
+                if isinstance(row, MutableMapping)
+                and row.get("key_hash") == key_hash
+                and (clients_servers == "clients" or row.get("interface") == qualifier)
+            ]
+            instance = matches[0] if len(matches) == 1 else None
+        else:
+            instance = instances.get(instance_id)
         if (
             not isinstance(instance, MutableMapping)
             or not instance

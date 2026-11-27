@@ -27,7 +27,6 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import AbortFlow
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 import voluptuous as vol
 
 import custom_components.opnsense.config_flow as cf_mod
@@ -59,6 +58,7 @@ from custom_components.opnsense.const import (
     ENTRY_TYPE_DEVICE,
     GRANULAR_SYNC_ITEMS,
 )
+from tests.common import MockConfigEntry
 from tests.utilities import arp_ndp_entry, arp_ndp_table, patch_opnsense_client
 
 

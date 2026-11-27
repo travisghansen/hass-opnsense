@@ -17,7 +17,6 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.util.yaml import load_yaml_dict
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 import voluptuous as vol
 
 from custom_components.opnsense import services as services_mod
@@ -41,6 +40,7 @@ from custom_components.opnsense.const import (
     SERVICE_TOGGLE_ALIAS,
     SERVICE_TOGGLE_INTERFACE,
 )
+from tests.common import MockConfigEntry
 
 _INTEGRATION_ROOT = Path(__file__).parents[1] / "custom_components" / "opnsense"
 

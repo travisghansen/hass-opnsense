@@ -4,7 +4,6 @@ from collections.abc import Callable, Iterator, Mapping
 from unittest.mock import MagicMock
 
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense.const import (
     CONF_DEVICE_UNIQUE_ID,
@@ -15,6 +14,7 @@ from custom_components.opnsense.const import (
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.entity import OPNsenseBaseEntity, OPNsenseEntity
 from custom_components.opnsense.helpers import config_entry_identity
+from tests.common import MockConfigEntry
 
 
 def test_payload_display_name_uses_scalar_fallback() -> None:

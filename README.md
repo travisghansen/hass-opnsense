@@ -122,6 +122,8 @@ At minimum, the following permissions are required:
 
 [The list of what other permissions are needed for the Granular Sync Options and for the Actions can be reviewed here.](docs/granular_permissions.md)
 
+VPN Status Access provides sensors for instances visible in live status. Configuration Access adds the configured inventory and switches. See [VPN permissions](docs/granular_permissions.md#vpn-information-and-switches) for the privileges to grant for each VPN type.
+
 ### Basic Configuration
 
 | Option | Required | Default | Description |
@@ -235,6 +237,8 @@ Hardware replacement may change a number of OPNsense areas including interfaces,
 When a Firewall entry reports a Hardware ID mismatch, Home Assistant offers a fixable repair (the Replacement repair). Confirm it once the replacement hardware is reachable and is the intended Node. The repair selectively reconciles the registry with the replacement's entities: matching entities and devices retain their registry identity and customizations, entities absent from the replacement are removed, and new entities are created.
 
 The repair preserves the URL, credentials, and options. A retry marker makes an interrupted repair resumable. Dashboards and automations remain intact for preserved entity IDs; review references to entities removed during reconciliation.
+
+If Speedtest results cannot be read, the repair keeps existing Speedtest registry entries and reconciles the other readable entities. The kept sensors stay unavailable until the integration is reloaded after the results can be read again. If the Firewall confirms the Speedtest plugin is missing, the repair removes its sensors.
 
 ## Contributing
 

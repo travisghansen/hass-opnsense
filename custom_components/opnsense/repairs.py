@@ -553,9 +553,7 @@ class DeviceIDMismatchRepairFlow(RepairsFlow):
         if user_input is None:
             return self.async_show_form(
                 step_id="confirm",
-                # HA aliases Voluptuous to Probatio at runtime; mypy cannot see that alias.
-                # Older HA annotations do not need the argument-type ignore.
-                data_schema=vol.Schema({}),  # type: ignore[arg-type, unused-ignore]
+                data_schema=vol.Schema({}),
                 description_placeholders=self._description_placeholders,
             )
 
