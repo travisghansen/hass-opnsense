@@ -218,7 +218,7 @@ wheels = [
 
 [[package]]
 name = "aiopnsense"
-version = "1.6.0"
+version = "1.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -226,9 +226,9 @@ dependencies = [
     { name = "python-dateutil" },
     { name = "yarl" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bc/e9/37093b6d6588d91abbce9de67a076808d00824ca77c429bcaacd37fa7fbb/aiopnsense-1.6.0.tar.gz", hash = "sha256:e4bab71824efb7ebfc5040a5c6ec8a976fa527dfc04ad3bbebabac378b17f550", size = 339197, upload-time = "2026-11-26T14:06:46.458Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/11/12/f667887bbe05aecfa89fbb4230f129db8f989d85a2fceeafe4afbc8a6436/aiopnsense-1.6.1.tar.gz", hash = "sha256:065d489f3f8a60657f34e9b64dedf53af7a202c5b28a59f9135449db75693a14", size = 340543, upload-time = "2026-11-27T15:03:04.032Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/48/21/fe889a1c09eb3ef12de83e75198dae0c16ec2c1c4ee3932a06172a762527/aiopnsense-1.6.0-py3-none-any.whl", hash = "sha256:61f739747e40b168220e6d545f7431e71ab04ee9d240478649ea59cfd744c115", size = 146691, upload-time = "2026-11-26T14:06:45.116Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/6e/9b6fae141f18e07de32ad996bea69139db3ceb1d2399c44118ba08442d61/aiopnsense-1.6.1-py3-none-any.whl", hash = "sha256:2f5c68f3433b2fa2bb1fb4b15ec3055b3c885cd45ab281b6bd7bef1180dbe6b9", size = 147501, upload-time = "2026-11-27T15:03:02.905Z" },
 ]
 
 [[package]]
@@ -1273,7 +1273,7 @@ pytest = [
 [package.metadata.requires-dev]
 dev = [
     { name = "aiohttp" },
-    { name = "aiopnsense", specifier = "==1.6.0" },
+    { name = "aiopnsense", specifier = "==1.6.1" },
     { name = "homeassistant", specifier = ">=2026.3" },
     { name = "mypy" },
     { name = "prek" },
@@ -1293,12 +1293,12 @@ dev = [
     { name = "uv", specifier = ">=0.13.4" },
 ]
 ha = [
-    { name = "aiopnsense", specifier = "==1.6.0" },
+    { name = "aiopnsense", specifier = "==1.6.1" },
     { name = "homeassistant", specifier = ">=2026.3" },
 ]
 lint = [
     { name = "aiohttp" },
-    { name = "aiopnsense", specifier = "==1.6.0" },
+    { name = "aiopnsense", specifier = "==1.6.1" },
     { name = "homeassistant", specifier = ">=2026.3" },
     { name = "mypy" },
     { name = "prek" },
@@ -1314,7 +1314,7 @@ lint = [
 ]
 pytest = [
     { name = "aiohttp" },
-    { name = "aiopnsense", specifier = "==1.6.0" },
+    { name = "aiopnsense", specifier = "==1.6.1" },
     { name = "homeassistant", specifier = ">=2026.3" },
     { name = "pytest", specifier = ">=9" },
     { name = "pytest-asyncio" },
