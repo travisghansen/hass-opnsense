@@ -148,7 +148,10 @@ async def _async_handle_hass_stop(entry: ConfigEntry, _event: Event) -> None:
 
 
 async def _async_create_query_stats_coordinator(
-    hass: HomeAssistant, entry: ConfigEntry, client: OPNsenseClient
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    coordinator: OPNsenseDataUpdateCoordinator,
+    client: OPNsenseClient,
 ) -> OPNsenseQueryStatsCoordinator | None:
     """Create and refresh the Query Stats coordinator when Query Stats are synced.
 
@@ -158,6 +161,7 @@ async def _async_create_query_stats_coordinator(
     Args:
         hass (HomeAssistant): Home Assistant instance.
         entry (ConfigEntry): Config entry being set up.
+        coordinator (OPNsenseDataUpdateCoordinator): Main coordinator, already refreshed.
         client (OPNsenseClient): OPNsense API client for the entry.
 
     Returns:
@@ -166,7 +170,9 @@ async def _async_create_query_stats_coordinator(
     """
     if not entry.data.get(CONF_SYNC_UNBOUND_STATS, DEFAULT_SYNC_OPTION_VALUE):
         return None
-    query_stats_coordinator = OPNsenseQueryStatsCoordinator(hass, config_entry=entry, client=client)
+    query_stats_coordinator = OPNsenseQueryStatsCoordinator(
+        hass, config_entry=entry, coordinator=coordinator, client=client
+    )
     await query_stats_coordinator.async_refresh()
     return query_stats_coordinator
 
@@ -839,7 +845,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 device_tracker_coordinator=True,
             )
 
-        query_stats_coordinator = await _async_create_query_stats_coordinator(hass, entry, client)
+        query_stats_coordinator = await _async_create_query_stats_coordinator(
+            hass, entry, coordinator, client
+        )
 
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN][entry.entry_id] = client

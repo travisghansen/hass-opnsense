@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
+from datetime import datetime
 import inspect
 import ipaddress
 import logging
 import re
-from typing import Any, Final, TypeIs
+from typing import TYPE_CHECKING, Any, Final, TypeIs
 
 from aiopnsense import Access, result_access
 from homeassistant.components.sensor import (
@@ -26,7 +27,6 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 from homeassistant.util.dt import utc_from_timestamp
@@ -50,7 +50,6 @@ from .const import (
     DATA_PACKETS,
     DATA_RATE_PACKETS_PER_SECOND,
     DEFAULT_SYNC_OPTION_VALUE,
-    DOMAIN,
     OPNSENSE_CLIENT,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
@@ -63,9 +62,17 @@ from .helpers import (
     is_carp_entry,
     wireguard_sensor_instance_ids,
 )
-from .query_stats_coordinator import OPNsenseQueryStatsCoordinator
+from .query_stats_coordinator import (
+    DnsReadStatus,
+    OPNsenseQueryStatsCoordinator,
+    dns_read_status,
+    query_log_rows,
+)
 from .repair_reconciliation import is_reconciliation_active, record_desired_entities
 from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
+
+if TYPE_CHECKING:
+    from aiopnsense import OPNsenseClient
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -3123,20 +3130,21 @@ class OPNsenseQueryStatsSensorEntityDescription(SensorEntityDescription):
     """Describe a sensor read from Unbound Query Stats.
 
     Attributes:
-        value_fn (Callable[[Any], Any]): Return the state from a ``QueryStats``.
-        attributes_fn (Callable[[Any], dict[str, Any]] | None): Return extra state
-            attributes from a ``QueryStats``.
+        value_fn (Callable[[OPNsenseClient.QueryStats], Any]): Return the state from
+            Query Stats.
+        attributes_fn (Callable[[OPNsenseClient.QueryStats], dict[str, Any]] | None):
+            Return extra state attributes from Query Stats.
     """
 
-    value_fn: Callable[[Any], Any]
-    attributes_fn: Callable[[Any], dict[str, Any]] | None = None
+    value_fn: Callable[[OPNsenseClient.QueryStats], Any]
+    attributes_fn: Callable[[OPNsenseClient.QueryStats], dict[str, Any]] | None = None
 
 
-def _bucket_value(bucket: Any, field: str) -> Any:
+def _bucket_value(bucket: OPNsenseClient.BucketCounts | None, field: str) -> Any:
     """Return a counter from a ``BucketCounts``, or None when there is no Bucket.
 
     Args:
-        bucket (Any): ``BucketCounts`` or None.
+        bucket (OPNsenseClient.BucketCounts | None): ``BucketCounts`` or None.
         field (str): Counter name, such as ``queries``.
 
     Returns:
@@ -3145,11 +3153,12 @@ def _bucket_value(bucket: Any, field: str) -> Any:
     return None if bucket is None else getattr(bucket, field, None)
 
 
-def _top_domain_rows(domains: Iterable[Any]) -> list[dict[str, Any]]:
+def _top_domain_rows(domains: Iterable[OPNsenseClient.TopDomain]) -> list[dict[str, Any]]:
     """Convert ``TopDomain`` entries to attribute rows.
 
     Args:
-        domains (Iterable[Any]): ``TopDomain`` entries, most queried first.
+        domains (Iterable[OPNsenseClient.TopDomain]): ``TopDomain`` entries, most
+            queried first.
 
     Returns:
         list[dict[str, Any]]: One mapping per domain.
@@ -3167,28 +3176,30 @@ def _top_domain_rows(domains: Iterable[Any]) -> list[dict[str, Any]]:
     return rows
 
 
-def _top_domains_attributes(stats: Any, field: str) -> dict[str, Any]:
+def _top_domains_attributes(
+    domains: tuple[OPNsenseClient.TopDomain, ...], since: datetime | None
+) -> dict[str, Any]:
     """Return the attributes of a top-domain sensor.
 
     Args:
-        stats (Any): ``QueryStats`` with data.
-        field (str): ``top_domains`` or ``top_blocked_domains``.
+        domains (tuple[OPNsenseClient.TopDomain, ...]): Top domains, most queried first.
+        since (datetime | None): Retention Window start.
 
     Returns:
         dict[str, Any]: The ``domains`` rows and the Retention Window start.
     """
-    since = stats.since
     return {
-        "domains": _top_domain_rows(getattr(stats, field)),
+        "domains": _top_domain_rows(domains),
         "since": since.isoformat() if since is not None else None,
     }
 
 
-def _first_domain(domains: tuple[Any, ...]) -> str | None:
+def _first_domain(domains: tuple[OPNsenseClient.TopDomain, ...]) -> str | None:
     """Return the most queried domain of a top-domain list.
 
     Args:
-        domains (tuple[Any, ...]): ``TopDomain`` entries, most queried first.
+        domains (tuple[OPNsenseClient.TopDomain, ...]): ``TopDomain`` entries, most
+            queried first.
 
     Returns:
         str | None: The first domain, or None when the list is empty.
@@ -3273,7 +3284,7 @@ QUERY_STATS_SENSORS: tuple[OPNsenseQueryStatsSensorEntityDescription, ...] = (
         icon="mdi:web",
         entity_registry_enabled_default=False,
         value_fn=lambda stats: _first_domain(stats.top_domains),
-        attributes_fn=lambda stats: _top_domains_attributes(stats, "top_domains"),
+        attributes_fn=lambda stats: _top_domains_attributes(stats.top_domains, stats.since),
     ),
     OPNsenseQueryStatsSensorEntityDescription(
         key="query_stats.top_blocked_domain",
@@ -3281,7 +3292,7 @@ QUERY_STATS_SENSORS: tuple[OPNsenseQueryStatsSensorEntityDescription, ...] = (
         icon="mdi:web-cancel",
         entity_registry_enabled_default=False,
         value_fn=lambda stats: _first_domain(stats.top_blocked_domains),
-        attributes_fn=lambda stats: _top_domains_attributes(stats, "top_blocked_domains"),
+        attributes_fn=lambda stats: _top_domains_attributes(stats.top_blocked_domains, stats.since),
     ),
 )
 
@@ -3309,28 +3320,30 @@ def _get_runtime_query_stats_coordinator(
     return coordinator if isinstance(coordinator, OPNsenseQueryStatsCoordinator) else None
 
 
-def _query_stats_result_state(result: Any, what: str) -> bool | None:
-    """Classify a first DNS read for entity creation.
+def _first_dns_read_status(
+    result: OPNsenseClient.QueryStats | OPNsenseClient.QueryLog | None, what: str
+) -> DnsReadStatus:
+    """Classify a first DNS read for entity creation and log why none are created.
 
     Args:
-        result (Any): ``QueryStats`` or ``QueryLog`` from the first refresh, or None.
+        result (OPNsenseClient.QueryStats | OPNsenseClient.QueryLog | None): Result of
+            the first refresh, or None when it failed.
         what (str): Read name used in debug logs.
 
     Returns:
-        bool | None: True when the read has data, False when the Router reports it
-            absent, None when the read failed this time.
+        DnsReadStatus: Status of the read.
     """
-    if result is None:
+    status = dns_read_status(result)
+    if status == "failed":
         _LOGGER.debug("%s read failed on setup; entities are created after a reload", what)
-        return None
-    absent = getattr(result, "absent", None)
-    if absent is not None:
-        _LOGGER.debug("%s absent (%s); no entities created", what, absent)
-        return False
-    return True
+    elif status == "absent" and result is not None:
+        _LOGGER.debug("%s absent (%s); no entities created", what, result.absent)
+    return status
 
 
-def _compile_query_stats_sensors(config_entry: ConfigEntry) -> tuple[list, bool]:
+def _compile_query_stats_sensors(
+    config_entry: ConfigEntry,
+) -> tuple[list[OPNsenseSensor], bool]:
     """Compile Query Stats sensors from the first Query Stats refresh.
 
     Sensors are created only when Query Stats are synced and the first read has
@@ -3341,7 +3354,8 @@ def _compile_query_stats_sensors(config_entry: ConfigEntry) -> tuple[list, bool]
         config_entry (ConfigEntry): Config entry owning the sensors.
 
     Returns:
-        tuple[list, bool]: The sensors, and whether the inventory is complete.
+        tuple[list[OPNsenseSensor], bool]: The sensors, and whether the inventory is
+            complete.
     """
     if not config_entry.data.get(CONF_SYNC_UNBOUND_STATS, DEFAULT_SYNC_OPTION_VALUE):
         return [], True
@@ -3349,16 +3363,16 @@ def _compile_query_stats_sensors(config_entry: ConfigEntry) -> tuple[list, bool]
     data = getattr(coordinator, "data", None)
     if coordinator is None or not isinstance(data, Mapping):
         return [], False
-    entities: list = []
-    stats_state = _query_stats_result_state(data.get("stats"), "Query Stats")
-    if stats_state:
+    entities: list[OPNsenseSensor] = []
+    stats_status = _first_dns_read_status(data.get("stats"), "Query Stats")
+    if stats_status == "data":
         entities.extend(
             _create_sensors(
                 OPNsenseQueryStatsSensor, config_entry, coordinator, QUERY_STATS_SENSORS
             )
         )
-    blocked_state = _query_stats_result_state(data.get("blocked"), "Query Log")
-    if blocked_state:
+    blocked_status = _first_dns_read_status(data.get("blocked"), "Query Log")
+    if blocked_status == "data":
         entities.append(
             _create_sensor(
                 OPNsenseRecentlyBlockedSensor,
@@ -3367,30 +3381,11 @@ def _compile_query_stats_sensors(config_entry: ConfigEntry) -> tuple[list, bool]
                 RECENTLY_BLOCKED_SENSOR,
             )
         )
-    return entities, stats_state is not None and blocked_state is not None
+    return entities, "failed" not in (stats_status, blocked_status)
 
 
 class _OPNsenseQueryStatsSensorBase(OPNsenseSensor):
-    """Shared device info and data access for sensors on the Query Stats coordinator."""
-
-    @property
-    def device_info(self) -> DeviceInfo | None:
-        """Build device metadata from the main coordinator, not the Query Stats data.
-
-        Returns:
-            DeviceInfo | None: Device metadata for the Firewall.
-        """
-        main = getattr(self.config_entry.runtime_data, COORDINATOR, None)
-        state = getattr(main, "data", None)
-        firmware = state.get("host_firmware_version") if isinstance(state, Mapping) else None
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._device_unique_id)},
-            name=self.config_entry.title,
-            configuration_url=self.config_entry.data.get("url", None),
-            model="OPNsense",
-            manufacturer="Deciso B.V.",
-            sw_version=firmware,
-        )
+    """Shared data access for sensors on the Query Stats coordinator."""
 
     def _query_stats_result(self, key: str) -> Any | None:
         """Return a usable DNS read result from coordinator data.
@@ -3404,9 +3399,7 @@ class _OPNsenseQueryStatsSensorBase(OPNsenseSensor):
         """
         data = self._coordinator_mapping()
         result = data.get(key) if data is not None else None
-        if result is None or getattr(result, "absent", None) is not None:
-            return None
-        return result
+        return result if dns_read_status(result) == "data" else None
 
 
 class OPNsenseQueryStatsSensor(_OPNsenseQueryStatsSensorBase):
@@ -3444,16 +3437,5 @@ class OPNsenseRecentlyBlockedSensor(_OPNsenseQueryStatsSensorBase):
         entries = query_log.entries
         self._available = True
         self._attr_native_value = entries[0].time if entries else None
-        self._attr_extra_state_attributes = {
-            "rows": [
-                {
-                    "time": entry.time.isoformat(),
-                    "client": entry.client,
-                    "domain": entry.domain,
-                    "blocklist": entry.blocklist,
-                    "policy": entry.policy,
-                }
-                for entry in entries
-            ]
-        }
+        self._attr_extra_state_attributes = {"rows": query_log_rows(query_log)}
         self.async_write_ha_state()

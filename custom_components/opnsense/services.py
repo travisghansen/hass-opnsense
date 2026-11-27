@@ -35,6 +35,7 @@ from .const import (
     SERVICE_TOGGLE_INTERFACE,
 )
 from .helpers import is_carp_entry
+from .query_stats_coordinator import dns_read_status, query_log_rows
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _VNSTAT_PERIODS: tuple[str, ...] = ("hourly", "daily", "monthly", "yearly")
@@ -936,31 +937,20 @@ async def _service_get_vnstat_metrics(hass: HomeAssistant, call: ServiceCall) ->
     return return_response
 
 
-def _query_log_response(query_log: Any) -> dict[str, Any] | None:
+def _query_log_response(query_log: OPNsenseClient.QueryLog | None) -> dict[str, Any] | None:
     """Convert a Query Log read to action response data.
 
     Args:
-        query_log (Any): ``QueryLog`` from aiopnsense, or None when the read failed.
+        query_log (OPNsenseClient.QueryLog | None): Query Log from aiopnsense, or None
+            when the read failed.
 
     Returns:
         dict[str, Any] | None: ``entries`` rows, or None when the read failed or the
             Query Log is absent on the Firewall.
     """
-    if query_log is None or query_log.absent is not None:
+    if query_log is None or dns_read_status(query_log) != "data":
         return None
-    return {
-        "entries": [
-            {
-                "time": entry.time.isoformat(),
-                "client": entry.client,
-                "domain": entry.domain,
-                "action": entry.action,
-                "blocklist": entry.blocklist,
-                "policy": entry.policy,
-            }
-            for entry in query_log.entries
-        ]
-    }
+    return {"entries": query_log_rows(query_log)}
 
 
 async def _service_get_dns_queries(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:

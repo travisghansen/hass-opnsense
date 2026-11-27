@@ -1,7 +1,6 @@
 """Unit tests for the Unbound Query Stats coordinator."""
 
 from collections.abc import Callable
-from datetime import timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -34,22 +33,6 @@ def _make_client(stats: Any, blocked: Any) -> MagicMock:
     return client
 
 
-def test_query_stats_coordinator_polls_every_minute(
-    ph_hass: Any, make_config_entry: Callable[..., MockConfigEntry]
-) -> None:
-    """The coordinator polls on a fixed 60 s interval.
-
-    Args:
-        ph_hass (Any): Patched Home Assistant test instance.
-        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
-    """
-    coordinator = OPNsenseQueryStatsCoordinator(
-        ph_hass, config_entry=make_config_entry(), client=_make_client(STATS, BLOCKED)
-    )
-
-    assert coordinator.update_interval == timedelta(seconds=60)
-
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("stats", "blocked"),
@@ -77,7 +60,10 @@ async def test_query_stats_coordinator_reports_both_reads(
     """
     client = _make_client(stats, blocked)
     coordinator = OPNsenseQueryStatsCoordinator(
-        ph_hass, config_entry=make_config_entry(), client=client
+        ph_hass,
+        config_entry=make_config_entry(),
+        coordinator=MagicMock(data=None),
+        client=client,
     )
 
     await coordinator.async_refresh()
@@ -85,3 +71,39 @@ async def test_query_stats_coordinator_reports_both_reads(
     assert coordinator.last_update_success is True
     assert coordinator.data == {"stats": stats, "blocked": blocked}
     client.get_unbound_queries.assert_awaited_once_with(action="block", limit=20)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("main_state", "expected"),
+    [
+        ({"host_firmware_version": "26.7.8"}, {"host_firmware_version": "26.7.8"}),
+        ({"host_firmware_version": None}, {}),
+        (None, {}),
+    ],
+    ids=["known", "unknown", "main-state-missing"],
+)
+async def test_query_stats_coordinator_copies_firmware_version(
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    main_state: dict[str, Any] | None,
+    expected: dict[str, Any],
+) -> None:
+    """Data carries the main coordinator's firmware version, for device info, when known.
+
+    Args:
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        main_state (dict[str, Any] | None): Main coordinator data.
+        expected (dict[str, Any]): Expected firmware entries in the Query Stats data.
+    """
+    coordinator = OPNsenseQueryStatsCoordinator(
+        ph_hass,
+        config_entry=make_config_entry(),
+        coordinator=MagicMock(data=main_state),
+        client=_make_client(STATS, BLOCKED),
+    )
+
+    await coordinator.async_refresh()
+
+    assert coordinator.data == {"stats": STATS, "blocked": BLOCKED, **expected}

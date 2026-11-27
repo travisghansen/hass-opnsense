@@ -85,26 +85,28 @@ def query_stats_coordinators(monkeypatch: pytest.MonkeyPatch) -> list[MagicMock]
     """
     created: list[MagicMock] = []
 
-    def _factory(hass: Any, *, config_entry: Any, client: Any) -> MagicMock:
+    def _factory(hass: Any, *, config_entry: Any, coordinator: Any, client: Any) -> MagicMock:
         """Create a Query Stats coordinator double.
 
         Args:
             hass (Any): Home Assistant instance passed by setup.
             config_entry (Any): Config entry passed by setup.
+            coordinator (Any): Main coordinator passed by setup.
             client (Any): OPNsense client passed by setup.
 
         Returns:
             MagicMock: Coordinator double with awaitable refresh and shutdown.
         """
-        coordinator = MagicMock(
+        query_stats_coordinator = MagicMock(
             hass=hass,
             config_entry=config_entry,
+            main_coordinator=coordinator,
             client=client,
             async_refresh=AsyncMock(),
             async_shutdown=AsyncMock(),
         )
-        created.append(coordinator)
-        return coordinator
+        created.append(query_stats_coordinator)
+        return query_stats_coordinator
 
     monkeypatch.setattr(init_mod, "OPNsenseQueryStatsCoordinator", _factory)
     return created
@@ -6787,6 +6789,7 @@ async def test_async_setup_entry_creates_query_stats_coordinator_when_synced(
         created = query_stats_coordinators[0]
         assert created.config_entry is entry
         assert created.client is client
+        assert created.main_coordinator is entry.runtime_data.coordinator
         assert entry.runtime_data.query_stats_coordinator is created
         assert refreshed_before_forward == [True]
     else:

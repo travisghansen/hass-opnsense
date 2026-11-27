@@ -7502,31 +7502,24 @@ def test_query_stats_top_domain_sensors_report_domains_unrecorded(
     assert blocked.extra_state_attributes["domains"] == [
         {"domain": "ads.test", "count": 30, "percent": 60.0, "blocklist": "ads"}
     ]
-    assert top._unrecorded_attributes >= {"domains", "since"}
 
 
-@pytest.mark.parametrize(
-    "stats",
-    [
-        OPNsenseClient.QueryStats(
-            last_24h=OPNsenseClient.BucketCounts(queries=0, blocked=0, dropped=0)
-        ),
-    ],
-)
 @pytest.mark.parametrize(
     "key",
     ["query_stats.queries_per_minute", "query_stats.blocked_share_24h", "query_stats.top_domain"],
 )
 def test_query_stats_sensor_is_unknown_without_value(
-    make_config_entry: Callable[..., MockConfigEntry], stats: Any, key: str
+    make_config_entry: Callable[..., MockConfigEntry], key: str
 ) -> None:
     """A sensor whose value is missing from data stays available with an unknown state.
 
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-        stats (Any): Query Stats without a last-minute Bucket, queries or top domains.
         key (str): Sensor description key.
     """
+    stats = OPNsenseClient.QueryStats(
+        last_24h=OPNsenseClient.BucketCounts(queries=0, blocked=0, dropped=0)
+    )
     sensor = _query_stats_sensor(make_config_entry, {"stats": stats, "blocked": None}, key)
 
     sensor._handle_coordinator_update()
@@ -7577,7 +7570,7 @@ def test_query_stats_sensors_unavailable_without_data(
 def test_recently_blocked_sensor_reports_latest_block_and_rows(
     make_config_entry: Callable[..., MockConfigEntry],
 ) -> None:
-    """The recently blocked sensor reports the newest Blocked time and every row, unrecorded.
+    """The recently blocked sensor reports the newest Blocked time and every row.
 
     Args:
         make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
@@ -7598,6 +7591,7 @@ def test_recently_blocked_sensor_reports_latest_block_and_rows(
                 "time": "2026-11-26T14:00:05+00:00",
                 "client": "laptop",
                 "domain": "ads.test",
+                "action": "Block",
                 "blocklist": "ads",
                 "policy": None,
             },
@@ -7605,12 +7599,12 @@ def test_recently_blocked_sensor_reports_latest_block_and_rows(
                 "time": "2026-11-26T13:59:00+00:00",
                 "client": "10.0.0.5",
                 "domain": "tracker.test",
+                "action": "Block",
                 "blocklist": "trackers",
                 "policy": "default",
             },
         ]
     }
-    assert "rows" in sensor._unrecorded_attributes
 
 
 def test_recently_blocked_sensor_is_unknown_when_nothing_blocked(
@@ -7632,25 +7626,3 @@ def test_recently_blocked_sensor_is_unknown_when_nothing_blocked(
     assert sensor.available is True
     assert sensor.native_value is None
     assert sensor.extra_state_attributes == {"rows": []}
-
-
-def test_query_stats_sensor_device_info_comes_from_main_coordinator(
-    make_config_entry: Callable[..., MockConfigEntry],
-) -> None:
-    """Query Stats sensors join the Firewall device with its firmware from the main coordinator.
-
-    Args:
-        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
-    """
-    sensor = _query_stats_sensor(
-        make_config_entry,
-        {"stats": QUERY_STATS_DATA, "blocked": QUERY_LOG_DATA},
-        "query_stats.queries_24h",
-    )
-    sensor.config_entry.runtime_data.coordinator.data = {"host_firmware_version": "26.7.8"}
-
-    device_info = sensor.device_info
-
-    assert device_info is not None
-    assert device_info["sw_version"] == "26.7.8"
-    assert device_info["identifiers"] == {("opnsense", sensor._device_unique_id)}
