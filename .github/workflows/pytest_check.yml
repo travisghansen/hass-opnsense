@@ -28,13 +28,9 @@ jobs:
           # Current Home Assistant from uv.lock with pytest-homeassistant. Posts coverage.
           - name: pytest check and post coverage
             ha-version: current
-            test-plugin: ""
-          # Minimum supported Home Assistant. pytest-homeassistant starts at 2026.11, so
-          # use its predecessor; 0.13.317 pins homeassistant==2026.3.1, the oldest 2026.3
-          # release it covers.
-          - name: pytest Home Assistant 2026.3.1 (minimum)
-            ha-version: "2026.3.1"
-            test-plugin: pytest-homeassistant-custom-component==0.13.317
+          # Minimum supported Home Assistant, read from hacs.json.
+          - name: pytest Home Assistant minimum
+            ha-version: minimum
 
     steps:
       - name: Checkout Repository
@@ -56,27 +52,32 @@ jobs:
         run: uv run --locked --group pytest pytest
 
       - name: Install minimum Home Assistant test environment
-        if: matrix.ha-version != 'current'
-        # --no-config skips the project's [tool.uv] security constraints, which
+        if: matrix.ha-version == 'minimum'
+        # Resolve the oldest Home Assistant and test plugin release that satisfy the
+        # hacs.json minimum, then install only those two pins with the pytest-base
+        # group. --no-config skips the project's [tool.uv] security constraints, which
         # conflict with the older dependency pins of the minimum HA release. This
         # environment is only used for tests.
         run: |
           uv venv
-          uv pip install --no-config --group pytest-base "${TEST_PLUGIN}"
-        env:
-          TEST_PLUGIN: ${{ matrix.test-plugin }}
+          python3 .github/scripts/minimum_ha_test_env.py requirements > "${RUNNER_TEMP}/ha-min.in"
+          uv pip compile --quiet --no-config --python .venv/bin/python --resolution lowest-direct \
+            --no-header --output-file "${RUNNER_TEMP}/ha-min.txt" "${RUNNER_TEMP}/ha-min.in"
+          grep -E '^(homeassistant|pytest-homeassistant(-custom-component)?)==' \
+            "${RUNNER_TEMP}/ha-min.txt" > "${RUNNER_TEMP}/ha-min-pins.txt"
+          cat "${RUNNER_TEMP}/ha-min-pins.txt"
+          uv pip install --no-config --group pytest-base \
+            --requirements "${RUNNER_TEMP}/ha-min-pins.txt"
+          sed -n 's/^homeassistant==//p' "${RUNNER_TEMP}/ha-min-pins.txt" > "${RUNNER_TEMP}/ha-min-version"
 
       - name: Verify minimum Home Assistant version
-        if: matrix.ha-version != 'current'
+        if: matrix.ha-version == 'minimum'
         run: >-
-          .venv/bin/python -c "import sys; from homeassistant.const import __version__;
-          print(f'Home Assistant {__version__}');
-          sys.exit(__version__ != sys.argv[1])" "${HA_VERSION}"
-        env:
-          HA_VERSION: ${{ matrix.ha-version }}
+          .venv/bin/python .github/scripts/minimum_ha_test_env.py verify
+          "$(cat "${RUNNER_TEMP}/ha-min-version")"
 
       - name: Run pytest on minimum Home Assistant
-        if: matrix.ha-version != 'current'
+        if: matrix.ha-version == 'minimum'
         run: .venv/bin/python -m pytest
 
       - name: Generate coverage comment

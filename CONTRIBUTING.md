@@ -86,16 +86,13 @@ The project requires Python 3.14.2 or newer and uses [uv](https://docs.astral.sh
    uv run prek run --all-files
    ```
 
-CI also runs the tests against the minimum supported Home Assistant release (see the
-matrix in `.github/workflows/pytest_check.yml`). `pytest-homeassistant` only covers
-Home Assistant 2026.11 and later, so that job installs the `pytest-base` group with
-`pytest-homeassistant-custom-component` in a separate environment. Import Home
-Assistant test plugin helpers such as `MockConfigEntry` from `tests.common` so the tests
-work with either plugin. To reproduce the job locally, outside the project `.venv`:
+CI also runs the tests against the minimum supported Home Assistant release declared in
+`hacs.json` (see the matrix in `.github/workflows/pytest_check.yml`). The job resolves the
+oldest Home Assistant release at or above that minimum together with a test plugin that
+covers it: `pytest-homeassistant` from Home Assistant 2026.11, otherwise its predecessor
+`pytest-homeassistant-custom-component`. It installs them with the `pytest-base` group
+in a separate environment. Raising the minimum in `hacs.json` is all the job needs.
 
-```bash
-uv venv /path/to/ha-min-venv
-VIRTUAL_ENV=/path/to/ha-min-venv uv pip install --no-config --group pytest-base \
-  "pytest-homeassistant-custom-component==0.13.317"
-/path/to/ha-min-venv/bin/python -m pytest
-```
+Import Home Assistant test plugin helpers such as `MockConfigEntry` from `tests.common`
+so the tests work with either plugin. To reproduce the job locally, outside the project
+`.venv`, run the workflow's minimum steps with `RUNNER_TEMP` set to a scratch directory.
