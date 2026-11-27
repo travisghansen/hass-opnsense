@@ -10,6 +10,7 @@ import logging
 import re
 from typing import Any, Final, TypeIs
 
+from aiopnsense import Access, result_access
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -56,13 +57,14 @@ from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity, OPNsenseEntityCoordinator
 from .helpers import (
     coerce_bool,
+    config_entry_identity,
     dict_get,
     get_smart_device_name,
     is_carp_entry,
     wireguard_sensor_instance_ids,
 )
 from .query_stats_coordinator import OPNsenseQueryStatsCoordinator
-from .repair_reconciliation import record_desired_entities
+from .repair_reconciliation import is_reconciliation_active, record_desired_entities
 from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -1207,27 +1209,19 @@ async def _compile_vnstat_sensors(
     return entities
 
 
-async def _compile_speedtest_sensors(
+def _create_speedtest_sensors(
     config_entry: ConfigEntry,
     coordinator: OPNsenseDataUpdateCoordinator,
-    state: MutableMapping[str, Any],
-) -> list:
-    """Compile speedtest sensors from normalized coordinator state.
+) -> list[OPNsenseSpeedtestSensor]:
+    """Create the fixed set of Speedtest sensors.
 
     Args:
         config_entry (ConfigEntry): Config entry owning the sensors.
         coordinator (OPNsenseDataUpdateCoordinator): Data update coordinator supplying state.
-        state (MutableMapping[str, Any]): Coordinator state snapshot containing speedtest instances.
 
     Returns:
-        list: Compiled speedtest sensor entities.
+        list[OPNsenseSpeedtestSensor]: Speedtest sensor entities with stable unique IDs.
     """
-    if not isinstance(state, MutableMapping):
-        return []
-    speedtest = state.get("speedtest")
-    if not isinstance(speedtest, MutableMapping) or not speedtest.get("available", False):
-        return []
-
     metric_definitions: tuple[tuple[str, str, Any, str], ...] = (
         (
             "speedtest.last.download",
@@ -1915,6 +1909,8 @@ async def async_setup_entry(
         return
 
     reconciliation_complete = True
+    preserve_prefix = None
+    preserved_speedtest_entities: list[OPNsenseSpeedtestSensor] = []
 
     if config.get(CONF_SYNC_TELEMETRY, DEFAULT_SYNC_OPTION_VALUE):
         telemetry = state.get("telemetry")
@@ -1930,10 +1926,17 @@ async def async_setup_entry(
         else:
             reconciliation_complete = False
     if config.get(CONF_SYNC_SPEEDTEST, DEFAULT_SYNC_OPTION_VALUE):
-        if "speedtest" in state and isinstance(state.get("speedtest"), MutableMapping):
-            entities.extend(await _compile_speedtest_sensors(config_entry, coordinator, state))
+        speedtest = state.get("speedtest")
+        available = speedtest.get("available") if isinstance(speedtest, Mapping) else None
+        if available is True:
+            entities.extend(_create_speedtest_sensors(config_entry, coordinator))
         else:
-            reconciliation_complete = False
+            # Use the same unique IDs to keep existing entries without adding new entities.
+            preserved_speedtest_entities = (
+                _create_speedtest_sensors(config_entry, coordinator)
+                if available is not False and is_reconciliation_active(config_entry)
+                else []
+            )
     if config.get(CONF_SYNC_NUT, DEFAULT_SYNC_OPTION_VALUE):
         nut_entities, nut_inventory_complete = await _compile_nut_sensors_for_setup(
             config_entry, coordinator, state
@@ -2023,12 +2026,23 @@ async def async_setup_entry(
             and isinstance(dhcp_leases.get("lease_interfaces"), MutableMapping)
         ):
             reconciliation_complete = False
+        else:
+            # Status Access can omit interfaces with existing DHCP sensor registrations.
+            dhcp_prefix = slugify(f"{config_entry_identity(config_entry)}_dhcp_leases")
+            preserve_prefix = (
+                f"{dhcp_prefix}_" if result_access(dhcp_leases) is Access.STATUS else None
+            )
     query_stats_entities, query_stats_complete = _compile_query_stats_sensors(config_entry)
     entities.extend(query_stats_entities)
     reconciliation_complete &= query_stats_complete
 
     _LOGGER.debug("[sensor async_setup_entry] entities: %s", len(entities))
-    record_desired_entities(config_entry, "sensor", entities if reconciliation_complete else None)
+    record_desired_entities(
+        config_entry,
+        "sensor",
+        entities + preserved_speedtest_entities if reconciliation_complete else None,
+        preserve_prefix=preserve_prefix,
+    )
     async_add_entities(entities)
 
 

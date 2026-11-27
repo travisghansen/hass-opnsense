@@ -50,12 +50,11 @@ This option depends on "Interface information". If disabled, interface traffic r
 | --- | --- | --- |
 | Services: DHCP: Kea(v4) | GET | `/api/kea/leases4/search`<br>`/api/kea/dhcpv4/search_reservation` (or `/api/kea/dhcpv4/searchReservation`)<br>`/api/kea/dhcpv4/get` |
 | Services: DHCP: Kea(v6) | GET | `/api/kea/leases6/search` |
-| Services: Dnsmasq DNS/DHCP: Settings | GET | `/api/dnsmasq/leases/search` |
+| Services: Dnsmasq DNS/DHCP: Settings | GET | `/api/dnsmasq/leases/search`<br>`/api/dnsmasq/settings/search_range` |
 | Status: DHCP leases (25.x)<br>Services: ISC DHCPv4: Leases (26.1+) | GET | `/api/dhcpv4/leases/search_lease` (or `/api/dhcpv4/leases/searchLease`) |
 | Status: DHCPv6 leases (25.x)<br>Status: ISC DHCPv6: Leases (26.1+) | GET | `/api/dhcpv6/leases/search_lease` (or `/api/dhcpv6/leases/searchLease`) |
-| All pages | GET | `/api/dhcpv4/service/status`<br>`/api/dhcpv6/service/status` |
 
-OPNsense does not currently assign the ISC DHCP service-status endpoints to a narrower privilege. `All pages` is therefore required only when ISC DHCP lease discovery is needed; Kea and Dnsmasq lease collection use their own granular permissions.
+DHCP lease data is under Status Access when the Firewall denies the API user any DHCP lease endpoint, the Kea DHCPv4 settings (`/api/kea/dhcpv4/get`) or the Dnsmasq DHCP ranges (`/api/dnsmasq/settings/search_range`). Interfaces that only a denied endpoint would report are then missing. The [Replacement repair](../README.md#replacing-opnsense-hardware) keeps all DHCP lease sensors already registered, including any for interfaces that no longer exist. A kept sensor for a missing interface stays unavailable until the interface appears again and the Firewall entry is reloaded.
 
 ## Notice Information
 

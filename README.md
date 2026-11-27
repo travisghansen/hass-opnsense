@@ -166,7 +166,7 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 * Gateways details (status, delay, stddev, loss, address)
 * CARP VIP status (aggregate)
 * CARP Interface status
-* DHCP Leases
+* DHCP Leases. Under Status Access, the Replacement repair [keeps registered DHCP lease sensors](docs/granular_permissions.md#dhcp-leases) for interfaces missing from the lease data.
 * OpenVPN and Wireguard server and client stats
 * IPsec phase 1 (IKE) connection status and traffic counters
 * IPsec phase 2 (child SA) status with configured and negotiated traffic selectors, and traffic counters
@@ -243,6 +243,8 @@ Hardware replacement may change a number of OPNsense areas including interfaces,
 When a Firewall entry reports a Hardware ID mismatch, Home Assistant offers a fixable repair (the Replacement repair). Confirm it once the replacement hardware is reachable and is the intended Node. The repair selectively reconciles the registry with the replacement's entities: matching entities and devices retain their registry identity and customizations, entities absent from the replacement are removed, and new entities are created.
 
 The repair preserves the URL, credentials, and options. A retry marker makes an interrupted repair resumable. Dashboards and automations remain intact for preserved entity IDs; review references to entities removed during reconciliation.
+
+If Speedtest results cannot be read, the repair keeps existing Speedtest registry entries and reconciles the other readable entities. The kept sensors stay unavailable until the integration is reloaded after the results can be read again. If the Firewall confirms the Speedtest plugin is missing, the repair removes its sensors.
 
 ## Contributing
 
