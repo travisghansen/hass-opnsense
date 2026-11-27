@@ -22,8 +22,6 @@ jobs:
 
       - name: Setup uv
         uses: astral-sh/setup-uv@v10.4.0
-        with:
-          python-version: "3.14"
 
       - name: Check uv lock consistency
         run: uv lock --check

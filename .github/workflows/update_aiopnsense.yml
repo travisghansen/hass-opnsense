@@ -32,16 +32,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: '3.14'
-          cache: 'pip'
-
       - name: Set up uv (with caching)
         uses: astral-sh/setup-uv@v10.4.0
         with:
-          python-version: '3.14'
           enable-cache: true
           ignore-nothing-to-cache: true
           cache-dependency-glob: uv.lock
@@ -51,7 +44,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          python .github/scripts/update_aiopnsense_pins.py \
+          uv run --no-sync python .github/scripts/update_aiopnsense_pins.py \
             --manifest-path custom_components/opnsense/manifest.json \
             --pyproject-path pyproject.toml \
             --github-output "$GITHUB_OUTPUT"
@@ -63,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          python .github/scripts/update_aiopnsense_pins.py \
+          uv run --no-sync python .github/scripts/update_aiopnsense_pins.py \
             --manifest-path custom_components/opnsense/manifest.json \
             --pyproject-path pyproject.toml \
             --latest-version "$LATEST_VERSION" \
@@ -99,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          python .github/scripts/build_aiopnsense_release_notes.py \
+          uv run --no-sync python .github/scripts/build_aiopnsense_release_notes.py \
             --current-version "$CURRENT_VERSION" \
             --pyproject-current-version "$PYPROJECT_CURRENT_VERSION" \
             --latest-version "$LATEST_VERSION" \
@@ -133,7 +126,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          python .github/scripts/cleanup_aiopnsense_update_branches.py \
+          uv run --no-sync python .github/scripts/cleanup_aiopnsense_update_branches.py \
             --repository "$REPOSITORY" \
             --branch chore/update-aiopnsense-manifest \
             --branch-prefix chore/update-aiopnsense \
@@ -154,7 +147,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          python .github/scripts/cleanup_aiopnsense_update_branches.py \
+          uv run --no-sync python .github/scripts/cleanup_aiopnsense_update_branches.py \
             --repository "$REPOSITORY" \
             --branch chore/update-aiopnsense-manifest \
             --branch-prefix chore/update-aiopnsense \
