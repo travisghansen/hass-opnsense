@@ -16,7 +16,6 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense import repair_reconciliation, repairs
 from custom_components.opnsense.const import (
@@ -29,6 +28,7 @@ from custom_components.opnsense.const import (
     TRACKED_NDP_MACS,
 )
 from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
+from tests.common import MockConfigEntry
 
 
 def _make_entry(

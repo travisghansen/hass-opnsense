@@ -14,7 +14,6 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 import custom_components.opnsense.binary_sensor as binary_sensor_module
 from custom_components.opnsense.binary_sensor import (
@@ -36,6 +35,7 @@ from custom_components.opnsense.const import (
     COORDINATOR,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
+from tests.common import MockConfigEntry
 from tests.utilities import stub_async_write_ha_state
 
 

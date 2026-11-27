@@ -1,5 +1,6 @@
 """Helper methods for OPNsense."""
 
+from collections import Counter
 from collections.abc import Callable, Mapping, MutableMapping
 import ipaddress
 import re
@@ -193,6 +194,40 @@ def device_belongs_to_config_entry(
         return owner_entry_id == config_entry_id
     legacy_entry_ids: set[str] = getattr(device_entry, "config_entries", set())
     return config_entry_id in legacy_entry_ids
+
+
+def wireguard_sensor_instance_ids(group: str, inventory: Mapping[str, Any]) -> dict[str, str]:
+    """Identify the sensors of each WireGuard entry in one inventory group.
+
+    A Server is identified by its key hash and interface, which both access levels
+    report for every Server. A Client with its own public key is identified by the key
+    hash. Clients that share a key, which only Configuration Access reports separately,
+    also carry their inventory key so each has its own sensors.
+
+    Args:
+        group (str): Inventory group, ``servers`` or ``clients``.
+        inventory (Mapping[str, Any]): The group's entries keyed as aiopnsense reports
+            them.
+
+    Returns:
+        dict[str, str]: Sensor instance ID for each entry that can be identified.
+    """
+    key_hashes: dict[str, str] = {}
+    for inventory_key, row in inventory.items():
+        key_hash = row.get("key_hash") if isinstance(row, Mapping) else None
+        if isinstance(key_hash, str) and key_hash:
+            key_hashes[inventory_key] = key_hash
+    if group == "servers":
+        return {
+            inventory_key: f"{key_hash}_{interface}"
+            for inventory_key, key_hash in key_hashes.items()
+            if isinstance(interface := inventory[inventory_key].get("interface"), str) and interface
+        }
+    counts = Counter(key_hashes.values())
+    return {
+        inventory_key: key_hash if counts[key_hash] == 1 else f"{key_hash}_{inventory_key}"
+        for inventory_key, key_hash in key_hashes.items()
+    }
 
 
 def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = None) -> Any | None:

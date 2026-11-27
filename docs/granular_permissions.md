@@ -50,12 +50,11 @@ This option depends on "Interface information". If disabled, interface traffic r
 | --- | --- | --- |
 | Services: DHCP: Kea(v4) | GET | `/api/kea/leases4/search`<br>`/api/kea/dhcpv4/search_reservation` (or `/api/kea/dhcpv4/searchReservation`)<br>`/api/kea/dhcpv4/get` |
 | Services: DHCP: Kea(v6) | GET | `/api/kea/leases6/search` |
-| Services: Dnsmasq DNS/DHCP: Settings | GET | `/api/dnsmasq/leases/search` |
+| Services: Dnsmasq DNS/DHCP: Settings | GET | `/api/dnsmasq/leases/search`<br>`/api/dnsmasq/settings/search_range` |
 | Status: DHCP leases (25.x)<br>Services: ISC DHCPv4: Leases (26.1+) | GET | `/api/dhcpv4/leases/search_lease` (or `/api/dhcpv4/leases/searchLease`) |
 | Status: DHCPv6 leases (25.x)<br>Status: ISC DHCPv6: Leases (26.1+) | GET | `/api/dhcpv6/leases/search_lease` (or `/api/dhcpv6/leases/searchLease`) |
-| All pages | GET | `/api/dhcpv4/service/status`<br>`/api/dhcpv6/service/status` |
 
-OPNsense does not currently assign the ISC DHCP service-status endpoints to a narrower privilege. `All pages` is therefore required only when ISC DHCP lease discovery is needed; Kea and Dnsmasq lease collection use their own granular permissions.
+DHCP lease data is under Status Access when the Firewall denies the API user any DHCP lease endpoint, the Kea DHCPv4 settings (`/api/kea/dhcpv4/get`) or the Dnsmasq DHCP ranges (`/api/dnsmasq/settings/search_range`). Interfaces that only a denied endpoint would report are then missing. The [Replacement repair](../README.md#replacing-opnsense-hardware) keeps all DHCP lease sensors already registered, including any for interfaces that no longer exist. A kept sensor for a missing interface stays unavailable until the interface appears again and the Firewall entry is reloaded.
 
 ## Notice Information
 
@@ -109,20 +108,33 @@ Firewall and NAT rule switches are unavailable on older firmware; the deprecated
 
 ## VPN Information and Switches
 
-| OPNsense Permission | Method | API Endpoints |
-| --- | --- | --- |
-| Status: OpenVPN | GET | `/api/openvpn/service/search_sessions` (or `/api/openvpn/service/searchSessions`)<br>`/api/openvpn/service/search_routes` (or `/api/openvpn/service/searchRoutes`) |
-| Status: OpenVPN | POST | `/api/openvpn/service/reconfigure` |
-| VPN: OpenVPN: Instances | GET | `/api/openvpn/instances/search`<br>`/api/openvpn/instances/get/{uuid}` |
-| VPN: OpenVPN: Instances | POST | `/api/openvpn/instances/toggle/{uuid}` |
-| VPN: OpenVPN: Client Export Utility | GET | `/api/openvpn/export/providers` |
-| VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | GET | `/api/wireguard/service/show`<br>`/api/wireguard/client/get`<br>`/api/wireguard/server/get` |
-| VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | POST | `/api/wireguard/client/toggle_client/{uuid}` (or `/api/wireguard/client/toggleClient/{uuid}`)<br>`/api/wireguard/server/toggle_server/{uuid}` (or `/api/wireguard/server/toggleServer/{uuid}`)<br>`/api/wireguard/service/reconfigure` |
-| VPN: WireGuard: Status (25.7+, alternative for status-only access) | GET / POST | `/api/wireguard/service/show`<br>`/api/wireguard/service/reconfigure` |
-| Status: IPsec | GET | `/api/ipsec/sessions/search_phase1` (or `/api/ipsec/sessions/searchPhase1`) |
-| Status: IPsec | POST | `/api/ipsec/sessions/search_phase2` (or `/api/ipsec/sessions/searchPhase2`) |
-| VPN: IPsec: Connections | GET | `/api/ipsec/connections/search_connection` (or `/api/ipsec/connections/searchConnection`)<br>`/api/ipsec/connections/search_child` (or `/api/ipsec/connections/searchChild`) |
-| VPN: IPsec: Connections | POST | `/api/ipsec/connections/toggle_connection/{uuid}` (or `/api/ipsec/connections/toggleConnection/{uuid}`)<br>`/api/ipsec/service/reconfigure` |
+**Status Access** provides sensors for VPN Instances visible in live status. Disabled instances, IPsec connections that exist only in configuration, and IPsec children without a security association are hidden. **Configuration Access** uses the same status endpoints and adds the configured inventory and VPN switches.
+
+- **OpenVPN** requires both `Status: OpenVPN` and `VPN: OpenVPN: Instances` for Configuration Access. The optional `VPN: OpenVPN: Client Export Utility` permission enriches Configuration Access sensor data with the server address and port.
+- **WireGuard** requires only `VPN: WireGuard: Configuration` for Configuration Access because it includes the status endpoint. On 25.1, the combined permission is named `VPN: WireGuard`. From 25.7, `VPN: WireGuard: Status` on its own provides Status Access.
+- **IPsec** requires both `Status: IPsec` and `VPN: IPsec: Connections` for Configuration Access.
+
+WireGuard Server sensors are identified by interface and public key, and WireGuard Client sensors by public key, so they stay the same under both access levels, except for Clients that share a key. Changing the key of a WireGuard Server or WireGuard Client, or the interface of a WireGuard Server, creates new sensors after a reload and leaves the old ones unavailable. Under Configuration Access, each Client that shares a public key has its own sensors. When a key starts being shared between Clients, the affected Clients get new sensors after a reload and the old ones become unavailable. When it stops being shared, the remaining Client uses sensors identified by the key alone after a reload, and its sensors from the shared period become unavailable. Any earlier sensors for that key alone are reused, even if they showed a different Client. Under Status Access, Clients that share a key appear as one combined set of sensors. Its traffic totals can drop when one of its connections stops reporting, and Home Assistant's long-term statistics can count the remaining total as new traffic. Under Configuration Access, a WireGuard Server saved without a public key gets no sensors until you add the key and reload the integration.
+
+When you upgrade, existing WireGuard sensors keep their entity IDs if the integration can read the WireGuard configuration. Otherwise new sensors are created for entries with a public key, and you can delete the old ones.
+
+A Toggle from a Home Assistant switch that changes an instance calls both the instance's toggle endpoint and the VPN service's reconfigure endpoint. A WireGuard Toggle also reads the instance first.
+
+| OPNsense Permission | Access Level | Method | API Endpoints |
+| --- | --- | --- | --- |
+| Status: OpenVPN | Status Access | GET | `/api/openvpn/service/search_sessions` (or `/api/openvpn/service/searchSessions`)<br>`/api/openvpn/service/search_routes` (or `/api/openvpn/service/searchRoutes`) |
+| Status: OpenVPN | Configuration Access (Toggle) | POST | `/api/openvpn/service/reconfigure` |
+| VPN: OpenVPN: Instances | Configuration Access | GET | `/api/openvpn/instances/search`<br>`/api/openvpn/instances/get/{uuid}` |
+| VPN: OpenVPN: Instances | Configuration Access (Toggle) | POST | `/api/openvpn/instances/toggle/{uuid}` |
+| VPN: OpenVPN: Client Export Utility | Configuration Access (optional) | GET | `/api/openvpn/export/providers` |
+| VPN: WireGuard: Status (25.7+) | Status Access | GET | `/api/wireguard/service/show` |
+| VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | Configuration Access | GET | `/api/wireguard/service/show`<br>`/api/wireguard/client/get`<br>`/api/wireguard/server/get` |
+| VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | Configuration Access (Toggle) | GET | `/api/wireguard/client/get_client/{uuid}` (or `/api/wireguard/client/getClient/{uuid}`)<br>`/api/wireguard/server/get_server/{uuid}` (or `/api/wireguard/server/getServer/{uuid}`) |
+| VPN: WireGuard (25.1)<br>VPN: WireGuard: Configuration (25.7+) | Configuration Access (Toggle) | POST | `/api/wireguard/client/toggle_client/{uuid}` (or `/api/wireguard/client/toggleClient/{uuid}`)<br>`/api/wireguard/server/toggle_server/{uuid}` (or `/api/wireguard/server/toggleServer/{uuid}`)<br>`/api/wireguard/service/reconfigure` |
+| Status: IPsec | Status Access | GET | `/api/ipsec/sessions/search_phase1` (or `/api/ipsec/sessions/searchPhase1`) |
+| Status: IPsec | Status Access | POST | `/api/ipsec/sessions/search_phase2` (or `/api/ipsec/sessions/searchPhase2`) |
+| VPN: IPsec: Connections | Configuration Access | GET | `/api/ipsec/connections/search_connection` (or `/api/ipsec/connections/searchConnection`)<br>`/api/ipsec/connections/search_child` (or `/api/ipsec/connections/searchChild`) |
+| VPN: IPsec: Connections | Configuration Access (Toggle) | POST | `/api/ipsec/connections/toggle_connection/{uuid}` (or `/api/ipsec/connections/toggleConnection/{uuid}`)<br>`/api/ipsec/service/reconfigure` |
 
 ## Security Certificate Information
 

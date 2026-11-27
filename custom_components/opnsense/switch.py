@@ -23,7 +23,7 @@ from .const import (
     DEFAULT_SYNC_OPTION_VALUE,
     DOMAIN,
 )
-from .coordinator import OPNsenseDataUpdateCoordinator
+from .coordinator import OPNsenseDataUpdateCoordinator, vpn_has_status_access
 from .entity import OPNsenseEntity
 from .helpers import coerce_bool, config_entry_identity, dict_get, firewall_rule_id_from_payload
 from .repair_reconciliation import is_reconciliation_active, record_desired_entities
@@ -155,25 +155,24 @@ def _is_known_ipsec_switch_row(connection: Any) -> bool:
 
 
 def _vpn_switch_rows_are_complete(state: MutableMapping[str, Any]) -> bool:
-    """Return whether every VPN row consumed by the switch compiler is valid.
+    """Validate VPN switch inventories, skipping VPN types under Status Access.
 
     Returns:
-        bool: Whether the vpn switch rows are complete condition is satisfied.
+        bool: Whether all VPN switch rows can be reconciled.
 
     Args:
-        state (MutableMapping[str, Any]): Simulated payload used to exercise the scenario.
+        state (MutableMapping[str, Any]): Current coordinator state.
     """
-    for vpn_type in ("openvpn", "wireguard"):
-        for group in ("clients", "servers"):
-            instances = dict_get(state, f"{vpn_type}.{group}", {})
-            if not isinstance(instances, MutableMapping) or not all(
-                _is_valid_vpn_switch_row(instance) for instance in instances.values()
-            ):
-                return False
-    connections = dict_get(state, "ipsec.connections", {})
-    return isinstance(connections, MutableMapping) and all(
-        _is_known_ipsec_switch_row(connection) for connection in connections.values()
-    )
+    for vpn_type, group in _VPN_SWITCH_GROUPS:
+        if vpn_has_status_access(state.get(vpn_type)):
+            continue
+        instances = dict_get(state, f"{vpn_type}.{group}", {})
+        is_valid = _is_known_ipsec_switch_row if vpn_type == "ipsec" else _is_valid_vpn_switch_row
+        if not isinstance(instances, MutableMapping) or not all(
+            is_valid(instance) for instance in instances.values()
+        ):
+            return False
+    return True
 
 
 def _create_switch[EntityT: OPNsenseSwitch](
@@ -411,10 +410,12 @@ async def _compile_vpn_switches(
     Returns:
         list: A list of OPNsenseVPNSwitch entities.
     """
+    if not isinstance(state, MutableMapping):
+        return []
     entities: list = []
     for vpn_type, clients_servers in _VPN_SWITCH_GROUPS:
-        if not isinstance(state, MutableMapping):
-            return []
+        if vpn_has_status_access(state.get(vpn_type)):
+            continue
         vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
         if not isinstance(vpn_instances, MutableMapping):
             continue

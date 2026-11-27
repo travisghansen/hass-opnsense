@@ -15,7 +15,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense import switch as switch_mod
 from custom_components.opnsense.const import (
@@ -49,6 +48,7 @@ from custom_components.opnsense.switch import (
     _compile_unbound_switches,
     _compile_vpn_switches,
 )
+from tests.common import MockConfigEntry
 from tests.utilities import stub_async_write_ha_state
 
 

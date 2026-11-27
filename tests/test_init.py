@@ -31,7 +31,6 @@ from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er, issue_registry as ir
 from homeassistant.util import slugify
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 import custom_components.opnsense as init_mod
 from custom_components.opnsense.const import (
@@ -41,8 +40,10 @@ from custom_components.opnsense.const import (
     CONF_ENTRY_TYPE,
     CONF_GRANULAR_SYNC_OPTIONS,
     CONF_SYNC_FIREWALL_AND_NAT,
+    CONF_SYNC_GATEWAYS,
     CONF_SYNC_INTERFACES,
     CONF_SYNC_LIVE_TRAFFIC,
+    CONF_SYNC_SPEEDTEST,
     CONF_TLS_INSECURE,
     COORDINATOR,
     DEVICE_TRACKER_COORDINATOR,
@@ -64,8 +65,10 @@ from custom_components.opnsense.repair_reconciliation import (
     REPAIR_MARKER_KEY,
     RepairMarker,
     RepairReconciliationError,
+    build_repair_marker,
     parse_repair_marker,
 )
+from tests.common import MockConfigEntry
 from tests.utilities import patch_opnsense_client
 
 
@@ -2134,14 +2137,14 @@ async def test_migrate_1_to_2_updates_entry(ph_hass: Any) -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_migrate_entry_version_gt5(ph_hass: Any) -> None:
+async def test_async_migrate_entry_rejects_future_version(ph_hass: Any) -> None:
     """async_migrate_entry returns False for versions greater than supported.
 
     Args:
         ph_hass (Any): Patched Home Assistant test instance.
     """
     cfg = MagicMock()
-    cfg.version = 6
+    cfg.version = 7
     # should return False
     res = await init_mod.async_migrate_entry(ph_hass, cfg)
     assert res is False
@@ -2167,7 +2170,7 @@ async def test_async_migrate_entry_does_not_call_migrate_3_to_4_when_version_not
 
     res = await init_mod.async_migrate_entry(ph_hass, cfg)
 
-    # for versions not 3, migration should complete (except versions >5, which are handled earlier)
+    # for versions not 3, migration should complete (except versions >6, which are handled earlier)
     assert res is True
     mock_m3.assert_not_called()
 
@@ -2297,7 +2300,10 @@ async def test_migrate_4_to_5_removes_rule_switch_entities(
         remove_call.args[0] != unrelated_entry.entity_id
         for remove_call in entity_registry.async_remove.call_args_list
     )
-    ph_hass.config_entries.async_update_entry.assert_called_once_with(entry, version=5)
+    assert ph_hass.config_entries.async_update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.asyncio
@@ -2362,7 +2368,10 @@ async def test_migrate_4_to_5_uses_rule_key_when_uuid_is_missing(
         remove_call.args[0] for remove_call in entity_registry.async_remove.call_args_list
     }
     assert current_native_firewall.entity_id not in removed_entity_ids
-    ph_hass.config_entries.async_update_entry.assert_called_once_with(entry, version=5)
+    assert ph_hass.config_entries.async_update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.asyncio
@@ -2439,7 +2448,10 @@ async def test_migrate_4_to_5_sync_disabled_skips_firewall_fetch_removes_native_
     assert stale_native_firewall.entity_id in removed_entity_ids
     assert current_native_firewall.entity_id in removed_entity_ids
     assert native_nat.entity_id in removed_entity_ids
-    ph_hass.config_entries.async_update_entry.assert_called_once_with(entry, version=5)
+    assert ph_hass.config_entries.async_update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
     create_client.assert_not_called()
 
 
@@ -2495,7 +2507,10 @@ async def test_migrate_4_to_5_granular_entry_defaults_missing_category_key_to_en
     create_client.assert_called_once()
     client.get_firewall.assert_awaited_once()
     entity_registry.async_remove.assert_called_once_with(stale_native_firewall.entity_id)
-    update_entry.assert_called_once_with(entry, version=5)
+    assert update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.asyncio
@@ -2581,7 +2596,10 @@ async def test_migrate_4_to_5_non_granular_entry_missing_category_key_preserves_
     assert current_native_firewall.entity_id not in removed_entity_ids
     assert current_nat.entity_id not in removed_entity_ids
     assert entity_registry.async_remove.call_count == 3
-    update_entry.assert_called_once_with(entry, version=5)
+    assert update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -2835,7 +2853,10 @@ async def test_migrate_4_to_5_completes_when_firewall_privileges_are_missing(
 
     assert res is True
     entity_registry.async_remove.assert_called_once_with(legacy_filter.entity_id)
-    update_entry.assert_called_once_with(entry, version=5)
+    assert update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.asyncio
@@ -2903,7 +2924,10 @@ async def test_migrate_4_to_5_skips_native_pruning_when_rules_payload_unavailabl
         any_order=True,
     )
     assert entity_registry.async_remove.call_count == 1
-    update_entry.assert_called_once_with(entry, version=5)
+    assert update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.asyncio
@@ -2992,7 +3016,7 @@ async def test_migrate_4_to_5_preserves_native_nat_switches_for_unknown_inventor
 
     assert await init_mod.async_migrate_entry(ph_hass, entry)
 
-    assert entry.version == 5
+    assert entry.version == 6
     assert registry.async_get(firewall_rule.entity_id) is not None
     assert registry.async_get(npt.entity_id) is not None
     assert registry.async_get(destination.entity_id) is None
@@ -3113,7 +3137,10 @@ async def test_migrate_4_to_5_sync_enabled_prunes_stale_native_nat_rule_entities
     assert current_nat_dnat.entity_id not in removed_entity_ids
     assert stale_nat_one_to_one.entity_id in removed_entity_ids
     assert entity_registry.async_remove.call_count == 5
-    update_entry.assert_called_once_with(entry, version=5)
+    assert update_entry.call_args_list == [
+        call(entry, version=5),
+        call(entry, version=6),
+    ]
 
 
 @pytest.mark.asyncio
@@ -5788,6 +5815,114 @@ async def test_cleanup_reconciliation_failure_returns_platform_unload_result(
     issue_create.assert_called_once()
     assert events == ["create_issue", "unload_platforms"]
     ph_hass.config_entries.async_unload_platforms.assert_awaited_once()
+
+
+@pytest.mark.usefixtures("enable_custom_integrations")
+@pytest.mark.parametrize(
+    ("speedtest", "gateways", "repair_completes"),
+    [
+        pytest.param(None, {"WAN": {}}, True, id="unreadable-speedtest"),
+        pytest.param({}, {"WAN": {}}, True, id="missing-availability"),
+        pytest.param({"available": False}, {"WAN": {}}, True, id="missing-plugin"),
+        pytest.param(
+            {"available": True, "last": {"download": {"value": 100}}},
+            {"WAN": {}},
+            True,
+            id="latest-only",
+        ),
+        pytest.param(None, None, False, id="unreadable-gateways"),
+    ],
+)
+async def test_replacement_repair_reconciles_speedtest_registry(
+    hass: HomeAssistant,
+    entity_registry: er.EntityRegistry,
+    monkeypatch: pytest.MonkeyPatch,
+    speedtest: dict[str, object] | None,
+    gateways: dict[str, object] | None,
+    repair_completes: bool,
+) -> None:
+    """Repair should preserve unreadable Speedtest entries and reconcile readable inventory.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance running the integration.
+        entity_registry (er.EntityRegistry): Home Assistant entity registry.
+        monkeypatch (pytest.MonkeyPatch): Patch fixture for the OPNsense client boundary.
+        speedtest (dict[str, object] | None): Speedtest inventory returned by the Firewall.
+        gateways (dict[str, object] | None): Gateway inventory returned by the Firewall.
+        repair_completes (bool): Whether setup should clear the repair marker.
+    """
+    client = _make_valid_setup_client()
+    client.get_system_info = AsyncMock(return_value={"name": "Firewall"})
+    client.reset_query_counts = AsyncMock()
+    client.get_query_counts = AsyncMock(return_value=0)
+    client.get_speedtest = AsyncMock(return_value=speedtest)
+    client.get_gateways = AsyncMock(return_value=gateways)
+    patch_opnsense_client(monkeypatch, init_mod, lambda **_kwargs: client)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=5,
+        unique_id="dev1",
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            REPAIR_MARKER_KEY: build_repair_marker("Old Firewall", "dev1"),
+            **dict.fromkeys(GRANULAR_SYNC_PREFIX, False),
+            CONF_SYNC_SPEEDTEST: True,
+            CONF_SYNC_GATEWAYS: True,
+        },
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+    entry.add_to_hass(hass)
+    latest = entity_registry.async_get_or_create(
+        "sensor", DOMAIN, "old_firewall_speedtest_last_download", config_entry=entry
+    )
+    average = entity_registry.async_get_or_create(
+        "sensor",
+        DOMAIN,
+        "old_firewall_speedtest_average_latency",
+        config_entry=entry,
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
+    gateway = entity_registry.async_get_or_create(
+        "sensor", DOMAIN, "old_firewall_gateway_wan_status", config_entry=entry
+    )
+    stale = entity_registry.async_get_or_create(
+        "sensor", DOMAIN, "old_firewall_gateway_lan_status", config_entry=entry
+    )
+
+    assert await hass.config_entries.async_setup(entry.entry_id) is repair_completes
+    await hass.async_block_till_done()
+
+    assert (REPAIR_MARKER_KEY not in entry.data) is repair_completes
+    assert (entity_registry.async_get(stale.entity_id) is None) is repair_completes
+    assert entity_registry.async_get_entity_id("sensor", DOMAIN, "dev1_gateway_wan_status") == (
+        gateway.entity_id
+    )
+    available = speedtest.get("available") if speedtest is not None else None
+    for previous, unique_id in (
+        (latest, "dev1_speedtest_last_download"),
+        (average, "dev1_speedtest_average_latency"),
+    ):
+        current = entity_registry.async_get(previous.entity_id)
+        if available is not False:
+            assert current is not None
+            assert current.unique_id == unique_id
+            assert current.id == previous.id
+            assert current.disabled_by == previous.disabled_by
+        else:
+            assert current is None
+    if available is None:
+        assert {
+            row.entity_id
+            for row in er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+            if row.unique_id.startswith("dev1_speedtest_")
+        } == {latest.entity_id, average.entity_id}
+    elif available is True:
+        state = hass.states.get(latest.entity_id)
+        assert state is not None
+        assert float(state.state) == 100
 
 
 @pytest.mark.asyncio

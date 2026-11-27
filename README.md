@@ -122,6 +122,8 @@ At minimum, the following permissions are required:
 
 [The list of what other permissions are needed for the Granular Sync Options and for the Actions can be reviewed here.](docs/granular_permissions.md)
 
+VPN Status Access provides sensors for instances visible in live status. Configuration Access adds the configured inventory and switches. See [VPN permissions](docs/granular_permissions.md#vpn-information-and-switches) for the privileges to grant for each VPN type.
+
 ### Basic Configuration
 
 | Option | Required | Default | Description |
@@ -164,7 +166,7 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 * Gateways details (status, delay, stddev, loss, address)
 * CARP VIP status (aggregate)
 * CARP Interface status
-* DHCP Leases
+* DHCP Leases. Under Status Access, the Replacement repair [keeps registered DHCP lease sensors](docs/granular_permissions.md#dhcp-leases) for interfaces missing from the lease data.
 * OpenVPN and Wireguard server and client stats
 * IPsec phase 1 (IKE) connection status and traffic counters
 * IPsec phase 2 (child SA) status with configured and negotiated traffic selectors, and traffic counters
@@ -236,7 +238,11 @@ When a Firewall entry reports a Hardware ID mismatch, Home Assistant offers a fi
 
 The repair preserves the URL, credentials, and options. A retry marker makes an interrupted repair resumable. Dashboards and automations remain intact for preserved entity IDs; review references to entities removed during reconciliation.
 
-If the repair receives an unknown inventory for services or for a firewall or NAT rule group, it keeps the existing switch registry entries for that inventory and reconciles the inventories that are available. An unknown inventory of any other synced kind, such as the Unbound blocklist, still keeps the repair from completing. The kept switches stay unavailable until the integration is reloaded after that inventory can be read again. A kept switch whose service or rule does not exist on the replacement hardware gets no entity after that reload, remains in the entity registry, and is not removed automatically.
+If the repair receives an unknown inventory for services or for a firewall or NAT rule group, it keeps the existing switch registry entries for that inventory and reconciles the inventories that are available. The kept switches stay unavailable until the integration is reloaded after that inventory can be read again. A kept switch whose service or rule does not exist on the replacement hardware gets no entity after that reload, remains in the entity registry, and is not removed automatically.
+
+If Speedtest results cannot be read, the repair keeps existing Speedtest registry entries and reconciles the other readable entities. The kept sensors stay unavailable until the integration is reloaded after the results can be read again. If the Firewall confirms the Speedtest plugin is missing, the repair removes its sensors.
+
+Some other unknown inventories, such as the Unbound blocklist, still keep the repair from completing.
 
 ## Contributing
 

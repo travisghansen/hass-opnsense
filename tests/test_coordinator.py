@@ -14,13 +14,12 @@ import time
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, call
 
-from aiopnsense import OPNsenseClient
+from aiopnsense import Access, AccessDict, OPNsenseClient, result_access
 from aiopnsense.exceptions import OPNsenseError, OPNsensePrivilegeMissing, OPNsenseTimeoutError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense import coordinator as coordinator_module
 from custom_components.opnsense.const import (
@@ -49,11 +48,56 @@ from custom_components.opnsense.const import (
     CONF_SYNC_VPN,
     DOMAIN,
     ENTRY_TYPE_CARP,
+    GRANULAR_SYNC_ITEMS,
     TRACKED_MACS,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.repair_reconciliation import REPAIR_MARKER_KEY, build_repair_marker
+from tests.common import MockConfigEntry
 from tests.utilities import arp_ndp_entry, arp_ndp_table, host_observation, host_observations
+
+
+@pytest.mark.asyncio
+async def test_vpn_status_access_survives_refresh_and_is_logged_once(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Keep reported VPN access in snapshots and log first detection per VPN type.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance used for coordinator refreshes.
+        caplog (pytest.LogCaptureFixture): Captured coordinator logs.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={option: option == CONF_SYNC_VPN for option in GRANULAR_SYNC_ITEMS},
+    )
+    client = MagicMock(spec=OPNsenseClient)
+    client.get_device_unique_id.return_value = "firewall"
+    client.get_openvpn.return_value = AccessDict({}, access=Access.STATUS)
+    client.get_wireguard.side_effect = [
+        AccessDict({}, access=Access.CONFIGURATION),
+        AccessDict({}, access=Access.STATUS),
+        AccessDict({}, access=Access.STATUS),
+    ]
+    client.get_ipsec.return_value = {}
+    coordinator = OPNsenseDataUpdateCoordinator(
+        hass, client, "Firewall", timedelta(seconds=60), "firewall", entry
+    )
+
+    with caplog.at_level(logging.INFO, logger=coordinator_module.__name__):
+        await coordinator.async_refresh()
+        await coordinator.async_refresh()
+        last_openvpn = coordinator.data["openvpn"]
+        await coordinator.async_refresh()
+
+    assert result_access(coordinator.data["openvpn"]) is Access.STATUS
+    previous_openvpn = coordinator.data["previous_state"]["openvpn"]
+    assert previous_openvpn is not last_openvpn
+    assert result_access(previous_openvpn) is Access.STATUS
+    assert result_access(coordinator.data["previous_state"]["wireguard"]) is Access.STATUS
+    assert [
+        record.getMessage() for record in caplog.records if "Status Access" in record.getMessage()
+    ] == ["Firewall: OpenVPN reports Status Access", "Firewall: WireGuard reports Status Access"]
 
 
 @pytest.mark.asyncio
