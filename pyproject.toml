@@ -41,8 +41,8 @@ lint = [
     "types-setuptools",
     "uv>=0.13.4",
 ]
-# Test dependencies without the Home Assistant test plugin. CI installs this
-# group with pytest-homeassistant-custom-component to test the minimum HA version.
+# Test dependencies without the Home Assistant test plugin. The minimum Home
+# Assistant CI job installs this group with the plugin that covers its version.
 pytest-base = [
     { include-group = "ha" },
     "aiohttp",
