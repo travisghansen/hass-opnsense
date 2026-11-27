@@ -2835,14 +2835,12 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             self._mark_unavailable()
             return
         if vpn_type == "wireguard":
-            instance = next(
-                (
-                    row
-                    for _, row in _vpn_rows_enabled_first(instances)
-                    if isinstance(row, MutableMapping) and row.get("key_hash") == instance_id
-                ),
-                None,
-            )
+            matching_rows = {
+                name: row
+                for name, row in instances.items()
+                if isinstance(row, MutableMapping) and row.get("key_hash") == instance_id
+            }
+            instance = next((row for _, row in _vpn_rows_enabled_first(matching_rows)), None)
         else:
             instance = instances.get(instance_id)
         if (

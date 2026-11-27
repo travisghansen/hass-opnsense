@@ -115,11 +115,11 @@ Firewall and NAT rule switches are unavailable on older firmware; the deprecated
 - **WireGuard** requires only `VPN: WireGuard: Configuration` for Configuration Access because it includes the status endpoint. On 25.1, the combined permission is named `VPN: WireGuard`. From 25.7, `VPN: WireGuard: Status` on its own provides Status Access.
 - **IPsec** requires both `Status: IPsec` and `VPN: IPsec: Connections` for Configuration Access.
 
-WireGuard sensors are identified by public key, so they stay the same under both access levels. Changing the key of a WireGuard Server or WireGuard Client creates new sensors after a reload and leaves the old ones unavailable. Entries that share a public key share one set of sensors, which follows an enabled entry. Under Configuration Access, a WireGuard Server saved without a public key gets no sensors until you add the key and reload the integration.
+WireGuard sensors are identified by public key, so they stay the same under both access levels. Changing the key of a WireGuard Server or WireGuard Client creates new sensors after a reload and leaves the old ones unavailable. Entries that share a public key share one set of sensors, which follows an enabled entry. If the followed entry changes, their traffic totals can jump, and Home Assistant's long-term statistics can count the jump as traffic. Under Configuration Access, a WireGuard Server saved without a public key gets no sensors until you add the key and reload the integration.
 
 When you upgrade, existing WireGuard sensors keep their entity IDs if the integration can read the WireGuard configuration. Otherwise new sensors are created for entries with a public key, and you can delete the old ones. When entries share a public key, the upgrade keeps the entity IDs from one of them, preferring an enabled entry. The other entries' old sensors stay unavailable and you can delete them.
 
-A Toggle from a Home Assistant switch calls both the instance's toggle endpoint and the VPN service's reconfigure endpoint. A WireGuard Toggle also reads the instance first.
+A Toggle from a Home Assistant switch that changes an instance calls both the instance's toggle endpoint and the VPN service's reconfigure endpoint. A WireGuard Toggle also reads the instance first.
 
 | OPNsense Permission | Access Level | Method | API Endpoints |
 | --- | --- | --- | --- |
