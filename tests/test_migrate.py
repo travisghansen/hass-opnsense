@@ -66,6 +66,8 @@ async def test_wireguard_sensor_migration_during_setup(
     )
     entry.add_to_hass(hass)
     legacy_ids = {
+        # Registered first and listed first, but disabled, so the office server's sensor wins the key hash.
+        "disabled_server": "aa_bb_wireguard_servers_ddeeff00_1234_4321_9876_abcdef012345_status",
         "office_server": "aa_bb_wireguard_servers_aabbccdd_1234_4321_9876_abcdef012345_status",
         "office_client": "aa_bb_wireguard_clients_bbccddee_1234_4321_9876_abcdef012345_connected_servers",
         "missing_server": "aa_bb_wireguard_servers_ccddeeff_1234_4321_9876_abcdef012345_status",
@@ -106,10 +108,14 @@ async def test_wireguard_sensor_migration_during_setup(
         migration_client.get_wireguard.return_value = AccessDict(
             {
                 "servers": {
+                    "ddeeff00-1234-4321-9876-abcdef012345": {
+                        "enabled": False,
+                        "key_hash": "0123456789abcdef",
+                    },
                     "aabbccdd-1234-4321-9876-abcdef012345": {
                         "enabled": True,
                         "key_hash": "0123456789abcdef",
-                    }
+                    },
                 },
                 "clients": {
                     "bbccddee-1234-4321-9876-abcdef012345": {
@@ -160,6 +166,10 @@ async def test_wireguard_sensor_migration_during_setup(
         target_ids if response in {"configuration", "collision", "pending-repair"} else legacy_ids
     )
     for name, entity_id in entities.items():
+        if pending_repair and name == "disabled_server":
+            # The pending Replacement repair removes the disabled entry's unclaimed legacy sensor.
+            assert entity_registry.async_get(entity_id) is None
+            continue
         assert (
             entity_registry.async_get_entity_id("sensor", DOMAIN, expected_ids[name]) == entity_id
         )

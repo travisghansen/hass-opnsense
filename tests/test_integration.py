@@ -681,7 +681,7 @@ async def test_e2e_reload_and_unload(
 async def test_e2e_full_migration_chain(
     monkeypatch: pytest.MonkeyPatch, make_config_entry: Callable[..., MockConfigEntry]
 ) -> None:
-    """Exercise the full ``async_migrate_entry`` path from version 1 to 5.
+    """Exercise the full ``async_migrate_entry`` path from version 1 to 6.
 
     Verifies:
         - v1 to v2 removes ``tls_insecure`` and adds ``verify_ssl`` as its inverse.
@@ -689,6 +689,8 @@ async def test_e2e_full_migration_chain(
         - v3 to v4 transforms telemetry-related sensor unique IDs and removes
           ``*_connected_client_count`` entities.
         - v4 to v5 removes legacy switch entities and stale native firewall rule switches.
+        - v5 to v6 completes the chain and sets the entry to version 6; this fixture has no
+          legacy WireGuard sensors, so their re-keying is not exercised here.
 
     Args:
         monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
