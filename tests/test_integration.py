@@ -25,7 +25,6 @@ from unittest.mock import AsyncMock, MagicMock
 from homeassistant.const import CONF_NAME, CONF_PASSWORD, CONF_URL, CONF_USERNAME, CONF_VERIFY_SSL
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 import custom_components.opnsense as init_mod
 from custom_components.opnsense import (
@@ -50,6 +49,7 @@ from custom_components.opnsense.const import (
     DOMAIN,
     SHOULD_RELOAD,
 )
+from tests.common import MockConfigEntry
 from tests.utilities import arp_ndp_entry, arp_ndp_table, patch_opnsense_client
 
 homeassistant = pytest.importorskip("homeassistant")

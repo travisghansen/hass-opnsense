@@ -13,7 +13,6 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity import Entity
 from homeassistant.util import slugify
 import pytest
-from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.opnsense import repair_reconciliation as rr, sensor, switch
 from custom_components.opnsense.const import (
@@ -35,6 +34,7 @@ from custom_components.opnsense.repair_reconciliation import (
     parse_repair_marker,
     record_desired_entities,
 )
+from tests.common import MockConfigEntry
 
 
 @pytest.mark.parametrize(
