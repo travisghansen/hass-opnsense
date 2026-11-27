@@ -25,7 +25,7 @@ from .helpers import (
     create_opnsense_client_from_config_entry,
     firewall_nat_switch_unique_ids_from_payload,
     firewall_rule_switch_unique_ids_from_payload,
-    vpn_rows_enabled_first,
+    wireguard_sensor_instance_ids,
 )
 from .repair_reconciliation import parse_repair_marker
 
@@ -686,26 +686,17 @@ async def _migrate_5_to_6(
         and (wireguard := await _read_wireguard_for_migration(hass, config_entry, migration_client))
         is not None
     ):
-        hashes: dict[tuple[str, str], str] = {}
+        instance_ids: dict[tuple[str, str], str] = {}
         for group in ("clients", "servers"):
             inventory = wireguard.get(group)
             if not isinstance(inventory, Mapping):
                 continue
-            # A shared key hash follows the first enabled row, as the sensors do.
-            for uuid, row in vpn_rows_enabled_first(inventory):
-                key_hash = row.get("key_hash") if isinstance(row, Mapping) else None
-                if isinstance(uuid, str) and isinstance(key_hash, str) and key_hash:
-                    hashes[group, slugify(uuid)] = key_hash
+            for uuid, instance_id in wireguard_sensor_instance_ids(inventory).items():
+                instance_ids[group, slugify(uuid)] = instance_id
 
-        # Legacy sensors claim shared key-hash IDs in that same order, so the entry that
-        # runtime follows keeps the shared ID and the other entries' sensors are skipped.
-        hash_order = {key: position for position, key in enumerate(hashes)}
-        legacy_sensors.sort(
-            key=lambda sensor: hash_order.get((sensor[2], sensor[3]), len(hash_order))
-        )
         for entity, prefix, group, uuid, property_name in legacy_sensors:
-            key_hash = hashes.get((group, uuid))
-            if key_hash is None:
+            new_instance_id = instance_ids.get((group, uuid))
+            if new_instance_id is None:
                 continue
             entity_id = registry.async_get_entity_id(
                 Platform.SENSOR, entity.platform, entity.unique_id
@@ -713,7 +704,7 @@ async def _migrate_5_to_6(
             current_entity = registry.async_get(entity_id) if entity_id is not None else None
             if current_entity is None or current_entity.config_entry_id != config_entry.entry_id:
                 continue
-            new_unique_id = slugify(f"{prefix}{group}.{key_hash}.{property_name}")
+            new_unique_id = slugify(f"{prefix}{group}.{new_instance_id}.{property_name}")
             if registry.async_get_entity_id(Platform.SENSOR, entity.platform, new_unique_id):
                 _LOGGER.warning(
                     "Skipping WireGuard sensor migration for %s: ID already in use",

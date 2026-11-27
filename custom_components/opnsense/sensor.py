@@ -55,7 +55,7 @@ from .helpers import (
     dict_get,
     get_smart_device_name,
     is_carp_entry,
-    vpn_rows_enabled_first,
+    wireguard_sensor_instance_ids,
 )
 from .repair_reconciliation import record_desired_entities
 from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
@@ -1826,16 +1826,17 @@ async def _compile_vpn_sensors(
             vpn_instances = dict_get(state, f"{vpn_type}.{clients_servers}", {}) or {}
             if not isinstance(vpn_instances, MutableMapping):
                 continue
-            seen_ids: set[str] = set()
-            for inventory_key, instance in vpn_rows_enabled_first(vpn_instances):
-                if not _is_valid_vpn_sensor_row(instance):
+            # WireGuard rows are keyed by UUID or key hash depending on the access
+            # level, so their sensor IDs are built from the key hash instead.
+            instance_ids = (
+                wireguard_sensor_instance_ids(vpn_instances)
+                if vpn_type == "wireguard"
+                else {inventory_key: inventory_key for inventory_key in vpn_instances}
+            )
+            for inventory_key, instance in vpn_instances.items():
+                instance_id = instance_ids.get(inventory_key)
+                if instance_id is None or not _is_valid_vpn_sensor_row(instance):
                     continue
-                # WireGuard rows are keyed by UUID or key hash depending on the access
-                # level, so their sensors use the key hash, which both levels report.
-                instance_id = instance.get("key_hash") if vpn_type == "wireguard" else inventory_key
-                if instance_id is None or instance_id in seen_ids:
-                    continue
-                seen_ids.add(instance_id)
                 instance_name = OPNsenseEntity.payload_display_name(
                     instance,
                     str(inventory_key),
@@ -2826,12 +2827,16 @@ class OPNsenseVPNSensor(OPNsenseSensor):
             self._mark_unavailable()
             return
         if vpn_type == "wireguard":
-            matching_rows = {
-                name: row
-                for name, row in instances.items()
-                if isinstance(row, MutableMapping) and row.get("key_hash") == instance_id
-            }
-            instance = next((row for _, row in vpn_rows_enabled_first(matching_rows)), None)
+            # An ID that names an entry reads only that entry. A bare key hash reads
+            # the single row with that key, and none once several entries share it.
+            key_hash, _, entry_key = instance_id.partition("_")
+            candidates = [instances.get(entry_key)] if entry_key else list(instances.values())
+            matches = [
+                row
+                for row in candidates
+                if isinstance(row, MutableMapping) and row.get("key_hash") == key_hash
+            ]
+            instance = matches[0] if len(matches) == 1 else None
         else:
             instance = instances.get(instance_id)
         if (

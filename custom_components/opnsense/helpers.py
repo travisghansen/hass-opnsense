@@ -1,5 +1,6 @@
 """Helper methods for OPNsense."""
 
+from collections import Counter
 from collections.abc import Callable, Mapping, MutableMapping
 import ipaddress
 import re
@@ -195,19 +196,30 @@ def device_belongs_to_config_entry(
     return config_entry_id in legacy_entry_ids
 
 
-def vpn_rows_enabled_first(instances: Mapping[str, Any]) -> list[tuple[str, Any]]:
-    """Order VPN rows so an enabled entry backs sensors that several entries share.
+def wireguard_sensor_instance_ids(inventory: Mapping[str, Any]) -> dict[str, str]:
+    """Identify the sensors of each WireGuard entry in one inventory group.
+
+    An entry with its own public key is identified by the key hash, which both access
+    levels report. Entries that share a key, which only Configuration Access reports
+    separately, also carry their inventory key so each has its own sensors.
 
     Args:
-        instances (Mapping[str, Any]): VPN rows keyed as aiopnsense reports them.
+        inventory (Mapping[str, Any]): WireGuard Servers or Clients keyed as aiopnsense
+            reports them.
 
     Returns:
-        list[tuple[str, Any]]: Rows in their reported order, with disabled rows last.
+        dict[str, str]: Sensor instance ID for each entry that has a key hash.
     """
-    return sorted(
-        instances.items(),
-        key=lambda item: isinstance(item[1], Mapping) and item[1].get("enabled") is False,
-    )
+    key_hashes: dict[str, str] = {}
+    for inventory_key, row in inventory.items():
+        key_hash = row.get("key_hash") if isinstance(row, Mapping) else None
+        if isinstance(key_hash, str) and key_hash:
+            key_hashes[inventory_key] = key_hash
+    counts = Counter(key_hashes.values())
+    return {
+        inventory_key: key_hash if counts[key_hash] == 1 else f"{key_hash}_{inventory_key}"
+        for inventory_key, key_hash in key_hashes.items()
+    }
 
 
 def dict_get(data: MutableMapping[str, Any], path: str, default: Any | None = None) -> Any | None:
