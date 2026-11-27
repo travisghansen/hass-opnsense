@@ -12,6 +12,7 @@ from homeassistant.util import slugify
 from .const import DOMAIN, OPNSENSE_CLIENT
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .helpers import config_entry_identity, dict_get
+from .query_stats_coordinator import OPNsenseQueryStatsCoordinator
 from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
 if TYPE_CHECKING:
@@ -19,7 +20,9 @@ if TYPE_CHECKING:
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
-type OPNsenseEntityCoordinator = OPNsenseDataUpdateCoordinator | OPNsenseLiveTrafficCoordinator
+type OPNsenseEntityCoordinator = (
+    OPNsenseDataUpdateCoordinator | OPNsenseLiveTrafficCoordinator | OPNsenseQueryStatsCoordinator
+)
 
 
 class OPNsenseBaseEntity(CoordinatorEntity[OPNsenseEntityCoordinator]):

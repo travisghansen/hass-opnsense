@@ -1,9 +1,11 @@
 """These tests import the integration code via relative imports and assert behavior across sensor variants using a synthesized coordinator state."""
 
 from collections.abc import Callable, Iterable
+from datetime import UTC, datetime
 from typing import Any, Never, cast
 from unittest.mock import MagicMock
 
+from aiopnsense import OPNsenseClient
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntityDescription,
@@ -28,12 +30,14 @@ from custom_components.opnsense.const import (
     CONF_SYNC_SMART,
     CONF_SYNC_SPEEDTEST,
     CONF_SYNC_TELEMETRY,
+    CONF_SYNC_UNBOUND_STATS,
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
     COORDINATOR,
     OPNSENSE_CLIENT,
 )
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
+from custom_components.opnsense.query_stats_coordinator import OPNsenseQueryStatsCoordinator
 from custom_components.opnsense.sensor import (
     OPNsenseCarpActiveResponderSensor,
     OPNsenseCarpInterfaceSensor,
@@ -55,6 +59,7 @@ from custom_components.opnsense.sensor import (
     slugify_filesystem_mountpoint,
 )
 from custom_components.opnsense.traffic_coordinator import OPNsenseLiveTrafficCoordinator
+from tests.utilities import stub_async_write_ha_state
 
 
 @pytest.mark.asyncio
@@ -3525,6 +3530,7 @@ def setup_sensor_reconciliation_entry(
     sync_dhcp_leases: bool = False,
     sync_vpn: bool = False,
     sync_certificates: bool = False,
+    sync_unbound_stats: bool = False,
     opnsense_client: object | None = None,
 ) -> MockConfigEntry:
     """Create a sensor test entry with coordinator runtime data preconfigured.
@@ -3544,6 +3550,7 @@ def setup_sensor_reconciliation_entry(
         sync_dhcp_leases (bool): Whether DHCP lease sensor synchronization is enabled.
         sync_vpn (bool): Whether VPN sensor synchronization is enabled.
         sync_certificates (bool): Whether certificate sensor synchronization is enabled.
+        sync_unbound_stats (bool): Whether Query Stats sensor synchronization is enabled.
         opnsense_client (object | None): Optional client exposed through the config entry runtime
             data.
 
@@ -3564,6 +3571,7 @@ def setup_sensor_reconciliation_entry(
             CONF_SYNC_DHCP_LEASES: sync_dhcp_leases,
             CONF_SYNC_VPN: sync_vpn,
             CONF_SYNC_CERTIFICATES: sync_certificates,
+            CONF_SYNC_UNBOUND_STATS: sync_unbound_stats,
         }
     )
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -3818,6 +3826,7 @@ async def test_async_setup_entry_records_complete_vpn_inventory(
             CONF_SYNC_CERTIFICATES: False,
             CONF_SYNC_NUT: False,
             CONF_SYNC_LIVE_TRAFFIC: False,
+            CONF_SYNC_UNBOUND_STATS: False,
         }
     )
     coordinator = MagicMock(spec=OPNsenseDataUpdateCoordinator)
@@ -6944,3 +6953,411 @@ def test_vpn_sensor_rows_are_complete_rejects_malformed_ipsec_rows() -> None:
         "wireguard": {"clients": {}, "servers": {}},
     }
     assert sensor_module._vpn_sensor_rows_are_complete(missing_state) is True
+
+
+QUERY_STATS_DATA = OPNsenseClient.QueryStats(
+    last_minute=OPNsenseClient.BucketCounts(queries=60, blocked=6, dropped=1),
+    last_24h=OPNsenseClient.BucketCounts(queries=8000, blocked=400, dropped=12),
+    blocklist_size=250000,
+    since=datetime(2026, 11, 19, 12, 0, tzinfo=UTC),
+    top_domains=(
+        OPNsenseClient.TopDomain(domain="example.com", count=50, percent=12.5, blocklist=None),
+        OPNsenseClient.TopDomain(domain="example.org", count=20, percent=5.0, blocklist=None),
+    ),
+    top_blocked_domains=(
+        OPNsenseClient.TopDomain(domain="ads.test", count=30, percent=60.0, blocklist="ads"),
+    ),
+)
+QUERY_LOG_DATA = OPNsenseClient.QueryLog(
+    entries=(
+        OPNsenseClient.QueryLogEntry(
+            time=datetime(2026, 11, 26, 14, 0, 5, tzinfo=UTC),
+            client="laptop",
+            domain="ads.test",
+            action="Block",
+            blocklist="ads",
+            policy=None,
+        ),
+        OPNsenseClient.QueryLogEntry(
+            time=datetime(2026, 11, 26, 13, 59, 0, tzinfo=UTC),
+            client="10.0.0.5",
+            domain="tracker.test",
+            action="Block",
+            blocklist="trackers",
+            policy="default",
+        ),
+    )
+)
+
+
+def _query_stats_entry(
+    make_config_entry: Callable[..., MockConfigEntry], data: Any
+) -> MockConfigEntry:
+    """Create a sensor entry with only Query Stats sync and a Query Stats coordinator.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        data (Any): Query Stats coordinator data.
+
+    Returns:
+        MockConfigEntry: Entry with main and Query Stats coordinators in runtime data.
+    """
+    entry = setup_sensor_reconciliation_entry(make_config_entry, {}, sync_unbound_stats=True)
+    query_stats_coordinator = MagicMock(spec=OPNsenseQueryStatsCoordinator)
+    query_stats_coordinator.data = data
+    entry.runtime_data.query_stats_coordinator = query_stats_coordinator
+    return entry
+
+
+def _query_stats_keys(entities: Iterable[Any]) -> list[str]:
+    """Return the description keys of Query Stats sensors.
+
+    Args:
+        entities (Iterable[Any]): Compiled sensor entities.
+
+    Returns:
+        list[str]: Keys of the Query Stats sensors, in order.
+    """
+    return [
+        entity.entity_description.key
+        for entity in entities
+        if entity.entity_description.key.startswith("query_stats.")
+    ]
+
+
+ALL_QUERY_STATS_KEYS = [
+    "query_stats.queries_per_minute",
+    "query_stats.blocked_per_minute",
+    "query_stats.dropped_per_minute",
+    "query_stats.queries_24h",
+    "query_stats.blocked_24h",
+    "query_stats.dropped_24h",
+    "query_stats.blocked_share_24h",
+    "query_stats.blocklist_size",
+    "query_stats.top_domain",
+    "query_stats.top_blocked_domain",
+    "query_stats.recently_blocked",
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("data", "expected_keys", "complete"),
+    [
+        ({"stats": QUERY_STATS_DATA, "blocked": QUERY_LOG_DATA}, ALL_QUERY_STATS_KEYS, True),
+        (
+            {
+                "stats": OPNsenseClient.QueryStats(absent="forbidden"),
+                "blocked": OPNsenseClient.QueryLog(absent="forbidden"),
+            },
+            [],
+            True,
+        ),
+        (
+            {
+                "stats": OPNsenseClient.QueryStats(absent="disabled"),
+                "blocked": OPNsenseClient.QueryLog(absent="disabled"),
+            },
+            [],
+            True,
+        ),
+        ({"stats": None, "blocked": QUERY_LOG_DATA}, ["query_stats.recently_blocked"], False),
+        ({"stats": QUERY_STATS_DATA, "blocked": None}, ALL_QUERY_STATS_KEYS[:-1], False),
+        (None, [], False),
+    ],
+    ids=["data", "forbidden", "disabled", "stats-failed", "blocked-failed", "no-refresh"],
+)
+async def test_async_setup_entry_creates_query_stats_sensors_from_first_read(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+    data: Any,
+    expected_keys: list[str],
+    complete: bool,
+) -> None:
+    """Query Stats sensors exist only for reads with data; a failed read leaves inventory open.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        data (Any): Query Stats coordinator data from the first refresh.
+        expected_keys (list[str]): Sensor keys expected to be created.
+        complete (bool): Whether the sensor inventory is complete.
+    """
+    entry = _query_stats_entry(make_config_entry, data)
+    captured = capture_reconciled_desired_entities(monkeypatch)
+    added: list[Any] = []
+
+    await async_setup_entry(
+        MagicMock(), entry, cast("AddEntitiesCallback", lambda ents, _=False: added.extend(ents))
+    )
+
+    assert _query_stats_keys(added) == expected_keys
+    assert (captured["entities"] is not None) is complete
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_skips_query_stats_sensors_when_not_synced(
+    monkeypatch: pytest.MonkeyPatch,
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """With Query Stats sync off, no Query Stats sensors are created.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Patch fixture used to isolate integration boundaries.
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    entry = setup_sensor_reconciliation_entry(make_config_entry, {})
+    entry.runtime_data.query_stats_coordinator = None
+    captured = capture_reconciled_desired_entities(monkeypatch)
+    added: list[Any] = []
+
+    await async_setup_entry(
+        MagicMock(), entry, cast("AddEntitiesCallback", lambda ents, _=False: added.extend(ents))
+    )
+
+    assert _query_stats_keys(added) == []
+    assert captured["entities"] == []
+
+
+def _query_stats_sensor(
+    make_config_entry: Callable[..., MockConfigEntry], data: Any, key: str
+) -> Any:
+    """Create one Query Stats sensor bound to a coordinator with the given data.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        data (Any): Query Stats coordinator data.
+        key (str): Sensor description key.
+
+    Returns:
+        Any: The sensor with state writes stubbed.
+    """
+    entry = _query_stats_entry(make_config_entry, data)
+    coordinator = entry.runtime_data.query_stats_coordinator
+    if key == sensor_module.RECENTLY_BLOCKED_SENSOR.key:
+        sensor: Any = sensor_module.OPNsenseRecentlyBlockedSensor(
+            config_entry=entry,
+            coordinator=coordinator,
+            entity_description=sensor_module.RECENTLY_BLOCKED_SENSOR,
+        )
+    else:
+        description = next(d for d in sensor_module.QUERY_STATS_SENSORS if d.key == key)
+        sensor = sensor_module.OPNsenseQueryStatsSensor(
+            config_entry=entry, coordinator=coordinator, entity_description=description
+        )
+    stub_async_write_ha_state(sensor)
+    return sensor
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        ("query_stats.queries_per_minute", 60),
+        ("query_stats.blocked_per_minute", 6),
+        ("query_stats.dropped_per_minute", 1),
+        ("query_stats.queries_24h", 8000),
+        ("query_stats.blocked_24h", 400),
+        ("query_stats.dropped_24h", 12),
+        ("query_stats.blocked_share_24h", 5.0),
+        ("query_stats.blocklist_size", 250000),
+        ("query_stats.top_domain", "example.com"),
+        ("query_stats.top_blocked_domain", "ads.test"),
+    ],
+)
+def test_query_stats_sensor_reports_value(
+    make_config_entry: Callable[..., MockConfigEntry], key: str, expected: Any
+) -> None:
+    """Each Query Stats sensor reports its value from Query Stats.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        key (str): Sensor description key.
+        expected (Any): Expected native value.
+    """
+    sensor = _query_stats_sensor(
+        make_config_entry, {"stats": QUERY_STATS_DATA, "blocked": QUERY_LOG_DATA}, key
+    )
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == expected
+
+
+def test_query_stats_top_domain_sensors_report_domains_unrecorded(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Top-domain sensors list every domain and the Retention Window start, kept out of history.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    data = {"stats": QUERY_STATS_DATA, "blocked": QUERY_LOG_DATA}
+    top = _query_stats_sensor(make_config_entry, data, "query_stats.top_domain")
+    blocked = _query_stats_sensor(make_config_entry, data, "query_stats.top_blocked_domain")
+
+    top._handle_coordinator_update()
+    blocked._handle_coordinator_update()
+
+    assert top.extra_state_attributes == {
+        "domains": [
+            {"domain": "example.com", "count": 50, "percent": 12.5},
+            {"domain": "example.org", "count": 20, "percent": 5.0},
+        ],
+        "since": "2026-11-19T12:00:00+00:00",
+    }
+    assert blocked.extra_state_attributes["domains"] == [
+        {"domain": "ads.test", "count": 30, "percent": 60.0, "blocklist": "ads"}
+    ]
+    assert top._unrecorded_attributes >= {"domains", "since"}
+
+
+@pytest.mark.parametrize(
+    "stats",
+    [
+        OPNsenseClient.QueryStats(
+            last_24h=OPNsenseClient.BucketCounts(queries=0, blocked=0, dropped=0)
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "key",
+    ["query_stats.queries_per_minute", "query_stats.blocked_share_24h", "query_stats.top_domain"],
+)
+def test_query_stats_sensor_is_unknown_without_value(
+    make_config_entry: Callable[..., MockConfigEntry], stats: Any, key: str
+) -> None:
+    """A sensor whose value is missing from data stays available with an unknown state.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        stats (Any): Query Stats without a last-minute Bucket, queries or top domains.
+        key (str): Sensor description key.
+    """
+    sensor = _query_stats_sensor(make_config_entry, {"stats": stats, "blocked": None}, key)
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value is None
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"stats": None, "blocked": None},
+        {
+            "stats": OPNsenseClient.QueryStats(absent="disabled"),
+            "blocked": OPNsenseClient.QueryLog(absent="disabled"),
+        },
+        None,
+    ],
+    ids=["read-failed", "disabled-later", "no-data"],
+)
+@pytest.mark.parametrize(
+    "key",
+    ["query_stats.queries_per_minute", "query_stats.top_domain", "query_stats.recently_blocked"],
+)
+def test_query_stats_sensors_unavailable_without_data(
+    make_config_entry: Callable[..., MockConfigEntry], data: Any, key: str
+) -> None:
+    """A failed or absent read marks existing sensors unavailable and clears attributes.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+        data (Any): Query Stats coordinator data after the update.
+        key (str): Sensor description key.
+    """
+    sensor = _query_stats_sensor(
+        make_config_entry, {"stats": QUERY_STATS_DATA, "blocked": QUERY_LOG_DATA}, key
+    )
+    sensor._handle_coordinator_update()
+    assert sensor.available is True
+
+    sensor.coordinator.data = data
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is False
+    assert sensor.extra_state_attributes == {}
+
+
+def test_recently_blocked_sensor_reports_latest_block_and_rows(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """The recently blocked sensor reports the newest Blocked time and every row, unrecorded.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    sensor = _query_stats_sensor(
+        make_config_entry,
+        {"stats": QUERY_STATS_DATA, "blocked": QUERY_LOG_DATA},
+        "query_stats.recently_blocked",
+    )
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value == datetime(2026, 11, 26, 14, 0, 5, tzinfo=UTC)
+    assert sensor.extra_state_attributes == {
+        "rows": [
+            {
+                "time": "2026-11-26T14:00:05+00:00",
+                "client": "laptop",
+                "domain": "ads.test",
+                "blocklist": "ads",
+                "policy": None,
+            },
+            {
+                "time": "2026-11-26T13:59:00+00:00",
+                "client": "10.0.0.5",
+                "domain": "tracker.test",
+                "blocklist": "trackers",
+                "policy": "default",
+            },
+        ]
+    }
+    assert "rows" in sensor._unrecorded_attributes
+
+
+def test_recently_blocked_sensor_is_unknown_when_nothing_blocked(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """With no Blocked queries, the recently blocked sensor is available with an unknown state.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    sensor = _query_stats_sensor(
+        make_config_entry,
+        {"stats": QUERY_STATS_DATA, "blocked": OPNsenseClient.QueryLog()},
+        "query_stats.recently_blocked",
+    )
+
+    sensor._handle_coordinator_update()
+
+    assert sensor.available is True
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {"rows": []}
+
+
+def test_query_stats_sensor_device_info_comes_from_main_coordinator(
+    make_config_entry: Callable[..., MockConfigEntry],
+) -> None:
+    """Query Stats sensors join the Firewall device with its firmware from the main coordinator.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Factory for the fake integration config entry.
+    """
+    sensor = _query_stats_sensor(
+        make_config_entry,
+        {"stats": QUERY_STATS_DATA, "blocked": QUERY_LOG_DATA},
+        "query_stats.queries_24h",
+    )
+    sensor.config_entry.runtime_data.coordinator.data = {"host_firmware_version": "26.7.8"}
+
+    device_info = sensor.device_info
+
+    assert device_info is not None
+    assert device_info["sw_version"] == "26.7.8"
+    assert device_info["identifiers"] == {("opnsense", sensor._device_unique_id)}

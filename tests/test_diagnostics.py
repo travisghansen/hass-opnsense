@@ -8,6 +8,7 @@ import math
 from types import SimpleNamespace
 from typing import Any, Self
 
+from aiopnsense import OPNsenseClient
 from homeassistant.components.diagnostics import REDACTED
 from homeassistant.core import HomeAssistant
 import pytest
@@ -427,6 +428,7 @@ async def test_config_entry_diagnostics_supports_missing_runtime_data(
         "main": None,
         "device_tracker": None,
         "live_traffic": None,
+        "query_stats": None,
     }
     assert diagnostics["config_entry"]["data"]["username"] == REDACTED
     assert diagnostics["config_entry"]["data"]["password"] == REDACTED
@@ -1535,3 +1537,58 @@ def test_pseudonymizer_replaces_embedded_ip_with_registered_alias() -> None:
     assert pseudonymizer._replace_embedded(f"peer {private_ip} unavailable") == (
         f"peer {alias} unavailable"
     )
+
+
+async def test_config_entry_diagnostics_masks_query_stats_clients_and_domains(
+    hass: HomeAssistant, make_config_entry: Any
+) -> None:
+    """Query Stats diagnostics are plain data with clients and domains pseudonymized.
+
+    The config entry's own ``domain`` stays readable.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance hosting the scenario.
+        make_config_entry (Any): Factory for the config entry under test.
+    """
+    stats = OPNsenseClient.QueryStats(
+        last_minute=OPNsenseClient.BucketCounts(queries=60, blocked=6, dropped=1),
+        top_domains=(
+            OPNsenseClient.TopDomain(
+                domain="private.example", count=5, percent=50.0, blocklist=None
+            ),
+        ),
+    )
+    blocked = OPNsenseClient.QueryLog(
+        entries=(
+            OPNsenseClient.QueryLogEntry(
+                time=datetime(2026, 11, 26, 14, 0, tzinfo=UTC),
+                client="private-laptop",
+                domain="private.example",
+                action="Block",
+                blocklist="ads",
+                policy=None,
+            ),
+        )
+    )
+    entry = make_config_entry(data={"url": "https://router.example.test"}, title="Router")
+    entry.runtime_data = SimpleNamespace(
+        coordinator=None,
+        device_tracker_coordinator=None,
+        live_traffic_coordinator=None,
+        query_stats_coordinator=_coordinator({"stats": stats, "blocked": blocked}),
+    )
+
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+
+    data = diagnostics["coordinators"]["query_stats"]["data"]
+    assert data["stats"]["last_minute"] == {"queries": 60, "blocked": 6, "dropped": 1}
+    top_domain = data["stats"]["top_domains"][0]
+    row = data["blocked"]["entries"][0]
+    assert top_domain["count"] == 5
+    assert row["time"] == "2026-11-26T14:00:00+00:00"
+    assert row["action"] == "Block"
+    assert top_domain["domain"] == row["domain"]
+    serialized = json.dumps(diagnostics)
+    for private in ("private-laptop", "private.example"):
+        assert private not in serialized
+    assert diagnostics["config_entry"]["domain"] == "opnsense"

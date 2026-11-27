@@ -42,6 +42,7 @@ from .const import (
     CONF_DEVICE_UNIQUE_ID,
     CONF_SYNC_INTERFACES,
     CONF_SYNC_LIVE_TRAFFIC,
+    CONF_SYNC_UNBOUND_STATS,
     COORDINATOR,
     DEFAULT_DEVICE_TRACKER_ENABLED,
     DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
@@ -71,6 +72,7 @@ from .migrate import (
     _migrate_3_to_4,
     _migrate_4_to_5,
 )
+from .query_stats_coordinator import OPNsenseQueryStatsCoordinator
 from .repair_reconciliation import (
     REPAIR_MARKER_KEY,
     RepairMarker,
@@ -105,6 +107,7 @@ class OPNsenseData:
     loaded_platforms: list[Platform]
     device_unique_id: str | None
     live_traffic_coordinator: OPNsenseLiveTrafficCoordinator | None = None
+    query_stats_coordinator: OPNsenseQueryStatsCoordinator | None = None
     repair_reconciliation: RepairReconciliation | None = None
     should_reload: bool = True
 
@@ -134,8 +137,37 @@ async def _async_handle_hass_stop(entry: ConfigEntry, _event: Event) -> None:
     )
     if device_tracker_coordinator is not None:
         await device_tracker_coordinator.async_shutdown()
+    query_stats_coordinator: OPNsenseQueryStatsCoordinator | None = getattr(
+        entry.runtime_data, "query_stats_coordinator", None
+    )
+    if query_stats_coordinator is not None:
+        await query_stats_coordinator.async_shutdown()
     client: OPNsenseClient = getattr(entry.runtime_data, OPNSENSE_CLIENT)
     await client.async_close()
+
+
+async def _async_create_query_stats_coordinator(
+    hass: HomeAssistant, entry: ConfigEntry, client: OPNsenseClient
+) -> OPNsenseQueryStatsCoordinator | None:
+    """Create and refresh the Query Stats coordinator when Query Stats are synced.
+
+    The first refresh is not a setup gate: a failed DNS read must not block setup,
+    and the sensor platform creates entities only from a usable first result.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        entry (ConfigEntry): Config entry being set up.
+        client (OPNsenseClient): OPNsense API client for the entry.
+
+    Returns:
+        OPNsenseQueryStatsCoordinator | None: The refreshed coordinator, or None when
+            Query Stats sync is off.
+    """
+    if not entry.data.get(CONF_SYNC_UNBOUND_STATS, DEFAULT_SYNC_OPTION_VALUE):
+        return None
+    query_stats_coordinator = OPNsenseQueryStatsCoordinator(hass, config_entry=entry, client=client)
+    await query_stats_coordinator.async_refresh()
+    return query_stats_coordinator
 
 
 def _align_aiopnsense_log_level() -> None:
@@ -716,6 +748,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     should_create_live_traffic_coordinator: bool = config.get(
         CONF_SYNC_INTERFACES, DEFAULT_SYNC_OPTION_VALUE
     ) and config.get(CONF_SYNC_LIVE_TRAFFIC, DEFAULT_SYNC_OPTION_VALUE)
+    query_stats_coordinator: OPNsenseQueryStatsCoordinator | None = None
 
     setup_succeeded: bool = False
     keep_reconciliation_runtime: bool = False
@@ -805,6 +838,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 device_tracker_coordinator=True,
             )
 
+        query_stats_coordinator = await _async_create_query_stats_coordinator(hass, entry, client)
+
         hass.data.setdefault(DOMAIN, {})
         hass.data[DOMAIN][entry.entry_id] = client
 
@@ -818,6 +853,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             device_unique_id=config_device_id,
             loaded_platforms=platforms,
             live_traffic_coordinator=live_traffic_coordinator,
+            query_stats_coordinator=query_stats_coordinator,
             repair_reconciliation=reconciliation,
         )
 
@@ -910,10 +946,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     finally:
         if not setup_succeeded and not keep_reconciliation_runtime:
             entry.runtime_data = None
-            if device_tracker_coordinator is not None:
-                await device_tracker_coordinator.async_shutdown()
-            if live_traffic_coordinator is not None:
-                await live_traffic_coordinator.async_shutdown()
+            for background_coordinator in (
+                device_tracker_coordinator,
+                live_traffic_coordinator,
+                query_stats_coordinator,
+            ):
+                if background_coordinator is not None:
+                    await background_coordinator.async_shutdown()
             await coordinator.async_shutdown()
             if DOMAIN in hass.data:
                 hass.data[DOMAIN].pop(entry.entry_id, None)

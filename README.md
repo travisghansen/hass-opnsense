@@ -171,6 +171,7 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 * Certificates
 * vnStat Metrics
 * Speedtest last and average results (download, upload, latency)
+* Unbound DNS Query Stats (queries, Blocked and Dropped per minute and over 24 hours, Blocked share, blocklist size, top domains, recently Blocked queries) *[polled every 60 seconds; needs Unbound statistics enabled in OPNsense]*
 
 ### Switch
 
@@ -209,6 +210,10 @@ A CARP VIP entry does not expose node hardware telemetry, firmware/update entiti
 
 The persistent CARP maintenance switch remains on Firewall entries. Enabling maintenance through the VIP can move the VIP; a later disable request could then reach the other Node. Use the Node's own Firewall entry when changing maintenance mode.
 
+### DNS Query Stats privacy
+
+The DNS Recently Blocked sensor and `opnsense.get_dns_queries` include client names (usually DHCP host names) and the domains they queried. Attributes of the DNS Recently Blocked and top-domain sensors are not recorded in history. Diagnostics mask these clients and domains.
+
 ## Actions *(Services)*
 
 * **opnsense.close_notice:** Close any open notices
@@ -222,6 +227,7 @@ The persistent CARP maintenance switch remains on Firewall entries. Enabling mai
 * **opnsense.kill_states:** Kill all states for an IP address
 * **opnsense.run_speedtest:** Run a speed test and return action response data
 * **opnsense.get_vnstat_metrics:** Get vnStat metrics and return action response data
+* **opnsense.get_dns_queries:** Get recent Unbound DNS queries, filtered by action, client or search text, and return action response data *(the Firewall keeps its last 1,000 queries)*
 * **opnsense.generate_vouchers:** Generate Captive Portal vouchers
 * **opnsense.toggle_alias:** Toggle, enable, or disable an alias
 * **opnsense.toggle_interface:** Toggle, enable, or disable an interface (OPNsense 26.7.6+)

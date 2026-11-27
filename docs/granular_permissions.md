@@ -139,6 +139,15 @@ The permission is named `Services: Unbound (MVC)` on OPNsense 25.x and `Services
 | Services: Unbound (MVC)<br>Services: Unbound | Before 25.7.8 | GET / POST | `/api/unbound/service/dnsbl`<br>`/api/unbound/settings/get`<br>`/api/unbound/settings/set`<br>`/api/unbound/service/restart` |
 | Services: Unbound (MVC)<br>Services: Unbound | 25.7.8+ | GET / POST | `/api/unbound/settings/search_dnsbl`<br>`/api/unbound/settings/toggle_dnsbl/{uuid}/{state}` |
 
+## Unbound DNS Query Stats
+
+Query Stats sensors are polled every 60 seconds and need Unbound DNS statistics enabled in OPNsense. If the permission is missing or statistics are off, no Query Stats sensors are created. After granting the permission or enabling statistics, reload the integration.
+
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Status: DNS Overview | GET | `/api/unbound/overview/is_enabled` (or `/api/unbound/overview/isEnabled`)<br>`/api/unbound/overview/rolling/1`<br>`/api/unbound/overview/rolling/24`<br>`/api/unbound/overview/totals/10` |
+| Status: DNS Overview | POST | `/api/unbound/overview/search_queries` (or `/api/unbound/overview/searchQueries`) *(DNS Recently Blocked sensor)* |
+
 ## Device Trackers
 
 | OPNsense Permission | Method | API Endpoints |
@@ -255,6 +264,15 @@ Applies to `opnsense.start_service`, `opnsense.stop_service`, and `opnsense.rest
 | OPNsense Permission | Method | API Endpoints |
 | --- | --- | --- |
 | Monitoring: Speedtest | GET | `/api/speedtest/service/run` |
+
+## Get DNS Queries (`opnsense.get_dns_queries`)
+
+Needs Unbound statistics enabled in OPNsense.
+
+| OPNsense Permission | Method | API Endpoints |
+| --- | --- | --- |
+| Status: DNS Overview | GET | `/api/unbound/overview/is_enabled` (or `/api/unbound/overview/isEnabled`) |
+| Status: DNS Overview | POST | `/api/unbound/overview/search_queries` (or `/api/unbound/overview/searchQueries`) |
 
 ## Get vnStat Metrics (`opnsense.get_vnstat_metrics`)
 

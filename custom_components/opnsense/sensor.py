@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, MutableMapping
+from collections.abc import Callable, Iterable, Mapping, MutableMapping
+from dataclasses import dataclass
 import inspect
 import ipaddress
 import logging
@@ -24,6 +25,7 @@ from homeassistant.const import (
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import slugify
 from homeassistant.util.dt import utc_from_timestamp
@@ -39,6 +41,7 @@ from .const import (
     CONF_SYNC_SMART,
     CONF_SYNC_SPEEDTEST,
     CONF_SYNC_TELEMETRY,
+    CONF_SYNC_UNBOUND_STATS,
     CONF_SYNC_VNSTAT,
     CONF_SYNC_VPN,
     COORDINATOR,
@@ -46,11 +49,13 @@ from .const import (
     DATA_PACKETS,
     DATA_RATE_PACKETS_PER_SECOND,
     DEFAULT_SYNC_OPTION_VALUE,
+    DOMAIN,
     OPNSENSE_CLIENT,
 )
 from .coordinator import OPNsenseDataUpdateCoordinator
 from .entity import OPNsenseEntity, OPNsenseEntityCoordinator
 from .helpers import coerce_bool, dict_get, get_smart_device_name, is_carp_entry
+from .query_stats_coordinator import OPNsenseQueryStatsCoordinator
 from .repair_reconciliation import record_desired_entities
 from .traffic_coordinator import OPNsenseLiveTrafficCoordinator
 
@@ -2004,6 +2009,9 @@ async def async_setup_entry(
             and isinstance(dhcp_leases.get("lease_interfaces"), MutableMapping)
         ):
             reconciliation_complete = False
+    query_stats_entities, query_stats_complete = _compile_query_stats_sensors(config_entry)
+    entities.extend(query_stats_entities)
+    reconciliation_complete &= query_stats_complete
 
     _LOGGER.debug("[sensor async_setup_entry] entities: %s", len(entities))
     record_desired_entities(config_entry, "sensor", entities if reconciliation_complete else None)
@@ -3068,4 +3076,345 @@ class OPNsenseDHCPLeasesSensor(OPNsenseSensor):
                 return
             self._available = True
             self._attr_extra_state_attributes = {"Leases": interface}
+        self.async_write_ha_state()
+
+
+@dataclass(frozen=True, kw_only=True)
+class OPNsenseQueryStatsSensorEntityDescription(SensorEntityDescription):
+    """Describe a sensor read from Unbound Query Stats.
+
+    Attributes:
+        value_fn (Callable[[Any], Any]): Return the state from a ``QueryStats``.
+        attributes_fn (Callable[[Any], dict[str, Any]] | None): Return extra state
+            attributes from a ``QueryStats``.
+    """
+
+    value_fn: Callable[[Any], Any]
+    attributes_fn: Callable[[Any], dict[str, Any]] | None = None
+
+
+def _bucket_value(bucket: Any, field: str) -> Any:
+    """Return a counter from a ``BucketCounts``, or None when there is no Bucket.
+
+    Args:
+        bucket (Any): ``BucketCounts`` or None.
+        field (str): Counter name, such as ``queries``.
+
+    Returns:
+        Any: The counter, or None.
+    """
+    return None if bucket is None else getattr(bucket, field, None)
+
+
+def _top_domain_rows(domains: Iterable[Any]) -> list[dict[str, Any]]:
+    """Convert ``TopDomain`` entries to attribute rows.
+
+    Args:
+        domains (Iterable[Any]): ``TopDomain`` entries, most queried first.
+
+    Returns:
+        list[dict[str, Any]]: One mapping per domain.
+    """
+    rows: list[dict[str, Any]] = []
+    for entry in domains:
+        row: dict[str, Any] = {
+            "domain": entry.domain,
+            "count": entry.count,
+            "percent": entry.percent,
+        }
+        if entry.blocklist is not None:
+            row["blocklist"] = entry.blocklist
+        rows.append(row)
+    return rows
+
+
+def _top_domains_attributes(stats: Any, field: str) -> dict[str, Any]:
+    """Return the attributes of a top-domain sensor.
+
+    Args:
+        stats (Any): ``QueryStats`` with data.
+        field (str): ``top_domains`` or ``top_blocked_domains``.
+
+    Returns:
+        dict[str, Any]: The ``domains`` rows and the Retention Window start.
+    """
+    since = stats.since
+    return {
+        "domains": _top_domain_rows(getattr(stats, field)),
+        "since": since.isoformat() if since is not None else None,
+    }
+
+
+def _first_domain(domains: tuple[Any, ...]) -> str | None:
+    """Return the most queried domain of a top-domain list.
+
+    Args:
+        domains (tuple[Any, ...]): ``TopDomain`` entries, most queried first.
+
+    Returns:
+        str | None: The first domain, or None when the list is empty.
+    """
+    return domains[0].domain if domains else None
+
+
+QUERY_STATS_UNIT: Final = "queries"
+QUERY_STATS_RATE_UNIT: Final = "queries/min"
+
+QUERY_STATS_SENSORS: tuple[OPNsenseQueryStatsSensorEntityDescription, ...] = (
+    OPNsenseQueryStatsSensorEntityDescription(
+        key="query_stats.queries_per_minute",
+        name="DNS Queries per Minute",
+        icon="mdi:dns",
+        native_unit_of_measurement=QUERY_STATS_RATE_UNIT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda stats: _bucket_value(stats.last_minute, "queries"),
+    ),
+    OPNsenseQueryStatsSensorEntityDescription(
+        key="query_stats.blocked_per_minute",
+        name="DNS Blocked per Minute",
+        icon="mdi:shield-check",
+        native_unit_of_measurement=QUERY_STATS_RATE_UNIT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda stats: _bucket_value(stats.last_minute, "blocked"),
+    ),
+    OPNsenseQueryStatsSensorEntityDescription(
+        key="query_stats.dropped_per_minute",
+        name="DNS Dropped per Minute",
+        icon="mdi:cancel",
+        native_unit_of_measurement=QUERY_STATS_RATE_UNIT,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=lambda stats: _bucket_value(stats.last_minute, "dropped"),
+    ),
+    OPNsenseQueryStatsSensorEntityDescription(
+        key="query_stats.queries_24h",
+        name="DNS Queries 24h",
+        icon="mdi:dns",
+        native_unit_of_measurement=QUERY_STATS_UNIT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda stats: _bucket_value(stats.last_24h, "queries"),
+    ),
+    OPNsenseQueryStatsSensorEntityDescription(
+        key="query_stats.blocked_24h",
+        name="DNS Blocked 24h",
+        icon="mdi:shield-check",
+        native_unit_of_measurement=QUERY_STATS_UNIT,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda stats: _bucket_value(stats.last_24h, "blocked"),
+    ),
+    OPNsenseQueryStatsSensorEntityDescription(
+        key="query_stats.dropped_24h",
+        name="DNS Dropped 24h",
+        icon="mdi:cancel",
+        native_unit_of_measurement=QUERY_STATS_UNIT,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
+        value_fn=lambda stats: _bucket_value(stats.last_24h, "dropped"),
+    ),
+    OPNsenseQueryStatsSensorEntityDescription(
+        key="query_stats.blocked_share_24h",
+        name="DNS Blocked Share 24h",
+        icon="mdi:percent",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda stats: _bucket_value(stats.last_24h, "blocked_share"),
+    ),
+    OPNsenseQueryStatsSensorEntityDescription(
+        key="query_stats.blocklist_size",
+        name="DNS Blocklist Size",
+        icon="mdi:playlist-remove",
+        native_unit_of_measurement="domains",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda stats: stats.blocklist_size,
+    ),
+    OPNsenseQueryStatsSensorEntityDescription(
+        key="query_stats.top_domain",
+        name="DNS Top Domain",
+        icon="mdi:web",
+        entity_registry_enabled_default=False,
+        value_fn=lambda stats: _first_domain(stats.top_domains),
+        attributes_fn=lambda stats: _top_domains_attributes(stats, "top_domains"),
+    ),
+    OPNsenseQueryStatsSensorEntityDescription(
+        key="query_stats.top_blocked_domain",
+        name="DNS Top Blocked Domain",
+        icon="mdi:web-cancel",
+        entity_registry_enabled_default=False,
+        value_fn=lambda stats: _first_domain(stats.top_blocked_domains),
+        attributes_fn=lambda stats: _top_domains_attributes(stats, "top_blocked_domains"),
+    ),
+)
+
+RECENTLY_BLOCKED_SENSOR = SensorEntityDescription(
+    key="query_stats.recently_blocked",
+    name="DNS Recently Blocked",
+    icon="mdi:shield-alert",
+    device_class=SensorDeviceClass.TIMESTAMP,
+)
+
+
+def _get_runtime_query_stats_coordinator(
+    config_entry: ConfigEntry,
+) -> OPNsenseQueryStatsCoordinator | None:
+    """Return the Query Stats coordinator attached to runtime data.
+
+    Args:
+        config_entry (ConfigEntry): Config entry to inspect for runtime state.
+
+    Returns:
+        OPNsenseQueryStatsCoordinator | None: Coordinator when present, else ``None``.
+    """
+    runtime_data = getattr(config_entry, "runtime_data", None)
+    coordinator = getattr(runtime_data, "query_stats_coordinator", None)
+    return coordinator if isinstance(coordinator, OPNsenseQueryStatsCoordinator) else None
+
+
+def _query_stats_result_state(result: Any, what: str) -> bool | None:
+    """Classify a first DNS read for entity creation.
+
+    Args:
+        result (Any): ``QueryStats`` or ``QueryLog`` from the first refresh, or None.
+        what (str): Read name used in debug logs.
+
+    Returns:
+        bool | None: True when the read has data, False when the Router reports it
+            absent, None when the read failed this time.
+    """
+    if result is None:
+        _LOGGER.debug("%s read failed on setup; entities are created after a reload", what)
+        return None
+    absent = getattr(result, "absent", None)
+    if absent is not None:
+        _LOGGER.debug("%s absent (%s); no entities created", what, absent)
+        return False
+    return True
+
+
+def _compile_query_stats_sensors(config_entry: ConfigEntry) -> tuple[list, bool]:
+    """Compile Query Stats sensors from the first Query Stats refresh.
+
+    Sensors are created only when Query Stats are synced and the first read has
+    data. An absent read creates none; a failed read creates none and marks the
+    inventory incomplete.
+
+    Args:
+        config_entry (ConfigEntry): Config entry owning the sensors.
+
+    Returns:
+        tuple[list, bool]: The sensors, and whether the inventory is complete.
+    """
+    if not config_entry.data.get(CONF_SYNC_UNBOUND_STATS, DEFAULT_SYNC_OPTION_VALUE):
+        return [], True
+    coordinator = _get_runtime_query_stats_coordinator(config_entry)
+    data = getattr(coordinator, "data", None)
+    if coordinator is None or not isinstance(data, Mapping):
+        return [], False
+    entities: list = []
+    stats_state = _query_stats_result_state(data.get("stats"), "Query Stats")
+    if stats_state:
+        entities.extend(
+            _create_sensors(
+                OPNsenseQueryStatsSensor, config_entry, coordinator, QUERY_STATS_SENSORS
+            )
+        )
+    blocked_state = _query_stats_result_state(data.get("blocked"), "Query Log")
+    if blocked_state:
+        entities.append(
+            _create_sensor(
+                OPNsenseRecentlyBlockedSensor,
+                config_entry,
+                coordinator,
+                RECENTLY_BLOCKED_SENSOR,
+            )
+        )
+    return entities, stats_state is not None and blocked_state is not None
+
+
+class _OPNsenseQueryStatsSensorBase(OPNsenseSensor):
+    """Shared device info and data access for sensors on the Query Stats coordinator."""
+
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        """Build device metadata from the main coordinator, not the Query Stats data.
+
+        Returns:
+            DeviceInfo | None: Device metadata for the Firewall.
+        """
+        main = getattr(self.config_entry.runtime_data, COORDINATOR, None)
+        state = getattr(main, "data", None)
+        firmware = state.get("host_firmware_version") if isinstance(state, Mapping) else None
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._device_unique_id)},
+            name=self.config_entry.title,
+            configuration_url=self.config_entry.data.get("url", None),
+            model="OPNsense",
+            manufacturer="Deciso B.V.",
+            sw_version=firmware,
+        )
+
+    def _query_stats_result(self, key: str) -> Any | None:
+        """Return a usable DNS read result from coordinator data.
+
+        Args:
+            key (str): ``stats`` or ``blocked``.
+
+        Returns:
+            Any | None: The result when it has data, or None when the read failed or
+                the data is absent.
+        """
+        data = self._coordinator_mapping()
+        result = data.get(key) if data is not None else None
+        if result is None or getattr(result, "absent", None) is not None:
+            return None
+        return result
+
+
+class OPNsenseQueryStatsSensor(_OPNsenseQueryStatsSensorBase):
+    """Sensor for one Unbound Query Stats value."""
+
+    entity_description: OPNsenseQueryStatsSensorEntityDescription
+    _unrecorded_attributes = frozenset({"domains", "since"})
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle Query Stats coordinator updates."""
+        stats = self._query_stats_result("stats")
+        if stats is None:
+            self._mark_unavailable(clear_attributes=True)
+            return
+        self._available = True
+        self._attr_native_value = self.entity_description.value_fn(stats)
+        attributes_fn = self.entity_description.attributes_fn
+        self._attr_extra_state_attributes = attributes_fn(stats) if attributes_fn else {}
+        self.async_write_ha_state()
+
+
+class OPNsenseRecentlyBlockedSensor(_OPNsenseQueryStatsSensorBase):
+    """Sensor for the latest Blocked query, with the recent Blocked queries as rows."""
+
+    _unrecorded_attributes = frozenset({"rows"})
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle Query Stats coordinator updates."""
+        query_log = self._query_stats_result("blocked")
+        if query_log is None:
+            self._mark_unavailable(clear_attributes=True)
+            return
+        entries = query_log.entries
+        self._available = True
+        self._attr_native_value = entries[0].time if entries else None
+        self._attr_extra_state_attributes = {
+            "rows": [
+                {
+                    "time": entry.time.isoformat(),
+                    "client": entry.client,
+                    "domain": entry.domain,
+                    "blocklist": entry.blocklist,
+                    "policy": entry.policy,
+                }
+                for entry in entries
+            ]
+        }
         self.async_write_ha_state()
