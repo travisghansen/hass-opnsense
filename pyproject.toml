@@ -30,6 +30,7 @@ lint = [
     "aiohttp",
     "mypy",
     "prek",
+    "probatio",
     "ruff",
     "types-cffi",
     "types-PyMySQL",
@@ -81,6 +82,7 @@ namespace_packages = true
 pretty = true
 show_error_codes = true
 warn_unused_configs = true
+mypy_path = "typings"
 
 [[tool.mypy.overrides]]
 module = ["pytest_homeassistant.*"]
@@ -173,6 +175,9 @@ max-complexity = 25
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
+"typings/voluptuous/__init__.pyi" = [
+    "F403",    # Re-export probatio as voluptuous for mypy
+]
 "tests/*" = [
     "B017",    # Don't assert blind Exception
     "C90",     # mccabe, complexity
