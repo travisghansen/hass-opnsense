@@ -690,7 +690,7 @@ async def async_setup_entry(
     reconciliation_complete = True
 
     entities: list = []
-    unknown_rule_groups: list[str] = []
+    unknown_switch_groups: list[str] = []
 
     if config.get(CONF_SYNC_FIREWALL_AND_NAT, DEFAULT_SYNC_OPTION_VALUE):
         firewall = state.get("firewall")
@@ -729,17 +729,19 @@ async def async_setup_entry(
                 )
                 for group, rules, predicate in rule_inventories:
                     if not isinstance(rules, MutableMapping):
-                        unknown_rule_groups.append(group)
+                        unknown_switch_groups.append(group)
                     elif not all(predicate(rule_key, rule) for rule_key, rule in rules.items()):
                         reconciliation_complete = False
         else:
             reconciliation_complete = False
     if config.get(CONF_SYNC_SERVICES, DEFAULT_SYNC_OPTION_VALUE):
         services = state.get("services")
-        if "services" in state and isinstance(services, list):
+        if isinstance(services, list):
             entities.extend(await _compile_service_switches(config_entry, coordinator, state))
             if not all(_is_valid_service_row(service) for service in services):
                 reconciliation_complete = False
+        elif "services" in state and services is None:
+            unknown_switch_groups.append("service")
         else:
             reconciliation_complete = False
     if config.get(CONF_SYNC_VPN, DEFAULT_SYNC_OPTION_VALUE):
@@ -777,10 +779,10 @@ async def async_setup_entry(
             reconciliation_complete = False
 
     preserved_switches: list[er.RegistryEntry] = []
-    if reconciliation_complete and unknown_rule_groups and is_reconciliation_active(config_entry):
+    if reconciliation_complete and unknown_switch_groups and is_reconciliation_active(config_entry):
         # Repair preparation has already migrated the registry entries to the new prefix.
         identity = config_entry_identity(config_entry)
-        prefixes = tuple(f"{slugify(f'{identity}_{group}')}_" for group in unknown_rule_groups)
+        prefixes = tuple(f"{slugify(f'{identity}_{group}')}_" for group in unknown_switch_groups)
         preserved_switches = [
             entry
             for entry in er.async_entries_for_config_entry(
@@ -791,10 +793,10 @@ async def async_setup_entry(
             and entry.unique_id.startswith(prefixes)
         ]
         _LOGGER.info(
-            "Replacement repair for %s is keeping %d existing switches for unknown rule groups: %s",
+            "Replacement repair for %s is keeping %d existing switches for unknown groups: %s",
             config_entry.title,
             len(preserved_switches),
-            ", ".join(unknown_rule_groups),
+            ", ".join(unknown_switch_groups),
         )
 
     _LOGGER.debug("[switch async_setup_entry] entities: %s", len(entities))

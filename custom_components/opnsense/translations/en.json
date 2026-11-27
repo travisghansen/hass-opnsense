@@ -176,7 +176,7 @@
         "step": {
           "confirm": {
             "title": "Reconcile replacement hardware inventory",
-            "description": "This repair will reconcile {entry_title} with replacement Hardware ID {new_device_id}. Matching entities and devices retain their registry identity and customizations, entities absent from the replacement are removed, and new entities are created. A retry marker makes the repair resumable if interrupted. Dashboards and automations remain intact for preserved entity IDs; review references to removed entities. The previous Hardware ID was {old_device_id}."
+            "description": "This repair will reconcile {entry_title} with replacement Hardware ID {new_device_id}. Matching entities and devices retain their registry identity and customizations, entities absent from the replacement are removed, and new entities are created. Exception: if the service list or a firewall or NAT rule group cannot be read, its existing switches are kept and stay unavailable until you reload the integration after it can be read again. Kept switches with no match on the replacement are not removed automatically. A retry marker makes the repair resumable if interrupted. Dashboards and automations remain intact for preserved entity IDs; review references to removed entities. The previous Hardware ID was {old_device_id}."
           }
         },
         "abort": {
