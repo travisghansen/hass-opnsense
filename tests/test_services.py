@@ -5,12 +5,14 @@ for operations such as starting/stopping services and generating vouchers.
 """
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Never
 from unittest.mock import AsyncMock, MagicMock
 
+from aiopnsense import OPNsenseClient
 from aiopnsense.exceptions import OPNsenseVoucherServerError
 from homeassistant.core import HomeAssistant, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
@@ -27,6 +29,7 @@ from custom_components.opnsense.const import (
     ENTRY_TYPE_DEVICE,
     SERVICE_CLOSE_NOTICE,
     SERVICE_GENERATE_VOUCHERS,
+    SERVICE_GET_DNS_QUERIES,
     SERVICE_GET_VNSTAT_METRICS,
     SERVICE_KILL_STATES,
     SERVICE_RELOAD_INTERFACE,
@@ -247,6 +250,7 @@ async def test_async_setup_services_registers_expected_service_contracts() -> No
         SERVICE_KILL_STATES,
         SERVICE_RUN_SPEEDTEST,
         SERVICE_GET_VNSTAT_METRICS,
+        SERVICE_GET_DNS_QUERIES,
         SERVICE_TOGGLE_ALIAS,
         SERVICE_TOGGLE_INTERFACE,
     }
@@ -254,6 +258,7 @@ async def test_async_setup_services_registers_expected_service_contracts() -> No
     assert registrations[SERVICE_KILL_STATES]["supports_response"] == SupportsResponse.OPTIONAL
     assert registrations[SERVICE_RUN_SPEEDTEST]["supports_response"] == SupportsResponse.ONLY
     assert registrations[SERVICE_GET_VNSTAT_METRICS]["supports_response"] == SupportsResponse.ONLY
+    assert registrations[SERVICE_GET_DNS_QUERIES]["supports_response"] == SupportsResponse.ONLY
     for service in (
         SERVICE_CLOSE_NOTICE,
         SERVICE_START_SERVICE,
@@ -1308,3 +1313,124 @@ async def test_toggle_interface_action_validation(
     with pytest.raises(vol.Invalid):
         await ph_hass.services.async_call(DOMAIN, SERVICE_TOGGLE_INTERFACE, data, blocking=True)
     client.toggle_interface.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_async_setup_services_validates_get_dns_queries_filters() -> None:
+    """get_dns_queries accepts known actions and a limit from 1 to 1000, defaulting to 30."""
+    hass = MagicMock(spec=HomeAssistant)
+    hass.services = MagicMock()
+    hass.services.async_register = MagicMock()
+
+    await services_mod.async_setup_services(hass)
+
+    schema = next(
+        call.kwargs["schema"]
+        for call in hass.services.async_register.call_args_list
+        if call.kwargs.get("service") == SERVICE_GET_DNS_QUERIES
+    )
+    assert schema({}) == {"limit": 30}
+    assert schema({"action": "Block", "limit": "1000"}) == {"action": "block", "limit": 1000}
+    for invalid in ({"action": "allow"}, {"limit": 0}, {"limit": 1001}):
+        with pytest.raises(vol.Invalid):
+            schema(invalid)
+
+
+def _dns_query_log() -> Any:
+    """Return a Query Log with one Blocked query.
+
+    Returns:
+        Any: ``QueryLog`` with one entry.
+    """
+    return OPNsenseClient.QueryLog(
+        entries=(
+            OPNsenseClient.QueryLogEntry(
+                time=datetime(2026, 11, 26, 14, 0, 5, tzinfo=UTC),
+                client="laptop",
+                domain="ads.test",
+                action="Block",
+                blocklist="ads",
+                policy=None,
+            ),
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_dns_queries_returns_entries_per_firewall(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any
+) -> None:
+    """get_dns_queries passes the filters on and returns each Firewall's entries.
+
+    A Firewall whose read failed or whose Query Log is absent is left out, and a read
+    that matched nothing still returns empty entries.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (Any): Home Assistant instance hosting the scenario.
+    """
+    clients = []
+    for name, result in (
+        ("c1", _dns_query_log()),
+        ("c2", OPNsenseClient.QueryLog()),
+        ("c3", None),
+        ("c4", OPNsenseClient.QueryLog(absent="forbidden")),
+    ):
+        client = MagicMock()
+        client.name = name
+        client.get_unbound_queries = AsyncMock(return_value=result)
+        clients.append(client)
+    _patch_clients(monkeypatch, clients)
+    call = _service_call({"action": "block", "client": "laptop", "limit": 5})
+
+    response = await services_mod._service_get_dns_queries(ph_hass, call)
+
+    assert response == {
+        "results": [
+            {
+                "client_name": "c1",
+                "entries": [
+                    {
+                        "time": "2026-11-26T14:00:05+00:00",
+                        "client": "laptop",
+                        "domain": "ads.test",
+                        "action": "Block",
+                        "blocklist": "ads",
+                        "policy": None,
+                    }
+                ],
+            },
+            {"client_name": "c2", "entries": []},
+        ]
+    }
+    for client in clients:
+        client.get_unbound_queries.assert_awaited_once_with(
+            action="block", client="laptop", search=None, limit=5
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "result",
+    [None, OPNsenseClient.QueryLog(absent="disabled")],
+    ids=["read-failed", "absent"],
+)
+async def test_get_dns_queries_raises_when_no_firewall_returns_queries(
+    monkeypatch: pytest.MonkeyPatch, ph_hass: Any, result: Any
+) -> None:
+    """get_dns_queries raises a translated error when no Firewall returns its Query Log.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): Pytest fixture used to isolate the simulated behavior.
+        ph_hass (Any): Home Assistant instance hosting the scenario.
+        result (Any): Query Log read result.
+    """
+    client = MagicMock()
+    client.name = "c1"
+    client.get_unbound_queries = AsyncMock(return_value=result)
+    _patch_clients(monkeypatch, [client])
+
+    with pytest.raises(ServiceValidationError) as err:
+        await services_mod._service_get_dns_queries(ph_hass, _service_call({"limit": 30}))
+
+    assert err.value.translation_key == "get_dns_queries_failed"

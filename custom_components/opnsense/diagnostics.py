@@ -1,7 +1,7 @@
 """Diagnostics support for the OPNsense integration."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import date, datetime, time
 from enum import Enum
 import ipaddress
@@ -92,6 +92,10 @@ _PRIVATE_FIELDS: frozenset[str] = frozenset(
 _SENSITIVE_FIELDS: frozenset[str] = frozenset(
     _IP_FIELDS | _URL_FIELDS | _ID_FIELDS | _PRIVATE_FIELDS
 )
+# Query Log clients and queried domains are private only inside Query Stats data;
+# elsewhere, such as the config entry's own ``domain``, they are not.
+_QUERY_STATS_PATH: tuple[str, ...] = ("coordinators", "query_stats")
+_QUERY_STATS_PRIVATE_FIELDS: frozenset[str] = frozenset({"client", "domain"})
 _MAC_PATTERN = re.compile(r"(?i)(?<![0-9a-f])(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}(?![0-9a-f])")
 _IPV4_PATTERN = re.compile(r"(?<![0-9])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![0-9])")
 _IPV6_CANDIDATE_PATTERN = re.compile(
@@ -154,7 +158,7 @@ def _is_secret_field(field_name: str) -> bool:
     )
 
 
-def _is_sensitive_field(field_name: str) -> bool:
+def _is_sensitive_field(field_name: str, path: tuple[str, ...] = ()) -> bool:
     """Return whether a normalized field contains a private identifier.
 
     Returns:
@@ -162,7 +166,10 @@ def _is_sensitive_field(field_name: str) -> bool:
 
     Args:
         field_name (str): Diagnostic field name being classified.
+        path (tuple[str, ...]): Nested diagnostic path of the field's mapping.
     """
+    if field_name in _QUERY_STATS_PRIVATE_FIELDS and path[:2] == _QUERY_STATS_PATH:
+        return True
     return field_name in _SENSITIVE_FIELDS or any(
         field_name.endswith(f"_{sensitive}") for sensitive in _SENSITIVE_FIELDS
     )
@@ -277,6 +284,24 @@ def _validated_ipv6_candidate(candidate: str) -> tuple[str, str] | None:
     return core, suffix
 
 
+def _plain(value: Any) -> Any:
+    """Convert dataclass results, such as aiopnsense Query Stats, to plain data.
+
+    Args:
+        value (Any): Coordinator data or a nested value.
+
+    Returns:
+        Any: The value with dataclass instances turned into mappings.
+    """
+    if is_dataclass(value) and not isinstance(value, type):
+        return _plain(asdict(value))
+    if isinstance(value, Mapping):
+        return {key: _plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(item) for item in value]
+    return value
+
+
 def _coordinator_diagnostics(coordinator: Any | None) -> dict[str, Any] | None:
     """Build diagnostics from an existing coordinator without refreshing it.
 
@@ -293,7 +318,7 @@ def _coordinator_diagnostics(coordinator: Any | None) -> dict[str, Any] | None:
     return {
         "last_update_success": bool(getattr(coordinator, "last_update_success", False)),
         "last_exception": type(last_exception).__name__ if last_exception is not None else None,
-        "data": getattr(coordinator, "data", None),
+        "data": _plain(getattr(coordinator, "data", None)),
     }
 
 
@@ -491,14 +516,14 @@ class _Pseudonymizer:
                         and item not in ("", REDACTED)
                     ):
                         self.register_speedtest_server(item)
-                    elif _is_sensitive_field(normalized_key):
+                    elif _is_sensitive_field(normalized_key, path):
                         kind = self._kind_for_field(normalized_key, item)
                         if kind is not None:
                             self.register(kind, item)
                     self.collect(
                         item,
                         force_sensitive=not redact_key
-                        and _is_sensitive_field(normalized_key)
+                        and _is_sensitive_field(normalized_key, path)
                         and isinstance(item, (Mapping, list, tuple, set)),
                         path=(*path, normalized_key),
                     )
@@ -570,7 +595,7 @@ class _Pseudonymizer:
                         self.speedtest_server_aliases.get(item) if isinstance(item, str) else None
                     )
                     sanitized[sanitized_key] = alias or self._replace_scalar(item)
-                elif _is_sensitive_field(normalized_key) and not isinstance(
+                elif _is_sensitive_field(normalized_key, path) and not isinstance(
                     item, (Mapping, list, tuple, set)
                 ):
                     sanitized[sanitized_key] = self.alias_for(item) or self._replace_scalar(item)
@@ -578,7 +603,7 @@ class _Pseudonymizer:
                     sanitized[sanitized_key] = self.sanitize(
                         item,
                         force_sensitive=not redact_key
-                        and _is_sensitive_field(normalized_key)
+                        and _is_sensitive_field(normalized_key, path)
                         and isinstance(item, (Mapping, list, tuple, set)),
                         path=(*path, normalized_key),
                     )
@@ -800,6 +825,9 @@ async def async_get_config_entry_diagnostics(
             ),
             "live_traffic": _coordinator_diagnostics(
                 getattr(runtime_data, "live_traffic_coordinator", None)
+            ),
+            "query_stats": _coordinator_diagnostics(
+                getattr(runtime_data, "query_stats_coordinator", None)
             ),
         },
     }

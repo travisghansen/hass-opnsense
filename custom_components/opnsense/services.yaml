@@ -409,6 +409,60 @@ get_vnstat_metrics:
                 - integration: opnsense
                   domain: sensor
 
+get_dns_queries:
+  fields:
+    action:
+      required: false
+      selector:
+        select:
+          multiple: false
+          custom_value: false
+          mode: dropdown
+          translation_key: "dns_query_action"
+          options:
+            - "pass"
+            - "block"
+            - "drop"
+    client:
+      required: false
+      example: "laptop"
+      selector:
+        text:
+    search:
+      required: false
+      example: "example.com"
+      selector:
+        text:
+    limit:
+      required: false
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 1000
+          mode: box
+    multiple_opnsense:
+      collapsed: true
+      fields:
+        device_id:
+          required: false
+          selector:
+            device:
+              multiple: false
+              filter:
+                - integration: opnsense
+              entity:
+                - domain: sensor
+        entity_id:
+          example: "sensor.opnsense_interface_lan_status"
+          required: false
+          selector:
+            entity:
+              multiple: false
+              filter:
+                - integration: opnsense
+                  domain: sensor
+
 toggle_alias:
   fields:
     alias:

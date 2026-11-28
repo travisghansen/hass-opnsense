@@ -71,6 +71,7 @@
           "sync_notices": "Notice information",
           "sync_filters_and_nat": "Firewall and NAT rules switches",
           "sync_unbound": "Unbound blocklist switches",
+          "sync_unbound_stats": "Unbound DNS query stats",
           "sync_certificates": "Security certificate information",
           "sync_vnstat": "vnStat bandwidth usage",
           "sync_speedtest": "Speedtest results",
@@ -130,6 +131,7 @@
           "sync_notices": "Notice information",
           "sync_filters_and_nat": "Firewall and NAT rules switches",
           "sync_unbound": "Unbound blocklist switches",
+          "sync_unbound_stats": "Unbound DNS query stats",
           "sync_interfaces": "Interface information",
           "sync_certificates": "Security certificate information"
         },
@@ -193,6 +195,9 @@
   "exceptions": {
     "generate_vouchers_failed": {
       "message": "Generate vouchers failed. No selected Firewalls."
+    },
+    "get_dns_queries_failed": {
+      "message": "Get DNS queries failed. No selected Firewall returned its Query Log. Check that Unbound statistics are enabled and the user has the Status: DNS Overview privilege."
     },
     "get_vnstat_metrics_failed": {
       "message": "Get vnStat metrics failed. No selected Firewalls have vnStat installed."
@@ -278,6 +283,13 @@
         "daily": "Daily",
         "monthly": "Monthly",
         "yearly": "Yearly"
+      }
+    },
+    "dns_query_action": {
+      "options": {
+        "pass": "Pass",
+        "block": "Block",
+        "drop": "Drop"
       }
     },
     "device_tracking_mode": {
@@ -479,7 +491,6 @@
       "name": "Generate Captive Portal Vouchers",
       "description": "Vouchers for use with Captive Portal (like guest WiFi)",
       "fields": {
-
         "validity": {
           "name": "Validity",
           "description": "If manually entering a duration, enter in seconds"
@@ -564,6 +575,41 @@
         "period": {
           "name": "Period",
           "description": "The vnStat period to query"
+        },
+        "device_id": {
+          "name": "OPNsense Firewall",
+          "description": "Select the Firewall to call the command on. If not specified, the command will be sent to all Firewalls."
+        },
+        "entity_id": {
+          "name": "OPNsense Entity",
+          "description": "Pick any sensor of the Firewall you want to call the command on. If not specified, the command will be sent to all Firewalls."
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Only needed if there is more than one Firewall"
+        }
+      }
+    },
+    "get_dns_queries": {
+      "name": "Get DNS Queries",
+      "description": "Get recent Unbound DNS queries from the Query Log as action response data",
+      "fields": {
+        "action": {
+          "name": "Action",
+          "description": "Only return queries with this action"
+        },
+        "client": {
+          "name": "Client",
+          "description": "Only return queries from this client, as the Firewall reports it: usually its DHCP hostname, otherwise its IP address"
+        },
+        "search": {
+          "name": "Search",
+          "description": "Only return queries matching this text, such as part of a domain"
+        },
+        "limit": {
+          "name": "Limit",
+          "description": "Maximum number of queries to return. The Firewall keeps its last 1,000 queries."
         },
         "device_id": {
           "name": "OPNsense Firewall",

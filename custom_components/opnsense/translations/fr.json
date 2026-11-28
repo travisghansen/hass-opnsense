@@ -71,6 +71,7 @@
           "sync_notices": "Informations sur les avis",
           "sync_filters_and_nat": "Commutateurs de règles de pare-feu et NAT",
           "sync_unbound": "Commutateurs de liste de blocage non liés",
+          "sync_unbound_stats": "Statistiques des requêtes DNS Unbound",
           "sync_certificates": "Informations sur le certificat de sécurité",
           "sync_vnstat": "Utilisation de la bande passante vnStat",
           "sync_speedtest": "Résultats des tests de vitesse",
@@ -130,6 +131,7 @@
           "sync_notices": "Informations sur les avis",
           "sync_filters_and_nat": "Commutateurs de règles de pare-feu et NAT",
           "sync_unbound": "Commutateurs de liste de blocage non liés",
+          "sync_unbound_stats": "Statistiques des requêtes DNS Unbound",
           "sync_interfaces": "Informations sur les interfaces",
           "sync_certificates": "Informations sur le certificat de sécurité"
         },
@@ -193,6 +195,9 @@
   "exceptions": {
     "generate_vouchers_failed": {
       "message": "La génération des bons a échoué. "
+    },
+    "get_dns_queries_failed": {
+      "message": "Échec de la récupération des requêtes DNS. Aucun pare-feu sélectionné n'a renvoyé son journal de requêtes. Vérifiez que les statistiques Unbound sont activées et que l'utilisateur dispose du privilège Status: DNS Overview."
     },
     "get_vnstat_metrics_failed": {
       "message": "Échec de l’obtention des métriques vnStat. "
@@ -278,6 +283,13 @@
         "daily": "Tous les jours",
         "monthly": "Mensuel",
         "yearly": "Annuel"
+      }
+    },
+    "dns_query_action": {
+      "options": {
+        "pass": "Autoriser",
+        "block": "Bloquer",
+        "drop": "Abandonner"
       }
     },
     "device_tracking_mode": {
@@ -563,6 +575,41 @@
         "period": {
           "name": "Période",
           "description": "La période vnStat à interroger"
+        },
+        "device_id": {
+          "name": "Pare-feu OPNsense",
+          "description": "Sélectionnez le pare-feu OPNsense sur lequel appeler la commande. "
+        },
+        "entity_id": {
+          "name": "Entité OPNsense",
+          "description": "Choisissez n’importe quel capteur du pare-feu OPNsense sur lequel vous souhaitez appeler la commande. "
+        }
+      },
+      "sections": {
+        "multiple_opnsense": {
+          "name": "Nécessaire uniquement s'il existe plusieurs pare-feu OPNsense"
+        }
+      }
+    },
+    "get_dns_queries": {
+      "name": "Obtenir les requêtes DNS",
+      "description": "Obtenir les requêtes DNS Unbound récentes du journal de requêtes comme données de réponse",
+      "fields": {
+        "action": {
+          "name": "Action",
+          "description": "Ne renvoyer que les requêtes avec cette action"
+        },
+        "client": {
+          "name": "Client",
+          "description": "Ne renvoyer que les requêtes de ce client, tel que le pare-feu le signale : généralement son nom d'hôte DHCP, sinon son adresse IP"
+        },
+        "search": {
+          "name": "Recherche",
+          "description": "Ne renvoyer que les requêtes contenant ce texte, comme une partie d'un domaine"
+        },
+        "limit": {
+          "name": "Limite",
+          "description": "Nombre maximal de requêtes à renvoyer. Le pare-feu conserve ses 1 000 dernières requêtes."
         },
         "device_id": {
           "name": "Pare-feu OPNsense",

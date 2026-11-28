@@ -20,6 +20,7 @@ from .const import (
     DOMAIN,
     SERVICE_CLOSE_NOTICE,
     SERVICE_GENERATE_VOUCHERS,
+    SERVICE_GET_DNS_QUERIES,
     SERVICE_GET_VNSTAT_METRICS,
     SERVICE_KILL_STATES,
     SERVICE_RELOAD_INTERFACE,
@@ -34,11 +35,15 @@ from .const import (
     SERVICE_TOGGLE_INTERFACE,
 )
 from .helpers import is_carp_entry
+from .query_stats_coordinator import dns_read_status, query_log_rows
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 _VNSTAT_PERIODS: tuple[str, ...] = ("hourly", "daily", "monthly", "yearly")
+_DNS_QUERY_ACTIONS: tuple[str, ...] = ("pass", "block", "drop")
+_DNS_QUERIES_MAX_LIMIT = 1000
 _SERVICE_IDENTIFIER_CONFLICT_ERROR = "Must use service_id or service_name but not both"
 _TRANSLATION_KEY_GENERATE_VOUCHERS_FAILED = "generate_vouchers_failed"
+_TRANSLATION_KEY_GET_DNS_QUERIES_FAILED = "get_dns_queries_failed"
 _TRANSLATION_KEY_GET_VNSTAT_METRICS_FAILED = "get_vnstat_metrics_failed"
 _TRANSLATION_KEY_KILL_STATES_FAILED = "kill_states_failed"
 _TRANSLATION_KEY_NO_TARGET_CLIENTS = "no_target_clients"
@@ -270,6 +275,23 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         _targeted_schema(
             {
                 vol.Required("period"): vol.All(cv.string, vol.Lower, vol.In(_VNSTAT_PERIODS)),
+            }
+        ),
+        SupportsResponse.ONLY,
+    )
+
+    _register_service(
+        hass,
+        SERVICE_GET_DNS_QUERIES,
+        _service_get_dns_queries,
+        _targeted_schema(
+            {
+                vol.Optional("action"): vol.All(cv.string, vol.Lower, vol.In(_DNS_QUERY_ACTIONS)),
+                vol.Optional("client"): cv.string,
+                vol.Optional("search"): cv.string,
+                vol.Optional("limit", default=30): vol.All(
+                    vol.Coerce(int), vol.Range(min=1, max=_DNS_QUERIES_MAX_LIMIT)
+                ),
             }
         ),
         SupportsResponse.ONLY,
@@ -912,6 +934,65 @@ async def _service_get_vnstat_metrics(hass: HomeAssistant, call: ServiceCall) ->
     )
     return_response: dict[str, Any] = {"results": response_list}
     _LOGGER.debug("[service_get_vnstat_metrics] return_response: %s", return_response)
+    return return_response
+
+
+def _query_log_response(query_log: OPNsenseClient.QueryLog | None) -> dict[str, Any] | None:
+    """Convert a Query Log read to action response data.
+
+    Args:
+        query_log (OPNsenseClient.QueryLog | None): Query Log from aiopnsense, or None
+            when the read failed.
+
+    Returns:
+        dict[str, Any] | None: ``entries`` rows, or None when the read failed or the
+            Query Log is absent on the Firewall.
+    """
+    if query_log is None or dns_read_status(query_log) != "data":
+        return None
+    return {"entries": query_log_rows(query_log)}
+
+
+async def _service_get_dns_queries(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
+    """Return recent Unbound DNS queries from the Query Log as action response data.
+
+    Args:
+        hass (HomeAssistant): Home Assistant instance.
+        call (ServiceCall): Service call payload with optional ``action``, ``client``,
+            ``search`` and ``limit`` filters and OPNsense device/entity selectors.
+
+    Returns:
+        ServiceResponse: Per-client Query Log entries, newest first.
+    """
+    clients = await _get_target_clients(hass, call)
+    filters: dict[str, Any] = {
+        "action": call.data.get("action"),
+        "client": call.data.get("client"),
+        "search": call.data.get("search"),
+        "limit": call.data["limit"],
+    }
+
+    async def _read(client: OPNsenseServiceClient) -> dict[str, Any] | None:
+        """Read and convert one client's Query Log.
+
+        Args:
+            client (OPNsenseServiceClient): Selected OPNsense client.
+
+        Returns:
+            dict[str, Any] | None: Response data, or None when the client has none.
+        """
+        return _query_log_response(await client.get_unbound_queries(**filters))
+
+    response_list = await _collect_mapping_results(
+        clients=clients,
+        log_prefix="service_get_dns_queries",
+        failure_translation_key=_TRANSLATION_KEY_GET_DNS_QUERIES_FAILED,
+        failure_translation_placeholders=None,
+        action=_read,
+        action_context=filters,
+    )
+    return_response: dict[str, Any] = {"results": response_list}
+    _LOGGER.debug("[service_get_dns_queries] return_response: %s", return_response)
     return return_response
 
 

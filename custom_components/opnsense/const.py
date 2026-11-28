@@ -64,6 +64,7 @@ CONF_SYNC_SERVICES = "sync_services"
 CONF_SYNC_NOTICES = "sync_notices"
 CONF_SYNC_FIREWALL_AND_NAT = "sync_filters_and_nat"
 CONF_SYNC_UNBOUND = "sync_unbound"
+CONF_SYNC_UNBOUND_STATS = "sync_unbound_stats"
 CONF_SYNC_INTERFACES = "sync_interfaces"
 CONF_SYNC_LIVE_TRAFFIC = "sync_live_traffic"
 CONF_SYNC_CERTIFICATES = "sync_certificates"
@@ -85,6 +86,7 @@ GRANULAR_SYNC_ITEMS = (
     CONF_SYNC_VPN,
     CONF_SYNC_CERTIFICATES,
     CONF_SYNC_UNBOUND,
+    CONF_SYNC_UNBOUND_STATS,
     CONF_SYNC_VNSTAT,
     CONF_SYNC_SPEEDTEST,
     CONF_SYNC_SMART,
@@ -105,6 +107,7 @@ GRANULAR_SYNC_PREFIX = {
     CONF_SYNC_NUT: ["nut"],
     CONF_SYNC_TELEMETRY: ["telemetry"],
     CONF_SYNC_UNBOUND: ["unbound"],
+    CONF_SYNC_UNBOUND_STATS: ["query_stats"],
     CONF_SYNC_VNSTAT: ["vnstat"],
     CONF_SYNC_VPN: ["wireguard", "openvpn"],
 }
@@ -139,3 +142,4 @@ SERVICE_TOGGLE_ALIAS = "toggle_alias"
 SERVICE_TOGGLE_INTERFACE = "toggle_interface"
 SERVICE_RUN_SPEEDTEST = "run_speedtest"
 SERVICE_GET_VNSTAT_METRICS = "get_vnstat_metrics"
+SERVICE_GET_DNS_QUERIES = "get_dns_queries"

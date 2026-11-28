@@ -44,6 +44,7 @@ from custom_components.opnsense.const import (
     CONF_SYNC_INTERFACES,
     CONF_SYNC_LIVE_TRAFFIC,
     CONF_SYNC_SPEEDTEST,
+    CONF_SYNC_UNBOUND_STATS,
     CONF_TLS_INSECURE,
     COORDINATOR,
     DEVICE_TRACKER_COORDINATOR,
@@ -70,6 +71,45 @@ from custom_components.opnsense.repair_reconciliation import (
 )
 from tests.common import MockConfigEntry
 from tests.utilities import patch_opnsense_client
+
+
+@pytest.fixture(autouse=True)
+def query_stats_coordinators(monkeypatch: pytest.MonkeyPatch) -> list[MagicMock]:
+    """Replace the Query Stats coordinator so setup tests make no DNS reads.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+
+    Returns:
+        list[MagicMock]: Coordinators created during the test, in creation order.
+    """
+    created: list[MagicMock] = []
+
+    def _factory(hass: Any, *, config_entry: Any, coordinator: Any, client: Any) -> MagicMock:
+        """Create a Query Stats coordinator double.
+
+        Args:
+            hass (Any): Home Assistant instance passed by setup.
+            config_entry (Any): Config entry passed by setup.
+            coordinator (Any): Main coordinator passed by setup.
+            client (Any): OPNsense client passed by setup.
+
+        Returns:
+            MagicMock: Coordinator double with awaitable refresh and shutdown.
+        """
+        query_stats_coordinator = MagicMock(
+            hass=hass,
+            config_entry=config_entry,
+            main_coordinator=coordinator,
+            client=client,
+            async_refresh=AsyncMock(),
+            async_shutdown=AsyncMock(),
+        )
+        created.append(query_stats_coordinator)
+        return query_stats_coordinator
+
+    monkeypatch.setattr(init_mod, "OPNsenseQueryStatsCoordinator", _factory)
+    return created
 
 
 @dataclass(slots=True)
@@ -2063,6 +2103,9 @@ async def test_async_handle_hass_stop_shuts_down_background_work(
             async_shutdown=AsyncMock(side_effect=lambda: stop_order.append("device_tracker"))
         ),
     )
+    entry.runtime_data.query_stats_coordinator = MagicMock(
+        async_shutdown=AsyncMock(side_effect=lambda: stop_order.append("query_stats"))
+    )
     setattr(
         entry.runtime_data,
         OPNSENSE_CLIENT,
@@ -2071,7 +2114,7 @@ async def test_async_handle_hass_stop_shuts_down_background_work(
 
     await init_mod._async_handle_hass_stop(entry, MagicMock())
 
-    assert stop_order == ["live_traffic", "coordinator", "device_tracker", "client"]
+    assert stop_order == ["live_traffic", "coordinator", "device_tracker", "query_stats", "client"]
 
 
 @pytest.mark.asyncio
@@ -6702,3 +6745,131 @@ async def test_migrate_3_to_4_defers_without_updating_entities_when_later_filesy
     assert res is False
     entity_registry.async_update_entity.assert_not_called()
     hass.config_entries.async_update_entry.assert_not_called()
+
+
+def _query_stats_setup_entry(
+    make_config_entry: Callable[..., MockConfigEntry], sync_unbound_stats: bool
+) -> MockConfigEntry:
+    """Create a setup entry with Query Stats sync set as given.
+
+    Args:
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        sync_unbound_stats (bool): Whether Query Stats sync is enabled.
+
+    Returns:
+        MockConfigEntry: Entry ready for ``async_setup_entry``.
+    """
+    entry = make_config_entry(
+        data={
+            CONF_URL: "http://1.2.3.4",
+            CONF_USERNAME: "u",
+            CONF_PASSWORD: "p",
+            CONF_DEVICE_UNIQUE_ID: "dev1",
+            CONF_SYNC_INTERFACES: False,
+            CONF_SYNC_UNBOUND_STATS: sync_unbound_stats,
+        },
+        options={CONF_DEVICE_TRACKER_ENABLED: False},
+    )
+    entry.add_update_listener = MagicMock(return_value=MagicMock())
+    entry.async_on_unload = MagicMock(return_value=None)
+    return entry
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sync_unbound_stats", [True, False], ids=["on", "off"])
+async def test_async_setup_entry_creates_query_stats_coordinator_when_synced(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    query_stats_coordinators: list[MagicMock],
+    sync_unbound_stats: bool,
+) -> None:
+    """Setup creates and refreshes the Query Stats coordinator before platforms only when synced.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        query_stats_coordinators (list[MagicMock]): Query Stats coordinators created by setup.
+        sync_unbound_stats (bool): Whether Query Stats sync is enabled.
+    """
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    monkeypatch.setattr(
+        init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: _make_setup_coordinator()
+    )
+    entry = _query_stats_setup_entry(make_config_entry, sync_unbound_stats)
+    refreshed_before_forward: list[bool] = []
+
+    async def _forward_entry_setups(*_args: Any, **_kwargs: Any) -> bool:
+        """Record whether the Query Stats coordinator refreshed before forwarding.
+
+        Args:
+            _args (Any): Additional positional arguments accepted by the test double.
+            _kwargs (Any): Additional keyword arguments accepted by the test double.
+
+        Returns:
+            bool: Always ``True`` for the test setup path.
+        """
+        refreshed_before_forward.extend(
+            bool(created.async_refresh.await_count) for created in query_stats_coordinators
+        )
+        return True
+
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(side_effect=_forward_entry_setups)
+    hass.config_entries.async_reload = MagicMock()
+    hass.data = {}
+
+    assert await init_mod.async_setup_entry(hass, entry) is True
+
+    if sync_unbound_stats:
+        assert len(query_stats_coordinators) == 1
+        created = query_stats_coordinators[0]
+        assert created.config_entry is entry
+        assert created.client is client
+        assert created.main_coordinator is entry.runtime_data.coordinator
+        assert entry.runtime_data.query_stats_coordinator is created
+        assert refreshed_before_forward == [True]
+    else:
+        assert query_stats_coordinators == []
+        assert entry.runtime_data.query_stats_coordinator is None
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_shuts_down_query_stats_coordinator_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    ph_hass: Any,
+    make_config_entry: Callable[..., MockConfigEntry],
+    query_stats_coordinators: list[MagicMock],
+) -> None:
+    """A failed setup shuts down the Query Stats coordinator it created.
+
+    Args:
+        monkeypatch (pytest.MonkeyPatch): pytest fixture used to replace dependencies.
+        ph_hass (Any): Patched Home Assistant test instance.
+        make_config_entry (Callable[..., MockConfigEntry]): Fixture that creates a mock configuration entry.
+        query_stats_coordinators (list[MagicMock]): Query Stats coordinators created by setup.
+    """
+    client = _make_valid_setup_client()
+    monkeypatch.setattr(
+        init_mod, "create_opnsense_client_from_config_entry", lambda **_kwargs: client
+    )
+    monkeypatch.setattr(
+        init_mod, "OPNsenseDataUpdateCoordinator", lambda **_kwargs: _make_setup_coordinator()
+    )
+    entry = _query_stats_setup_entry(make_config_entry, True)
+    hass = ph_hass
+    hass.config_entries.async_forward_entry_setups = AsyncMock(
+        side_effect=RuntimeError("platform forwarding failed")
+    )
+    hass.config_entries.async_reload = MagicMock()
+    hass.data = {}
+
+    with pytest.raises(RuntimeError, match="platform forwarding failed"):
+        await init_mod.async_setup_entry(hass, entry)
+
+    query_stats_coordinators[0].async_shutdown.assert_awaited_once()
+    assert entry.runtime_data is None
