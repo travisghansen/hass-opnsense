@@ -116,8 +116,9 @@ def _make_flow(
     flow.hass = hass
     flow.handler = DOMAIN
     issue_id = f"{entry.entry_id}_device_id_mismatched"
-    # Home Assistant 2026.12 reads the issue ID from the flow context. Earlier
-    # releases read an attribute that the flow manager assigns.
+    # Home Assistant 2026.11 reads the issue ID from the flow context. Earlier
+    # releases read an attribute that the flow manager assigns. Remove that branch
+    # once hacs.json requires 2026.11.
     if isinstance(getattr(RepairsFlow, "issue_id", None), property):
         flow.context = {"issue_id": issue_id}
     else:

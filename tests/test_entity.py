@@ -14,7 +14,7 @@ from custom_components.opnsense.const import (
 from custom_components.opnsense.coordinator import OPNsenseDataUpdateCoordinator
 from custom_components.opnsense.entity import OPNsenseBaseEntity, OPNsenseEntity
 from custom_components.opnsense.helpers import config_entry_identity
-from tests.common import MockConfigEntry, device_info_dict
+from tests.common import MockConfigEntry, entity_device_info
 
 
 def test_payload_display_name_uses_scalar_fallback() -> None:
@@ -201,14 +201,14 @@ def test_device_info_name_prefers_title_and_fallback_to_state(
     )
     coord = dummy_coordinator
     ent = OPNsenseEntity(config_entry=entry, coordinator=coord, unique_id_suffix="test")
-    assert device_info_dict(ent.device_info)["name"] == "BoxTitle"
+    assert entity_device_info(ent.device_info).name == "BoxTitle"
 
     # when title empty -> falls back to coordinator.data system_info.name
     entry2 = make_config_entry({CONF_DEVICE_UNIQUE_ID: "dev-123", "url": "http://x"}, title="")
     coord2 = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord2.data = {"system_info": {"name": "FromState"}}
     ent2 = OPNsenseEntity(config_entry=entry2, coordinator=coord2, unique_id_suffix="test")
-    assert device_info_dict(ent2.device_info)["name"] == "FromState"
+    assert entity_device_info(ent2.device_info).name == "FromState"
 
 
 def test_get_opnsense_state_value_nested_lookup(
@@ -342,12 +342,12 @@ def test_device_info_variants(
     # when coordinator.data is None
     coord.data = None
     ent = OPNsenseEntity(config_entry=entry, coordinator=coord, unique_id_suffix="test")
-    info = device_info_dict(ent.device_info)
-    assert info["identifiers"] == {(DOMAIN, "dev-123")}
-    assert info["sw_version"] is None
+    info = entity_device_info(ent.device_info)
+    assert info.identifiers == {(DOMAIN, "dev-123")}
+    assert info.sw_version is None
 
     # when firmware present
     coord2 = MagicMock(spec=OPNsenseDataUpdateCoordinator)
     coord2.data = {"host_firmware_version": "1.2.3"}
     ent2 = OPNsenseEntity(config_entry=entry, coordinator=coord2, unique_id_suffix="test")
-    assert device_info_dict(ent2.device_info)["sw_version"] == "1.2.3"
+    assert entity_device_info(ent2.device_info).sw_version == "1.2.3"
