@@ -1,5 +1,72 @@
 # Changelog
 
+## [1.4.0](https://github.com/travisghansen/hass-opnsense/compare/v1.3.3...v1.4.0) (2026-11-28)
+
+
+### Features
+
+* add Unbound DNS Query Stats sensors and get_dns_queries action ([#826](https://github.com/travisghansen/hass-opnsense/issues/826)) ([f48fce0](https://github.com/travisghansen/hass-opnsense/commit/f48fce06aa24dc62bb6ad8979afe2bd3739bfbbf))
+* keep DHCP lease sensors under Status Access ([#824](https://github.com/travisghansen/hass-opnsense/issues/824)) ([6503ed5](https://github.com/travisghansen/hass-opnsense/commit/6503ed5d88102156ea26bb72f2c8f1aa023fb075))
+* read firmware requirements from aiopnsense ([#814](https://github.com/travisghansen/hass-opnsense/issues/814)) ([7aeba03](https://github.com/travisghansen/hass-opnsense/commit/7aeba03e80c04f66a6eb99f1dfc580b23789b609))
+* support VPN Status Access ([#829](https://github.com/travisghansen/hass-opnsense/issues/829)) ([611f00d](https://github.com/travisghansen/hass-opnsense/commit/611f00d688f4c614cd1f04f6b50e7071836f46dc))
+
+
+### Bug Fixes
+
+* avoid deprecated DeviceInfo setters ([#821](https://github.com/travisghansen/hass-opnsense/issues/821)) ([7b2e2e7](https://github.com/travisghansen/hass-opnsense/commit/7b2e2e7bb18ac348bdf64b75876965675a562b47))
+* disable Unbound DNS Query Stats sensors by default ([#837](https://github.com/travisghansen/hass-opnsense/issues/837)) ([71fcbf0](https://github.com/travisghansen/hass-opnsense/commit/71fcbf04ed608ff537cabd90f435dd1d99f279b6))
+* Preserve Speedtest sensors during Replacement repair ([#823](https://github.com/travisghansen/hass-opnsense/issues/823)) ([91ffe45](https://github.com/travisghansen/hass-opnsense/commit/91ffe45e35b51b69e1483e9077d2f7f4b734ef0f))
+* preserve switches when firewall or service inventory is unknown ([#830](https://github.com/travisghansen/hass-opnsense/issues/830)) ([98fa7e3](https://github.com/travisghansen/hass-opnsense/commit/98fa7e3d0193bc1f153b3f31a9917f3260b1846a))
+* send explicit target state from VPN switches ([#813](https://github.com/travisghansen/hass-opnsense/issues/813)) ([e822a3b](https://github.com/travisghansen/hass-opnsense/commit/e822a3bb823e52a154eb879c172aaf5bc74a79e3))
+
+
+### Dependencies
+
+* **aiopnsense:** bump to 1.5.0 ([#812](https://github.com/travisghansen/hass-opnsense/issues/812)) ([66f1bb0](https://github.com/travisghansen/hass-opnsense/commit/66f1bb098880a4435b0b1042f836338569a85c1d))
+* **aiopnsense:** bump to 1.6.0 ([#822](https://github.com/travisghansen/hass-opnsense/issues/822)) ([2a7d702](https://github.com/travisghansen/hass-opnsense/commit/2a7d7020c6d7223df1d66eafd99b3bac049af668))
+* **aiopnsense:** bump to 1.6.1 ([#828](https://github.com/travisghansen/hass-opnsense/issues/828)) ([17ad348](https://github.com/travisghansen/hass-opnsense/commit/17ad34838424dc42486980605c62df4578da77a7))
+* update prek hooks ([#805](https://github.com/travisghansen/hass-opnsense/issues/805)) ([09cdcf7](https://github.com/travisghansen/hass-opnsense/commit/09cdcf7c3f56798e1e42be6da113bbb1288ebd5e))
+* update prek hooks ([#820](https://github.com/travisghansen/hass-opnsense/issues/820)) ([41255a4](https://github.com/travisghansen/hass-opnsense/commit/41255a4f50fd2cfd6670a705fd94b1ceb010520d))
+
+
+### Documentation
+
+* add coding standards, domain glossary, and agent skill configuration ([#816](https://github.com/travisghansen/hass-opnsense/issues/816)) ([06b6dd0](https://github.com/travisghansen/hass-opnsense/commit/06b6dd08fa79d9b086bc41df37f3b0382737b79e))
+* **agents:** allow read-only network lookups without asking ([#819](https://github.com/travisghansen/hass-opnsense/issues/819)) ([aa58b87](https://github.com/travisghansen/hass-opnsense/commit/aa58b877b241fe897a3677677670d6de998515d3))
+* align glossary terms with aiopnsense ([#818](https://github.com/travisghansen/hass-opnsense/issues/818)) ([8736920](https://github.com/travisghansen/hass-opnsense/commit/87369203bb5d1bd3072bf1daeb68cc2a51109d92))
+
+
+### Miscellaneous Chores
+
+* align user-facing text with the glossary ([#817](https://github.com/travisghansen/hass-opnsense/issues/817)) ([0d98e4d](https://github.com/travisghansen/hass-opnsense/commit/0d98e4d9d7f00ec602dc2fea1b204ae00c063c4b))
+
+
+### Code Refactoring
+
+* centralize the Python version range ([#834](https://github.com/travisghansen/hass-opnsense/issues/834)) ([db43f53](https://github.com/travisghansen/hass-opnsense/commit/db43f533966ede49cd80d7b0ff8f33172e545a8b))
+* type-check voluptuous as probatio and test minimum HA in CI ([#827](https://github.com/travisghansen/hass-opnsense/issues/827)) ([1540387](https://github.com/travisghansen/hass-opnsense/commit/15403876b7f2b8fcf0a88c8932fc2b2ec03e92fa))
+
+
+### Tests
+
+* cover empty WireGuard inventory in repair reconciliation ([#815](https://github.com/travisghansen/hass-opnsense/issues/815)) ([e33833e](https://github.com/travisghansen/hass-opnsense/commit/e33833e64c5746202db3077a7c900a34e3f4f5ee))
+* guard against upstream firmware requests ([#810](https://github.com/travisghansen/hass-opnsense/issues/810)) ([5560de9](https://github.com/travisghansen/hass-opnsense/commit/5560de975db66d07c625ad3491b8e9f8b81b6c2f))
+* support Home Assistant 2026.12 DeviceInfo and repair flows ([#836](https://github.com/travisghansen/hass-opnsense/issues/836)) ([ab02acf](https://github.com/travisghansen/hass-opnsense/commit/ab02acf217d787e36b5bbe02b289a3f833169045))
+
+
+### Build System
+
+* **deps-dev:** bump the python-dependencies group across 1 directory with 8 updates ([#835](https://github.com/travisghansen/hass-opnsense/issues/835)) ([5e0a1e5](https://github.com/travisghansen/hass-opnsense/commit/5e0a1e597fe29afce49e7db13a1c151ed5f2ac01))
+* **deps-dev:** bump the python-dependencies group with 6 updates ([#804](https://github.com/travisghansen/hass-opnsense/issues/804)) ([de020c9](https://github.com/travisghansen/hass-opnsense/commit/de020c9f55a6b25457741517b048c03a6a3f4c61))
+* **deps-dev:** bump the python-dependencies group with 6 updates ([#807](https://github.com/travisghansen/hass-opnsense/issues/807)) ([089512c](https://github.com/travisghansen/hass-opnsense/commit/089512cfe594725546d71059deb58866383c9af4))
+* **deps:** bump py-cov-action/python-coverage-comment-action ([#806](https://github.com/travisghansen/hass-opnsense/issues/806)) ([5373b5c](https://github.com/travisghansen/hass-opnsense/commit/5373b5ca0d380904223a3b4204895655c1909884))
+* **deps:** bump the github-actions group with 2 updates ([#832](https://github.com/travisghansen/hass-opnsense/issues/832)) ([7882fd1](https://github.com/travisghansen/hass-opnsense/commit/7882fd1084c1a59dfb7085d6f316fe57939b7d8b))
+
+
+### Continuous Integration
+
+* verify Home Assistant test environments in both pytest jobs ([#831](https://github.com/travisghansen/hass-opnsense/issues/831)) ([3a37a46](https://github.com/travisghansen/hass-opnsense/commit/3a37a46c61135e50fc61c2289e17e4960ae7b8c1))
+
 ## [1.3.3](https://github.com/travisghansen/hass-opnsense/compare/v1.3.2...v1.3.3) (2026-11-07)
 
 
