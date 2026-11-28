@@ -11,7 +11,7 @@ from aiopnsense.exceptions import (
     OPNsenseTimeoutError,
     OPNsenseUnknownFirmware,
 )
-from homeassistant.components.repairs import ConfirmRepairFlow
+from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError
@@ -115,7 +115,13 @@ def _make_flow(
     )
     flow.hass = hass
     flow.handler = DOMAIN
-    flow.issue_id = f"{entry.entry_id}_device_id_mismatched"
+    issue_id = f"{entry.entry_id}_device_id_mismatched"
+    # Home Assistant 2026.12 reads the issue ID from the flow context. Earlier
+    # releases read an attribute that the flow manager assigns.
+    if isinstance(getattr(RepairsFlow, "issue_id", None), property):
+        flow.context = {"issue_id": issue_id}
+    else:
+        flow.issue_id = issue_id
     flow.flow_id = "flow-1"
     return flow
 

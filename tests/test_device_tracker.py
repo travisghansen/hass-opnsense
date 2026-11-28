@@ -42,7 +42,7 @@ from custom_components.opnsense.device_tracker import OPNsenseScannerEntity
 from custom_components.opnsense.device_tracker_evidence import DeviceTrackerEvidenceSnapshot
 from custom_components.opnsense.entity import OPNsenseBaseEntity
 from custom_components.opnsense.helpers import device_belongs_to_config_entry
-from tests.common import MockConfigEntry
+from tests.common import MockConfigEntry, device_info_dict
 from tests.utilities import (
     arp_ndp_entry,
     arp_ndp_table,
@@ -434,8 +434,7 @@ async def test_async_setup_entry_configured_devices(
     assert "aa_bb_cc" in uid
     assert created.mac_address == "aa:bb:cc"
     assert created._router_device_id == "router-device-id"
-    device_info = created.device_info
-    assert device_info is not None
+    device_info = device_info_dict(created.device_info)
     assert device_info.get("via_device_id") == "router-device-id"
     assert "via_device" not in device_info
     fake.async_get_or_create.assert_called_once_with(
@@ -499,9 +498,7 @@ async def test_async_setup_entry_discovers_ipv6_only_tracker(
 
     assert len(added) == 1
     assert added[0].mac_address == "aa:bb:cc:dd:ee:01"
-    device_info = added[0].device_info
-    assert device_info is not None
-    assert device_info["manufacturer"] == "Example Vendor"
+    assert device_info_dict(added[0].device_info)["manufacturer"] == "Example Vendor"
     updated_data = ph_hass.config_entries.async_update_entry.call_args.kwargs["data"]
     assert updated_data[TRACKED_MACS] == ["aa:bb:cc:dd:ee:01"]
     assert updated_data[TRACKED_ARP_MACS] == []
@@ -770,7 +767,9 @@ def test_entity_registry_enabled_default_uses_existing_mac_device(
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
 
     assert ent.entity_registry_enabled_default is True
-    assert dict(ent.device_info)["connections"] == {(dr.CONNECTION_NETWORK_MAC, "aa:bb:cc")}
+    assert device_info_dict(ent.device_info)["connections"] == {
+        (dr.CONNECTION_NETWORK_MAC, "aa:bb:cc")
+    }
     assert ent.entity_registry_enabled_default is True
 
 
@@ -856,9 +855,7 @@ def test_entity_registry_enabled_default_without_mac_stays_disabled(
     object.__setattr__(ent, "_attr_mac_address", None)
 
     assert ent.entity_registry_enabled_default is False
-    device_info = ent.device_info
-    assert device_info is not None
-    connections = device_info["connections"]
+    connections = device_info_dict(ent.device_info)["connections"]
     assert all(connection[1] != "" for connection in connections)
 
 
@@ -889,10 +886,7 @@ def test_entity_registry_enabled_default_pref_disable_new_entities_keeps_device_
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
 
     assert ent.entity_registry_enabled_default is True
-    device_info = ent.device_info
-    assert device_info is not None
-
-    connections = device_info["connections"]
+    connections = device_info_dict(ent.device_info)["connections"]
     assert any(conn[1] == "aa:bb:cc" for conn in connections)
 
 
@@ -983,9 +977,7 @@ def test_entity_registry_enabled_default_falls_back_for_disabled_mac_device(
     monkeypatch.setattr(dt_mod, "async_get_dev_reg", lambda _hass: device_reg)
     assert ent.entity_registry_enabled_default is False
 
-    device_info = ent.device_info
-    assert device_info is not None
-    connections = device_info["connections"]
+    connections = device_info_dict(ent.device_info)["connections"]
     assert any(conn[1] == "aa:bb:cc" for conn in connections)
 
 
@@ -1380,8 +1372,7 @@ async def test_restore_last_state_and_device_info(
     assert attributes.get("interface") == "lan0"
     assert attributes.get("last_known_connected_time") == last_known_connected_time
 
-    devinfo = ent.device_info
-    assert devinfo is not None
+    devinfo = device_info_dict(ent.device_info)
     assert any(t[1] == "aa:bb:cc" for t in devinfo["connections"])
     assert devinfo["name"] == "dev"
     assert devinfo["manufacturer"] == "mfg"
@@ -1712,10 +1703,9 @@ def test_device_info_uses_legacy_parent_identifier(
     """
     entity = _make_scanner_entity(coordinator, make_config_entry)
 
-    device_info = entity.device_info
+    device_info = device_info_dict(entity.device_info)
 
-    assert device_info is not None
-    assert dict(device_info)["via_device"] == (DOMAIN, "dev1")
+    assert device_info["via_device"] == (DOMAIN, "dev1")
     assert "via_device_id" not in device_info
     assert "default_name" not in device_info
     assert "default_manufacturer" not in device_info
