@@ -3217,6 +3217,7 @@ QUERY_STATS_SENSORS: tuple[OPNsenseQueryStatsSensorEntityDescription, ...] = (
         icon="mdi:dns",
         native_unit_of_measurement=QUERY_STATS_RATE_UNIT,
         state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
         value_fn=lambda stats: _bucket_value(stats.last_minute, "queries"),
     ),
     OPNsenseQueryStatsSensorEntityDescription(
@@ -3225,6 +3226,7 @@ QUERY_STATS_SENSORS: tuple[OPNsenseQueryStatsSensorEntityDescription, ...] = (
         icon="mdi:shield-check",
         native_unit_of_measurement=QUERY_STATS_RATE_UNIT,
         state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
         value_fn=lambda stats: _bucket_value(stats.last_minute, "blocked"),
     ),
     OPNsenseQueryStatsSensorEntityDescription(
@@ -3242,6 +3244,7 @@ QUERY_STATS_SENSORS: tuple[OPNsenseQueryStatsSensorEntityDescription, ...] = (
         icon="mdi:dns",
         native_unit_of_measurement=QUERY_STATS_UNIT,
         state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
         value_fn=lambda stats: _bucket_value(stats.last_24h, "queries"),
     ),
     OPNsenseQueryStatsSensorEntityDescription(
@@ -3250,6 +3253,7 @@ QUERY_STATS_SENSORS: tuple[OPNsenseQueryStatsSensorEntityDescription, ...] = (
         icon="mdi:shield-check",
         native_unit_of_measurement=QUERY_STATS_UNIT,
         state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
         value_fn=lambda stats: _bucket_value(stats.last_24h, "blocked"),
     ),
     OPNsenseQueryStatsSensorEntityDescription(
@@ -3268,6 +3272,7 @@ QUERY_STATS_SENSORS: tuple[OPNsenseQueryStatsSensorEntityDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
+        entity_registry_enabled_default=False,
         value_fn=lambda stats: _bucket_value(stats.last_24h, "blocked_share"),
     ),
     OPNsenseQueryStatsSensorEntityDescription(
@@ -3276,6 +3281,7 @@ QUERY_STATS_SENSORS: tuple[OPNsenseQueryStatsSensorEntityDescription, ...] = (
         icon="mdi:playlist-remove",
         native_unit_of_measurement="domains",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_registry_enabled_default=False,
         value_fn=lambda stats: stats.blocklist_size,
     ),
     OPNsenseQueryStatsSensorEntityDescription(
@@ -3301,6 +3307,7 @@ RECENTLY_BLOCKED_SENSOR = SensorEntityDescription(
     name="DNS Recently Blocked",
     icon="mdi:shield-alert",
     device_class=SensorDeviceClass.TIMESTAMP,
+    entity_registry_enabled_default=False,
 )
 
 
