@@ -2,7 +2,7 @@
 
 Rules for code in this repository, written so a reviewer can check a change against them. Anything `ruff`, `mypy`, `pydoclint`, `codespell` or `cspell` already enforces through `prek` is not repeated here; run `prek` and fix what it reports.
 
-The project follows the [Home Assistant developer docs](https://developers.home-assistant.io/docs/) and targets Python 3.14+ and the latest Home Assistant core. Vocabulary in new names, comments, docs and user-facing text comes from [`GLOSSARY.md`](GLOSSARY.md); existing identifiers keep their names unless a change is made for that purpose.
+The project follows the [Home Assistant developer docs](https://developers.home-assistant.io/docs/) and targets the Python range declared in [`pyproject.toml`](pyproject.toml) and the latest Home Assistant core. Vocabulary in new names, comments, docs and user-facing text comes from [`GLOSSARY.md`](GLOSSARY.md); existing identifiers keep their names unless a change is made for that purpose.
 
 ## Architecture
 
@@ -24,7 +24,7 @@ The project follows the [Home Assistant developer docs](https://developers.home-
 - Keep imports at the top of the file.
 - Give every file, class and method a docstring, including private and nested methods. Method docstrings use Google style with `Args`, `Returns` and `Raises` where they apply.
 - Keep existing comments. Correct a comment when a change makes it wrong; do not delete useful ones.
-- Python 3.14 syntax is allowed, including PEP 695 type parameters and PEP 758 grouped exception handlers (`except A, B:`).
+- Syntax from the minimum Python version in `[project].requires-python` is allowed, including PEP 695 type parameters and PEP 758 grouped exception handlers (`except A, B:`).
 - Prefer fixing the root cause over a surface patch. Keep a change to one conceptual concern, and reuse existing helpers before adding new ones.
 
 ## Errors and logging

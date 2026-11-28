@@ -1,6 +1,9 @@
 [project]
 name = "hass-opnsense"
-requires-python = ">=3.14.2"
+# The only Python version declaration; uv, Ruff, mypy, pydoclint and CI follow it.
+# Raise the upper bound when Home Assistant moves to a new Python series.
+# Otherwise uv keeps locking an older Home Assistant without reporting an error.
+requires-python = ">=3.14.2,<3.15"
 dynamic = ["version"]
 
 [build-system]
@@ -31,7 +34,7 @@ lint = [
     "mypy",
     "prek",
     "probatio",
-    "ruff",
+    "pydoclint>=0.12.0",
     "types-cffi",
     "types-PyMySQL",
     "types-pyRFC3339",
@@ -79,7 +82,6 @@ override-dependencies = [
 ]
 
 [tool.mypy]
-python_version = "3.14"
 files = ["custom_components/opnsense", "tests"]
 check_untyped_defs = true
 explicit_package_bases = true

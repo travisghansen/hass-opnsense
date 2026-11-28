@@ -61,7 +61,7 @@ Use the terms in [GLOSSARY.md](GLOSSARY.md) when naming things and writing docs.
 
 ## Setting up the Development Environment
 
-The project requires Python 3.14.2 or newer and uses [uv](https://docs.astral.sh/uv/) with the committed `uv.lock`.
+The project uses [uv](https://docs.astral.sh/uv/) with the committed `uv.lock`. `[project].requires-python` in [`pyproject.toml`](pyproject.toml) is the only declaration of the supported Python versions; uv selects a matching interpreter from it.
 
 1. Install the project and its development dependencies into `.venv`:
 
@@ -92,8 +92,8 @@ oldest Home Assistant release at or above that minimum together with a test plug
 covers it: `pytest-homeassistant` from Home Assistant 2026.11, otherwise its predecessor
 `pytest-homeassistant-custom-component`. It installs them with the `pytest-base` group
 in a separate environment. Raising the minimum in `hacs.json` is all the job needs.
-Both legs require Python 3.14.2 or newer, verify the test environment, and print the
-Python, Home Assistant, and test plugin versions.
+Both legs use the Python range declared in `pyproject.toml`, verify the test environment,
+and print the Python, Home Assistant, and test plugin versions.
 
 Import Home Assistant test plugin helpers such as `MockConfigEntry` from `tests.common`
 so the tests work with either plugin. To reproduce the job locally, run the workflow's
