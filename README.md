@@ -173,7 +173,7 @@ Many entities are created by `hass-opnsense` for statistics etc. Due to the volu
 * Certificates
 * vnStat Metrics
 * Speedtest last and average results (download, upload, latency)
-* Unbound DNS Query Stats (queries, Blocked and Dropped per minute and over 24 hours, Blocked share, blocklist size, top domains, recently Blocked queries) *[polled every 60 seconds; needs Unbound statistics enabled in OPNsense]*
+* Unbound DNS Query Stats (queries, Blocked and Dropped per minute and over 24 hours, Blocked share, blocklist size, top domains, recently Blocked queries) *[all disabled by default; polled every 60 seconds once enabled; needs Unbound statistics enabled in OPNsense]*
 
 ### Switch
 

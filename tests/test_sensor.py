@@ -7385,6 +7385,11 @@ async def test_async_setup_entry_creates_query_stats_sensors_from_first_read(
     )
 
     assert _query_stats_keys(added) == expected_keys
+    assert not any(
+        entity.entity_description.entity_registry_enabled_default
+        for entity in added
+        if entity.entity_description.key.startswith("query_stats.")
+    )
     assert (captured["entities"] is not None) is complete
 
 
