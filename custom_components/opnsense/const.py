@@ -2,7 +2,7 @@
 
 from homeassistant.const import Platform, UnitOfTime
 
-VERSION = "v1.3.3"  # x-release-please-version
+VERSION = "v1.4.0"  # x-release-please-version
 DOMAIN = "opnsense"
 
 UNDO_UPDATE_LISTENER = "undo_update_listener"
